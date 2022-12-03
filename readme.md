@@ -6,8 +6,7 @@ If you are using systems up to Catalina then open project
 tranc/VoodooHDA.xcodeproj
 
 For systems BigSur and up you have to download the project VoodooHDA
-
-You also need to download MacKernelSDK 
+also download MacKernelSDK
 git clone https://github.com/joevt/MacKernelSDK.git
 (this is tested version)
 and make a symlink into project
