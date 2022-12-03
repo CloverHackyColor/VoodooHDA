@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logFormatVersion</key>
+	<integer>10</integer>
+	<key>logs</key>
+	<dict>
+		<key>5BD56C1E-B419-4973-A873-48A202F8D720</key>
+		<dict>
+			<key>className</key>
+			<string>IDEActivityLogSection</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>5BD56C1E-B419-4973-A873-48A202F8D720.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>E</string>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>VoodooHDA_BS project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>VoodooHDA</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Build VoodooHDA</string>
+			<key>timeStartedRecording</key>
+			<real>691761668.61285603</real>
+			<key>timeStoppedRecording</key>
+			<real>691761669.14652503</real>
+			<key>title</key>
+			<string>Build VoodooHDA</string>
+			<key>uniqueIdentifier</key>
+			<string>5BD56C1E-B419-4973-A873-48A202F8D720</string>
+		</dict>
+		<key>6C713D92-AB3F-4ADA-9D95-B36E447BDF9B</key>
+		<dict>
+			<key>className</key>
+			<string>IDEActivityLogSection</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>6C713D92-AB3F-4ADA-9D95-B36E447BDF9B.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>VoodooHDA_BS project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>VoodooHDA</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Build VoodooHDA</string>
+			<key>timeStartedRecording</key>
+			<real>691762597.30353904</real>
+			<key>timeStoppedRecording</key>
+			<real>691762597.37087798</real>
+			<key>title</key>
+			<string>Build VoodooHDA</string>
+			<key>uniqueIdentifier</key>
+			<string>6C713D92-AB3F-4ADA-9D95-B36E447BDF9B</string>
+		</dict>
+		<key>8C9968CF-3CFD-41E3-826A-4971DAC778D1</key>
+		<dict>
+			<key>className</key>
+			<string>IDEActivityLogSection</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>8C9968CF-3CFD-41E3-826A-4971DAC778D1.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>VoodooHDA_BS project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>VoodooHDA</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Build VoodooHDA</string>
+			<key>timeStartedRecording</key>
+			<real>691762467.34224606</real>
+			<key>timeStoppedRecording</key>
+			<real>691762469.01591802</real>
+			<key>title</key>
+			<string>Build VoodooHDA</string>
+			<key>uniqueIdentifier</key>
+			<string>8C9968CF-3CFD-41E3-826A-4971DAC778D1</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

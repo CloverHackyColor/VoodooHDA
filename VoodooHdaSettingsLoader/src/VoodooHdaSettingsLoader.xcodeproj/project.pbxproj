@@ -1,0 +1,252 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B54A6001146C0BB700F354C6 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B54A6000146C0BB700F354C6 /* Cocoa.framework */; };
+		B54A600D146C0BB700F354C6 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = B54A600C146C0BB700F354C6 /* main.m */; };
+		B54A6014146C0BB700F354C6 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = B54A6013146C0BB700F354C6 /* AppDelegate.m */; };
+		B54A6017146C0BB700F354C6 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = B54A6015146C0BB700F354C6 /* MainMenu.xib */; };
+		B583ACC4146C0DD700B0CDF4 /* VoodooHdaSettingsLoader.m in Sources */ = {isa = PBXBuildFile; fileRef = B583ACC3146C0DD700B0CDF4 /* VoodooHdaSettingsLoader.m */; };
+		B583ACC6146C0E4600B0CDF4 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B583ACC5146C0E4600B0CDF4 /* IOKit.framework */; };
+		E56024431A3E0BFD00E51460 /* VoodooHdaSettingsLoader.icns in Resources */ = {isa = PBXBuildFile; fileRef = E56024421A3E0BFD00E51460 /* VoodooHdaSettingsLoader.icns */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		B54A5FFC146C0BB700F354C6 /* VoodooHdaSettingsLoader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoodooHdaSettingsLoader.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B54A6000146C0BB700F354C6 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
+		B54A6003146C0BB700F354C6 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		B54A6004146C0BB700F354C6 /* CoreData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreData.framework; path = System/Library/Frameworks/CoreData.framework; sourceTree = SDKROOT; };
+		B54A6005146C0BB700F354C6 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		B54A6008146C0BB700F354C6 /* VoodooHdaSettingsLoader-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "VoodooHdaSettingsLoader-Info.plist"; sourceTree = "<group>"; };
+		B54A600C146C0BB700F354C6 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		B54A600E146C0BB700F354C6 /* VoodooHdaSettingsLoader-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "VoodooHdaSettingsLoader-Prefix.pch"; sourceTree = "<group>"; };
+		B54A6012146C0BB700F354C6 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		B54A6013146C0BB700F354C6 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		B54A6016146C0BB700F354C6 /* en */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = en; path = en.lproj/MainMenu.xib; sourceTree = "<group>"; };
+		B583ACC2146C0DD700B0CDF4 /* VoodooHdaSettingsLoader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoodooHdaSettingsLoader.h; sourceTree = "<group>"; };
+		B583ACC3146C0DD700B0CDF4 /* VoodooHdaSettingsLoader.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = VoodooHdaSettingsLoader.m; sourceTree = "<group>"; };
+		B583ACC5146C0E4600B0CDF4 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
+		E56024421A3E0BFD00E51460 /* VoodooHdaSettingsLoader.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = VoodooHdaSettingsLoader.icns; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B54A5FF9146C0BB700F354C6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B583ACC6146C0E4600B0CDF4 /* IOKit.framework in Frameworks */,
+				B54A6001146C0BB700F354C6 /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		B54A5FF1146C0BB700F354C6 = {
+			isa = PBXGroup;
+			children = (
+				B54A6006146C0BB700F354C6 /* VoodooHdaSettingsLoader */,
+				B54A5FFF146C0BB700F354C6 /* Frameworks */,
+				B54A5FFD146C0BB700F354C6 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B54A5FFD146C0BB700F354C6 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B54A5FFC146C0BB700F354C6 /* VoodooHdaSettingsLoader.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B54A5FFF146C0BB700F354C6 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B54A6000146C0BB700F354C6 /* Cocoa.framework */,
+				B583ACC5146C0E4600B0CDF4 /* IOKit.framework */,
+				B54A6002146C0BB700F354C6 /* Other Frameworks */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		B54A6002146C0BB700F354C6 /* Other Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B54A6003146C0BB700F354C6 /* AppKit.framework */,
+				B54A6004146C0BB700F354C6 /* CoreData.framework */,
+				B54A6005146C0BB700F354C6 /* Foundation.framework */,
+			);
+			name = "Other Frameworks";
+			sourceTree = "<group>";
+		};
+		B54A6006146C0BB700F354C6 /* VoodooHdaSettingsLoader */ = {
+			isa = PBXGroup;
+			children = (
+				B583ACC2146C0DD700B0CDF4 /* VoodooHdaSettingsLoader.h */,
+				B583ACC3146C0DD700B0CDF4 /* VoodooHdaSettingsLoader.m */,
+				B54A6007146C0BB700F354C6 /* Supporting Files */,
+			);
+			path = VoodooHdaSettingsLoader;
+			sourceTree = "<group>";
+		};
+		B54A6007146C0BB700F354C6 /* Supporting Files */ = {
+			isa = PBXGroup;
+			children = (
+				B54A6012146C0BB700F354C6 /* AppDelegate.h */,
+				B54A6013146C0BB700F354C6 /* AppDelegate.m */,
+				B54A6015146C0BB700F354C6 /* MainMenu.xib */,
+				B54A600C146C0BB700F354C6 /* main.m */,
+				B54A6008146C0BB700F354C6 /* VoodooHdaSettingsLoader-Info.plist */,
+				B54A600E146C0BB700F354C6 /* VoodooHdaSettingsLoader-Prefix.pch */,
+				E56024421A3E0BFD00E51460 /* VoodooHdaSettingsLoader.icns */,
+			);
+			name = "Supporting Files";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B54A5FFB146C0BB700F354C6 /* VoodooHdaSettingsLoader */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B54A601A146C0BB700F354C6 /* Build configuration list for PBXNativeTarget "VoodooHdaSettingsLoader" */;
+			buildPhases = (
+				B54A5FF8146C0BB700F354C6 /* Sources */,
+				B54A5FF9146C0BB700F354C6 /* Frameworks */,
+				B54A5FFA146C0BB700F354C6 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VoodooHdaSettingsLoader;
+			productName = VoodooHdaSettingsLoader;
+			productReference = B54A5FFC146C0BB700F354C6 /* VoodooHdaSettingsLoader.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B54A5FF3146C0BB700F354C6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0420;
+			};
+			buildConfigurationList = B54A5FF6146C0BB700F354C6 /* Build configuration list for PBXProject "VoodooHdaSettingsLoader" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = B54A5FF1146C0BB700F354C6;
+			productRefGroup = B54A5FFD146C0BB700F354C6 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B54A5FFB146C0BB700F354C6 /* VoodooHdaSettingsLoader */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B54A5FFA146C0BB700F354C6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E56024431A3E0BFD00E51460 /* VoodooHdaSettingsLoader.icns in Resources */,
+				B54A6017146C0BB700F354C6 /* MainMenu.xib in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B54A5FF8146C0BB700F354C6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B54A600D146C0BB700F354C6 /* main.m in Sources */,
+				B54A6014146C0BB700F354C6 /* AppDelegate.m in Sources */,
+				B583ACC4146C0DD700B0CDF4 /* VoodooHdaSettingsLoader.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		B54A6015146C0BB700F354C6 /* MainMenu.xib */ = {
+			isa = PBXVariantGroup;
+			children = (
+				B54A6016146C0BB700F354C6 /* en */,
+			);
+			name = MainMenu.xib;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		B54A6019146C0BB700F354C6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD_32_64_BIT)";
+				CURRENT_PROJECT_VERSION = 1.2;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEPLOYMENT_POSTPROCESSING = YES;
+				DYLIB_COMPATIBILITY_VERSION = "$(CURRENT_PROJECT_VERSION)";
+				DYLIB_CURRENT_VERSION = "$(CURRENT_PROJECT_VERSION)";
+				GCC_ENABLE_CPP_EXCEPTIONS = NO;
+				GCC_ENABLE_CPP_RTTI = NO;
+				GCC_FAST_MATH = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_MISSING_PROTOTYPES = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_SIGN_COMPARE = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				OTHER_CFLAGS = "-fno-stack-protector";
+				OTHER_LDFLAGS = "-Wl,-no_source_version,-no_function_starts,-no_data_in_code_info,-no_version_load_command,-no_dependent_dr_info";
+				STRIPFLAGS = "-no_uuid";
+			};
+			name = Release;
+		};
+		B54A601C146C0BB700F354C6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				INFOPLIST_FILE = "VoodooHdaSettingsLoader/VoodooHdaSettingsLoader-Info.plist";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx10.7;
+				WRAPPER_EXTENSION = app;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B54A5FF6146C0BB700F354C6 /* Build configuration list for PBXProject "VoodooHdaSettingsLoader" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B54A6019146C0BB700F354C6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B54A601A146C0BB700F354C6 /* Build configuration list for PBXNativeTarget "VoodooHdaSettingsLoader" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B54A601C146C0BB700F354C6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = B54A5FF3146C0BB700F354C6 /* Project object */;
+}

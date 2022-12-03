@@ -1,0 +1,155 @@
+// !$*UTF8*$!
+{
+	089C1669FE841209C02AAC07 /* Project object */ = {
+		activeArchitecturePreference = i386;
+		activeBuildConfigurationName = Release;
+		activeTarget = 8D202CE80486D31800D8A456 /* VoodooHDA */;
+		addToTargets = (
+			8D202CE80486D31800D8A456 /* VoodooHDA */,
+		);
+		breakpoints = (
+		);
+		codeSenseManager = 12E1D8FE121C1F22002EB548 /* Code sense */;
+		perUserDictionary = {
+			"PBXConfiguration.PBXBreakpointsDataSource.v1:1CA1AED706398EBD00589147" = {
+				PBXFileTableDataSourceColumnSortingDirectionKey = "-1";
+				PBXFileTableDataSourceColumnSortingKey = PBXBreakpointsDataSource_BreakpointID;
+				PBXFileTableDataSourceColumnWidthsKey = (
+					20,
+					20,
+					198,
+					20,
+					99,
+					99,
+					29,
+					20,
+				);
+				PBXFileTableDataSourceColumnsKey = (
+					PBXBreakpointsDataSource_ActionID,
+					PBXBreakpointsDataSource_TypeID,
+					PBXBreakpointsDataSource_BreakpointID,
+					PBXBreakpointsDataSource_UseID,
+					PBXBreakpointsDataSource_LocationID,
+					PBXBreakpointsDataSource_ConditionID,
+					PBXBreakpointsDataSource_IgnoreCountID,
+					PBXBreakpointsDataSource_ContinueID,
+				);
+			};
+			PBXConfiguration.PBXFileTableDataSource3.PBXFileTableDataSource = {
+				PBXFileTableDataSourceColumnSortingDirectionKey = "-1";
+				PBXFileTableDataSourceColumnSortingKey = PBXFileDataSource_Filename_ColumnID;
+				PBXFileTableDataSourceColumnWidthsKey = (
+					20,
+					675,
+					20,
+					48,
+					43,
+					43,
+					20,
+				);
+				PBXFileTableDataSourceColumnsKey = (
+					PBXFileDataSource_FiletypeID,
+					PBXFileDataSource_Filename_ColumnID,
+					PBXFileDataSource_Built_ColumnID,
+					PBXFileDataSource_ObjectSize_ColumnID,
+					PBXFileDataSource_Errors_ColumnID,
+					PBXFileDataSource_Warnings_ColumnID,
+					PBXFileDataSource_Target_ColumnID,
+				);
+			};
+			PBXConfiguration.PBXFileTableDataSource3.XCSCMDataSource = {
+				PBXFileTableDataSourceColumnSortingDirectionKey = "-1";
+				PBXFileTableDataSourceColumnSortingKey = PBXFileDataSource_Filename_ColumnID;
+				PBXFileTableDataSourceColumnWidthsKey = (
+					20,
+					20,
+					219,
+					20,
+					48,
+					43,
+					43,
+					20,
+				);
+				PBXFileTableDataSourceColumnsKey = (
+					PBXFileDataSource_SCM_ColumnID,
+					PBXFileDataSource_FiletypeID,
+					PBXFileDataSource_Filename_ColumnID,
+					PBXFileDataSource_Built_ColumnID,
+					PBXFileDataSource_ObjectSize_ColumnID,
+					PBXFileDataSource_Errors_ColumnID,
+					PBXFileDataSource_Warnings_ColumnID,
+					PBXFileDataSource_Target_ColumnID,
+				);
+			};
+			PBXPerProjectTemplateStateSaveDate = 379405054;
+			PBXWorkspaceStateSaveDate = 379405054;
+		};
+		perUserProjectItems = {
+			124094DF15D13DD400199B28 /* PBXTextBookmark */ = 124094DF15D13DD400199B28 /* PBXTextBookmark */;
+			12A0E1F8169D431A00069706 /* PBXTextBookmark */ = 12A0E1F8169D431A00069706 /* PBXTextBookmark */;
+		};
+		sourceControlManager = 12E1D8FD121C1F22002EB548 /* Source Control */;
+		userBuildSettings = {
+		};
+	};
+	089C167EFE841241C02AAC07 /* English */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {853, 391}}";
+			sepNavSelRange = "{103, 0}";
+			sepNavVisRange = "{0, 107}";
+		};
+	};
+	124094DF15D13DD400199B28 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		fRef = F506C03D013D9D7901CA16C8 /* VoodooHDAPref.m */;
+		name = "VoodooHDAPref.m: 8";
+		rLen = 0;
+		rLoc = 198;
+		rType = 0;
+		vrLen = 496;
+		vrLoc = 10603;
+	};
+	12A0E1F8169D431A00069706 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		fRef = F506C03D013D9D7901CA16C8 /* VoodooHDAPref.m */;
+		name = "VoodooHDAPref.m: 9";
+		rLen = 0;
+		rLoc = 198;
+		rType = 0;
+		vrLen = 484;
+		vrLoc = 10578;
+	};
+	12E1D8FD121C1F22002EB548 /* Source Control */ = {
+		isa = PBXSourceControlManager;
+		fallbackIsa = XCSourceControlManager;
+		isSCMEnabled = 1;
+		scmConfiguration = {
+			repositoryNamesForRoots = {
+				"" = voodoohda;
+			};
+		};
+		scmType = scm.subversion;
+	};
+	12E1D8FE121C1F22002EB548 /* Code sense */ = {
+		isa = PBXCodeSenseManager;
+		indexTemplatePath = "";
+	};
+	8D202CE80486D31800D8A456 /* VoodooHDA */ = {
+		activeExec = 0;
+	};
+	F506C03C013D9D7901CA16C8 /* VoodooHDAPref.h */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {853, 1456}}";
+			sepNavSelRange = "{2226, 13}";
+			sepNavVisRange = "{1948, 843}";
+		};
+	};
+	F506C03D013D9D7901CA16C8 /* VoodooHDAPref.m */ = {
+		uiCtxt = {
+			sepNavIntBoundsRect = "{{0, 0}, {853, 9802}}";
+			sepNavSelRange = "{198, 0}";
+			sepNavVisRange = "{10578, 484}";
+			sepNavVisRect = "{{0, 4577}, {734, 195}}";
+		};
+	};
+}
