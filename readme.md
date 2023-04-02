@@ -7,6 +7,9 @@ tranc/VoodooHDA.xcodeproj
 
 For systems BigSur and up you have to download the project VoodooHDA
 also download MacKernelSDK
+#### Prerequisite: `Xcode` installed
+ Command Line Tools (CLT) for Xcode (from `xcode-select --install` or [Developer Apple Command Line Tools](https://developer.apple.com/download/all/)
+ 
 ~~~~
 git clone https://github.com/CloverHackyColor/VoodooHDA.git
 cd $HOME/VoodooHDA/tranc
