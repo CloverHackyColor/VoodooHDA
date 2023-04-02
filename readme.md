@@ -8,19 +8,24 @@ tranc/VoodooHDA.xcodeproj
 For systems BigSur and up you have to download the project VoodooHDA
 also download MacKernelSDK
 ~~~~
+git clone https://github.com/CloverHackyColor/VoodooHDA.git
+cd $HOME/VoodooHDA/tranc
 git clone https://github.com/joevt/MacKernelSDK.git
+xcodebuild -project $HOME/VoodooHDA/tranc/VoodooHDA_BS.xcodeproj -alltargets -configuration Release
+
 ~~~~
 
-(this is tested version)
-and make a symlink into project
-~~~~
-cd /path_to/VoodooHDA/tranc/
-ln -s /path_to/MacKernelSDK MacKernelSDK
-~~~~
+#### View Compile Pics: ⬇︎
+<details> 
+  <summary>View Compile Pics</summary>
 
-open project
-tranc/VoodooHDA-BS.xcodeproj
-and compile
+![Screenshot 1](https://user-images.githubusercontent.com/6248794/229353522-34a9abfd-ec8e-49ff-93c5-9d12746777b6.png)
+
+![Screenshot 2](https://user-images.githubusercontent.com/6248794/229353531-10a54ffb-9d5c-487e-8122-8a598ff78f52.png)
+
+
+
+</details>
 
 ### Installation
 
