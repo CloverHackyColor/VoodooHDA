@@ -14,7 +14,7 @@ git clone https://github.com/joevt/MacKernelSDK.git
 (this is tested version)
 and make a symlink into project
 ~~~~
-cd /path_to/VoodooHDA/tranc/
+cd /path_to/VoodooHDA/
 ln -s /path_to/MacKernelSDK MacKernelSDK
 ~~~~
 
