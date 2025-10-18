@@ -72,22 +72,23 @@ public:
 	IOReturn muteChanged(IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
 
 	virtual bool initWithChannel(Channel *channel);
-	virtual void free();
-	virtual bool initHardware(IOService *provider);
+	virtual void free() override;
+	virtual bool initHardware(IOService *provider) override;
 
-	virtual IOReturn performAudioEngineStart();
-	virtual IOReturn performAudioEngineStop();
+	virtual IOReturn performAudioEngineStart() override;
+	virtual IOReturn performAudioEngineStop() override;
 
-	virtual UInt32 getCurrentSampleFrame();
+	virtual UInt32 getCurrentSampleFrame() override;
 
 	virtual IOReturn performFormatChange(IOAudioStream *audioStream, const IOAudioStreamFormat *newFormat,
-			const IOAudioSampleRate *newSampleRate);
+			const IOAudioSampleRate *newSampleRate) override;
 
 	virtual IOReturn clipOutputSamples(const void *mixBuf, void *sampleBuf, UInt32 firstSampleFrame,
-			UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream);
+			UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream) override;
 	virtual IOReturn convertInputSamples(const void *sampleBuf, void *destBuf, UInt32 firstSampleFrame,
-			UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream);
-	virtual OSString *getLocalUniqueID();
+			UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream) override;
+	virtual OSString *getLocalUniqueID() override;
+    virtual bool driverDesiresHiResSampleIntervals(void);
 };
 
 #endif

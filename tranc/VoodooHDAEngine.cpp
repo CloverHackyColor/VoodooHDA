@@ -53,6 +53,8 @@ void VoodooHDAEngine::messageHandler(UInt32 type, const char *format, ...)
 	va_end(args);
 }
 
+bool    VoodooHDAEngine::driverDesiresHiResSampleIntervals(void) { return false;}
+
 /******************************************************************************************/
 /******************************************************************************************/
 
