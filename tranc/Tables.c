@@ -124,6 +124,7 @@ const CodecListItem gCodecList[] = {
 	{ HDA_CODEC_CS4210,			"Cirrus Logic CS4210" },
 	{ HDA_CODEC_ALC221,			"Realtek ALC221" },
 	{ HDA_CODEC_ALC233,			"Realtek ALC233" },
+	{ HDA_CODEC_ALC256,			"Realtek ALC256" },
 	{ HDA_CODEC_ALC257,			"Realtek ALC257" },
 	{ HDA_CODEC_ALC260,			"Realtek ALC260" },
 	{ HDA_CODEC_ALC262,			"Realtek ALC262" },
