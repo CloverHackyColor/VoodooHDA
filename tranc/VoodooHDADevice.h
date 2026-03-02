@@ -98,6 +98,7 @@ public:
 	
 	const char *mControllerName;
 	UInt32 mDeviceId, mSubDeviceId;
+	UInt32 mLayoutId;
 
 	IOPCIDevice *mPciNub;
 	IOMemoryMap *mBarMap;
@@ -308,11 +309,14 @@ public:
 	void dumpPcmChannels(PcmDevice *pcmDevice);
 
 	void powerup(FunctionGroup *funcGroup);
+	void applyAppleALCExtraVerbs(FunctionGroup *funcGroup);
+	void applyAppleALCWakeVerbs(FunctionGroup *funcGroup);
 	void audioParse(FunctionGroup *funcGroup);
 	void audioCtlParse(FunctionGroup *funcGroup);
 	void vendorPatchParse(FunctionGroup *funcGroup);
 	void audioDisableNonAudio(FunctionGroup *funcGroup);
 	void audioDisableUseless(FunctionGroup *funcGroup);
+	void adjustPinAssociationsForSwitching(FunctionGroup *funcGroup);
 	void audioAssociationParse(FunctionGroup *funcGroup);
 	void audioBuildTree(FunctionGroup *funcGroup);
 	void audioDisableUnassociated(FunctionGroup *funcGroup);
