@@ -9,6 +9,7 @@
 typedef struct {
     UInt8  nid;
     UInt32 pinConfig;
+    UInt8  nameIdx;
 } __attribute__((packed)) ALCPinConfig;
 
 typedef struct {
@@ -26,11 +27,13 @@ typedef struct {
 #define ALC_EXTRA_VERBS_COUNT  1601
 #define ALC_WAKE_VERBS_COUNT   1089
 #define ALC_CONFIG_ENTRIES_COUNT 655
+#define ALC_PIN_NAMES_COUNT    12
 
 extern const ALCPinConfig   gALCPinConfigs[];
 extern const UInt32         gALCExtraVerbs[];
 extern const UInt32         gALCWakeVerbs[];
 extern const ALCConfigEntry gALCConfigEntries[];
+extern const char * const   gALCPinNames[];
 
 const ALCConfigEntry* alcLookupPinConfig(UInt32 codecId, UInt32 layoutId);
 

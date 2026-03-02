@@ -19,6 +19,84 @@ import os
 from collections import defaultdict
 
 
+# Dynamic name pool - grows as parser discovers new device_type+connectivity combos
+name_pool = [""]       # index 0 = no name
+name_to_idx = {"": 0}
+
+
+def add_name(name):
+    """Add name to pool if new, return index."""
+    if name not in name_to_idx:
+        name_to_idx[name] = len(name_pool)
+        name_pool.append(name)
+    return name_to_idx[name]
+
+
+def derive_name(pin_config):
+    """Derive Apple-style device name from HDA pin config default register.
+
+    Pin config default (32 bits, HDA spec 7.3.3.31):
+
+        [31:30] Connectivity  — 0=Jack, 1=NoPhysConn, 2=Fixed, 3=Both(int+jack)
+        [29:24] Location      — gross[5:4] + fine[3:0]
+                                 gross: 0=External, 1=Internal, 2=Separate, 3=Other
+        [23:20] Default Device — determines the functional role of the pin:
+                  0x00 Line Out       0x08 Line In
+                  0x01 Speaker        0x09 Aux
+                  0x02 HP Out         0x0A Mic In
+                  0x03 CD             0x0B Telephony
+                  0x04 SPDIF Out      0x0C SPDIF In
+                  0x05 Digital Out    0x0D Digital In
+                  0x06 Modem Line     0x0E Reserved
+                  0x07 Modem Handset  0x0F Other
+        [19:16] Connection Type
+        [15:12] Color
+        [11:8]  Misc
+        [7:4]   Default Association
+        [3:0]   Sequence
+
+    Naming rules:
+    - device_type determines the base name (Speaker, Headphones, Mic, etc.)
+    - connectivity distinguishes internal (Fixed=2, Both=3) from external (Jack=0)
+    - location gross nibble distinguishes HDMI (Internal) from generic Digital Out
+
+    Names match macOS Sound Preferences style. Returns None for device types
+    that don't map to a user-visible audio endpoint (CD, Modem, Aux, etc.).
+
+    The returned name is added to a global string pool (name_pool/name_to_idx)
+    and referenced by index (nameIdx) in the generated ALCPinConfig structs.
+    At runtime, Parser.cpp uses this index to display the name via
+    gALCPinNames[widget->alcNameIdx] — see catPinName() and widgetPinGetConfig().
+    """
+    device = (pin_config >> 20) & 0xF
+    conn = (pin_config >> 30) & 0x3
+    location = (pin_config >> 24) & 0x3F
+
+    # Outputs
+    if device == 0x01:  # Speaker
+        return "Internal Speakers" if conn in (2, 3) else "External Speaker"
+    if device == 0x02:  # HP Out
+        return "Headphones"
+    if device == 0x00:  # Line-out
+        return "Line Out"
+    if device == 0x04:  # SPDIF-out
+        return "S/PDIF Out"
+    if device == 0x05:  # Digital-out
+        return "HDMI" if (location >> 4) == 1 else "Digital Out"
+
+    # Inputs
+    if device == 0x0A:  # Microphone
+        return "Internal Microphone" if conn in (2, 3) else "External Microphone"
+    if device == 0x08:  # Line-in
+        return "Line In"
+    if device == 0x0C:  # SPDIF-in
+        return "S/PDIF In"
+    if device == 0x0D:  # Digital-in
+        return "Digital In"
+
+    return None  # Other/unknown devices
+
+
 def parse_verbs(data):
     """Parse ConfigData/WakeConfigData into (pin_configs, extra_verbs).
 
@@ -114,9 +192,16 @@ def main():
         if wake_verb_reinit and not wake_verbs and extras:
             wake_verbs = list(extras)
 
+        # Derive name indices for each pin config
+        pins_with_names = []
+        for nid, pc in pins:
+            name = derive_name(pc)
+            name_idx = add_name(name) if name else 0
+            pins_with_names.append((nid, pc, name_idx))
+
         pin_start = len(all_pin_configs)
-        pin_count = len(pins)
-        all_pin_configs.extend(pins)
+        pin_count = len(pins_with_names)
+        all_pin_configs.extend(pins_with_names)
 
         extra_start = len(all_extra_verbs)
         extra_count = len(extras)
@@ -144,10 +229,11 @@ def main():
     print(f"Total extra verbs: {len(all_extra_verbs)}")
     print(f"Total wake verbs:  {len(all_wake_verbs)}")
     print(f"Total entries:     {len(entries)}")
+    print(f"Pin name pool:     {len(name_pool)} names")
 
     # Estimate data size
     data_size = (
-        len(all_pin_configs) * 5 +  # ALCPinConfig: 1 + 4 bytes
+        len(all_pin_configs) * 6 +  # ALCPinConfig: 1 + 4 + 1 bytes
         len(all_extra_verbs) * 4 +
         len(all_wake_verbs) * 4 +
         len(entries) * 16  # ALCConfigEntry
@@ -166,6 +252,7 @@ def main():
         f.write("typedef struct {\n")
         f.write("    UInt8  nid;\n")
         f.write("    UInt32 pinConfig;\n")
+        f.write("    UInt8  nameIdx;\n")
         f.write("} __attribute__((packed)) ALCPinConfig;\n\n")
 
         f.write("typedef struct {\n")
@@ -182,12 +269,14 @@ def main():
         f.write(f"#define ALC_PIN_CONFIGS_COUNT  {len(all_pin_configs)}\n")
         f.write(f"#define ALC_EXTRA_VERBS_COUNT  {len(all_extra_verbs)}\n")
         f.write(f"#define ALC_WAKE_VERBS_COUNT   {len(all_wake_verbs)}\n")
-        f.write(f"#define ALC_CONFIG_ENTRIES_COUNT {len(entries)}\n\n")
+        f.write(f"#define ALC_CONFIG_ENTRIES_COUNT {len(entries)}\n")
+        f.write(f"#define ALC_PIN_NAMES_COUNT    {len(name_pool)}\n\n")
 
         f.write("extern const ALCPinConfig   gALCPinConfigs[];\n")
         f.write("extern const UInt32         gALCExtraVerbs[];\n")
         f.write("extern const UInt32         gALCWakeVerbs[];\n")
-        f.write("extern const ALCConfigEntry gALCConfigEntries[];\n\n")
+        f.write("extern const ALCConfigEntry gALCConfigEntries[];\n")
+        f.write("extern const char * const   gALCPinNames[];\n\n")
 
         f.write("const ALCConfigEntry* alcLookupPinConfig(UInt32 codecId, UInt32 layoutId);\n\n")
 
@@ -202,11 +291,19 @@ def main():
         f.write("/* Do not edit manually. */\n\n")
         f.write('#include "AppleALCPinConfigs.h"\n\n')
 
+        # Pin names array
+        f.write(f"const char * const gALCPinNames[ALC_PIN_NAMES_COUNT] = {{\n")
+        for i, name in enumerate(name_pool):
+            sep = "," if i < len(name_pool) - 1 else ""
+            f.write(f'    "{name}"{sep}  // {i}\n')
+        f.write("};\n\n")
+
         # Pin configs array
         f.write(f"const ALCPinConfig gALCPinConfigs[ALC_PIN_CONFIGS_COUNT] = {{\n")
-        for i, (nid, pc) in enumerate(all_pin_configs):
-            f.write(f"    {{ 0x{nid:02X}, 0x{pc:08X} }}")
-            f.write(",\n" if i < len(all_pin_configs) - 1 else "\n")
+        for i, (nid, pc, ni) in enumerate(all_pin_configs):
+            sep = "," if i < len(all_pin_configs) - 1 else ""
+            comment = f"  // {name_pool[ni]}" if ni > 0 else ""
+            f.write(f"    {{ 0x{nid:02X}, 0x{pc:08X}, {ni:3d} }}{sep}{comment}\n")
         f.write("};\n\n")
 
         # Extra verbs array
