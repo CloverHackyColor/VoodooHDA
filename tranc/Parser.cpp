@@ -3470,8 +3470,10 @@ UInt32 VoodooHDADevice::widgetPinGetConfig(Widget *widget)
 			for (UInt8 i = 0; i < entry->pinConfigCount; i++) {
 				if (pins[i].nid == (UInt8)nid) {
 					widget->alcNameIdx = pins[i].nameIdx;
+#ifdef DEBUG
 					dumpMsg("AppleALC pin config nid=%u: 0x%08lx (layout=%u)\n",
 							nid, (long unsigned int)pins[i].pinConfig, mLayoutId);
+#endif
 					return pins[i].pinConfig;
 				}
 			}
