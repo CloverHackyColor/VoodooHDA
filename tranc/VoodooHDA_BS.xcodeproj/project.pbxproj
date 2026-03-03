@@ -10,6 +10,8 @@
 		120156031244377E00611BC7 /* AppleAudioClip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 12BDC91012440B5D00B327AE /* AppleAudioClip.cpp */; settings = {COMPILER_FLAGS = "-Wno-unused-function -fvisibility=hidden"; }; };
 		12BDC90E12440B4E00B327AE /* TigerAdditionals.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 12BDC90C12440B4E00B327AE /* TigerAdditionals.cpp */; };
 		12F24FCC12860D9600B294D6 /* PCMBlitterLib.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEF7C0A40EF74C2700A14C68 /* PCMBlitterLib.cpp */; settings = {COMPILER_FLAGS = "-fvisibility=hidden"; }; };
+		A5C595DF2F577496007DC9D3 /* AppleALCPinConfigs.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5C595DE2F577496007DC9D3 /* AppleALCPinConfigs.cpp */; };
+		A5C595E02F577496007DC9D3 /* AppleALCPinConfigs.h in Headers */ = {isa = PBXBuildFile; fileRef = A5C595DD2F577496007DC9D3 /* AppleALCPinConfigs.h */; };
 		CE5D398B0EF4784000140715 /* Parser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE5D398A0EF4784000140715 /* Parser.cpp */; };
 		CE6725A40EF078B100FAFBED /* VoodooHDADevice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE6725A00EF078B100FAFBED /* VoodooHDADevice.cpp */; };
 		CE6725A60EF078B100FAFBED /* VoodooHDAEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE6725A20EF078B100FAFBED /* VoodooHDAEngine.cpp */; };
@@ -26,6 +28,8 @@
 		12BDC91212440B5D00B327AE /* AppleAudioCommon.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppleAudioCommon.h; sourceTree = "<group>"; };
 		32D94FCF0562CBF700B6AF17 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		32D94FD00562CBF700B6AF17 /* VoodooHDA.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoodooHDA.kext; sourceTree = BUILT_PRODUCTS_DIR; };
+		A5C595DD2F577496007DC9D3 /* AppleALCPinConfigs.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppleALCPinConfigs.h; sourceTree = "<group>"; };
+		A5C595DE2F577496007DC9D3 /* AppleALCPinConfigs.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = AppleALCPinConfigs.cpp; sourceTree = "<group>"; };
 		CE45220E0EF210FD00600B68 /* Models.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Models.h; sourceTree = "<group>"; };
 		CE45220F0EF210FD00600B68 /* Private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Private.h; sourceTree = "<group>"; };
 		CE4522100EF210FD00600B68 /* Registers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Registers.h; sourceTree = "<group>"; };
@@ -91,6 +95,8 @@
 		247142CAFF3F8F9811CA285C /* Source */ = {
 			isa = PBXGroup;
 			children = (
+				A5C595DD2F577496007DC9D3 /* AppleALCPinConfigs.h */,
+				A5C595DE2F577496007DC9D3 /* AppleALCPinConfigs.cpp */,
 				12BDC91012440B5D00B327AE /* AppleAudioClip.cpp */,
 				12BDC91112440B5D00B327AE /* AppleAudioClip.h */,
 				12BDC91212440B5D00B327AE /* AppleAudioCommon.h */,
@@ -130,6 +136,7 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A5C595E02F577496007DC9D3 /* AppleALCPinConfigs.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -224,6 +231,7 @@
 				120156031244377E00611BC7 /* AppleAudioClip.cpp in Sources */,
 				12F24FCC12860D9600B294D6 /* PCMBlitterLib.cpp in Sources */,
 				E5A3BD951E7095C100F91F3D /* PCMBlitterLibX86.cpp in Sources */,
+				A5C595DF2F577496007DC9D3 /* AppleALCPinConfigs.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -331,6 +339,7 @@
 				OTHER_CFLAGS = (
 					"-fno-stack-protector",
 					"-DMULTICHANNEL",
+					"-DDP_AUDIO",
 				);
 				OTHER_LDFLAGS = "-Wl,-no_source_version";
 				SDKROOT = macosx;
