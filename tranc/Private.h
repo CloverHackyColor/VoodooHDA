@@ -171,6 +171,7 @@ typedef struct _Widget {
 	int bindSeqMask;
 	int ossdev;
 	int sense;
+	UInt8 alcNameIdx;
 	UInt32 ossmask;
 	nid_t conns[HDA_MAX_CONNS];
 	UInt8 connsenable[HDA_MAX_CONNS];

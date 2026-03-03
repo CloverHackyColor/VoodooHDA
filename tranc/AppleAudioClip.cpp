@@ -103,7 +103,7 @@ static inline SInt32	SInt32NativeToBigEndian(SInt32 inValue) { return inValue; }
 static inline SInt32	SInt32LittleToNativeEndian(SInt32 inValue) { return Endian32_Swap(inValue); }
 static inline SInt32	SInt32NativeToLittleEndian(SInt32 inValue) { return Endian32_Swap(inValue); }
 
-#elif defined(__i386__) || defined(__x86_64__)
+#elif defined(__i386__) || defined(__x86_64__) || defined(__arm64__) || defined(__aarch64__)
 
 static inline SInt16	SInt16BigToNativeEndian(SInt16 inValue) { return Endian16_Swap(inValue); }
 static inline SInt16	SInt16NativeToBigEndian(SInt16 inValue) { return Endian16_Swap(inValue); }
@@ -161,7 +161,7 @@ inline static Float32 ClipFloat32ForSInt32(Float32 inSample)
 }
 
 //	Float32 -> SInt8
-#if defined(__i386__) || defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__) || defined(__arm64__) || defined(__aarch64__)
 static void	ClipFloat32ToSInt8_4(const Float32* inInputBuffer, SInt8* outOutputBuffer, UInt32 inNumberSamples)
 {
 	register UInt32 theLeftOvers = inNumberSamples % 4;

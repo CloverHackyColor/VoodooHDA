@@ -40,6 +40,8 @@
 			<string>IOPCIDevice</string>
 			<key>IOUserClientClass</key>
 			<string>VoodooHDAUserClient</string>
+			<key>LayoutId</key>
+			<integer>80</integer>
 			<key>InhibitCache</key>
 			<false/>
 			<key>MixerValues</key>

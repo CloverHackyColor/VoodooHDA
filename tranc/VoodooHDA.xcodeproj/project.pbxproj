@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1B2C3D400000001000A1C00 /* AppleALCPinConfigs.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D400000002000A1C00 /* AppleALCPinConfigs.cpp */; };
 		120156031244377E00611BC7 /* AppleAudioClip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 12BDC91012440B5D00B327AE /* AppleAudioClip.cpp */; settings = {COMPILER_FLAGS = "-Wno-unused-function -fvisibility=hidden"; }; };
 		12BDC90E12440B4E00B327AE /* TigerAdditionals.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 12BDC90C12440B4E00B327AE /* TigerAdditionals.cpp */; };
 		12F24FCC12860D9600B294D6 /* PCMBlitterLib.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEF7C0A40EF74C2700A14C68 /* PCMBlitterLib.cpp */; settings = {COMPILER_FLAGS = "-fvisibility=hidden"; }; };
@@ -19,6 +20,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A1B2C3D400000002000A1C00 /* AppleALCPinConfigs.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = AppleALCPinConfigs.cpp; sourceTree = "<group>"; };
+		A1B2C3D400000003000A1C00 /* AppleALCPinConfigs.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppleALCPinConfigs.h; sourceTree = "<group>"; };
 		12BDC90C12440B4E00B327AE /* TigerAdditionals.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TigerAdditionals.cpp; sourceTree = "<group>"; };
 		12BDC90D12440B4E00B327AE /* TigerAdditionals.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TigerAdditionals.h; sourceTree = "<group>"; };
 		12BDC91012440B5D00B327AE /* AppleAudioClip.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = AppleAudioClip.cpp; sourceTree = "<group>"; };
@@ -91,6 +94,8 @@
 		247142CAFF3F8F9811CA285C /* Source */ = {
 			isa = PBXGroup;
 			children = (
+				A1B2C3D400000002000A1C00 /* AppleALCPinConfigs.cpp */,
+				A1B2C3D400000003000A1C00 /* AppleALCPinConfigs.h */,
 				12BDC91012440B5D00B327AE /* AppleAudioClip.cpp */,
 				12BDC91112440B5D00B327AE /* AppleAudioClip.h */,
 				12BDC91212440B5D00B327AE /* AppleAudioCommon.h */,
@@ -214,6 +219,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D400000001000A1C00 /* AppleALCPinConfigs.cpp in Sources */,
 				CE6725A40EF078B100FAFBED /* VoodooHDADevice.cpp in Sources */,
 				CE6725A60EF078B100FAFBED /* VoodooHDAEngine.cpp in Sources */,
 				CE9337FE0EF226E000776BCD /* Tables.c in Sources */,

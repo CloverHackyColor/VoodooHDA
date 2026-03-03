@@ -7,6 +7,7 @@
 #include "Common.h"
 #include "Verbs.h"
 #include "OssCompat.h"
+#include "AppleALCPinConfigs.h"
 
 #include "Shared.h"
 
@@ -52,9 +53,13 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 	OSBoolean *osBool;
 	extern kmod_info_t kmod_info;
 	mVerbose = 0;
-	if (!super::init(dict))
+	IOLog("VoodooHDA DBG: init() called, dict=%p\n", dict);
+	if (!super::init(dict)) {
+		IOLog("VoodooHDA DBG: super::init() FAILED\n");
 		return false;
-	
+	}
+	IOLog("VoodooHDA DBG: super::init() OK, version=%s\n", kmod_info.version);
+
 	dumpMsg("Loading VoodooHDA %s (based on hdac version " HDAC_REVISION ")\n", kmod_info.version);
 	
 //	ASSERT(dict);
@@ -147,6 +152,7 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 
 	mActionHandler = (IOCommandGate::Action) &VoodooHDADevice::handleAction;
 	if (!mActionHandler) {
+		IOLog("VoodooHDA DBG: mActionHandler is NULL\n");
 		errorMsg("error: couldn't cast command gate action handler\n");
 		return false;
 	}
@@ -155,6 +161,7 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 	mPrefPanelMemoryBufSize = 0;
 	mPrefPanelMemoryBuf = 0;
 
+	IOLog("VoodooHDA DBG: init() returning true\n");
 	return true;
 }
 
@@ -212,12 +219,14 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 //	bool contIsGeneric = false;
 	int n;
 
-	//logMsg("VoodooHDADevice[%p]::probe\n", this);
-//	IOLog("HDA: MixerInfoSize=%d ChannelInfoSize=%d\n", (int)sizeof(mixerDeviceInfo), (int)sizeof(ChannelInfo));
+	IOLog("VoodooHDA DBG: probe() called, provider=%p score=%d\n", provider, score ? *score : -1);
 
 	result = super::probe(provider, score);
-	if (result != static_cast<IOService*>(this))
+	if (result != static_cast<IOService*>(this)) {
+		IOLog("VoodooHDA DBG: super::probe() FAILED, result=%p this=%p\n", result, this);
 		return result;
+	}
+	IOLog("VoodooHDA DBG: super::probe() OK\n");
 	
 	initMixerDefaultValues();
 	
@@ -346,14 +355,18 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 #endif//	
 	mPciNub = OSDynamicCast(IOPCIDevice, provider);
 	if (!mPciNub) {
+		IOLog("VoodooHDA DBG: cast to IOPCIDevice FAILED\n");
 		errorMsg("error: couldn't cast provider to IOPCIDevice\n");
 		return NULL;
 	}
+	IOLog("VoodooHDA DBG: mPciNub=%p, opening...\n", mPciNub);
 	if (!mPciNub->open(this)) {
+		IOLog("VoodooHDA DBG: mPciNub->open() FAILED\n");
 		errorMsg("error: couldn't open PCI device\n");
 		mPciNub = NULL;
 		return NULL;
 	}
+	IOLog("VoodooHDA DBG: PCI device opened OK\n");
 /*
 	classCode = mPciNub->configRead32(kIOPCIConfigClassCode & 0xfc) >> 8;
 	subClass = (classCode >> 8) & 0xff;
@@ -378,6 +391,7 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 	if (!mControllerName)
 		mControllerName = "Generic";
 
+	IOLog("VoodooHDA DBG: Controller: %s (vendor=%04x device=%04x)\n", mControllerName, vendorId, deviceId);
 	errorMsg("Controller: %s (vendor ID: %04x, device ID: %04x)\n", mControllerName, vendorId, deviceId);
 
 	subVendorId = mPciNub->configRead16(kIOPCIConfigSubSystemVendorID);
@@ -386,9 +400,33 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 	if (mSubDeviceId == HP_NX6325_SUBVENDORX)
 		mSubDeviceId = HP_NX6325_SUBVENDOR;
 
+	mLayoutId = 0;
+	/* voodoo-layout-id is set by bootloader (OpenCore DeviceProperties);
+	   layout-id on the PCI device may be overwritten by AppleHDA or the system */
+	OSData *layoutData = OSDynamicCast(OSData, mPciNub->getProperty("voodoo-layout-id"));
+	if (layoutData && layoutData->getLength() >= sizeof(UInt32))
+		mLayoutId = *(const UInt32 *)layoutData->getBytesNoCopy();
+	IOLog("VoodooHDA DBG: voodoo-layout-id -> mLayoutId=%u\n", (unsigned)mLayoutId);
+	if (mLayoutId == 0) {
+		layoutData = OSDynamicCast(OSData, mPciNub->getProperty("layout-id"));
+		if (layoutData && layoutData->getLength() >= sizeof(UInt32))
+			mLayoutId = *(const UInt32 *)layoutData->getBytesNoCopy();
+		IOLog("VoodooHDA DBG: layout-id -> mLayoutId=%u\n", (unsigned)mLayoutId);
+	}
+	if (mLayoutId == 0) {
+		OSNumber *layoutNum = OSDynamicCast(OSNumber, getProperty("LayoutId"));
+		if (layoutNum)
+			mLayoutId = layoutNum->unsigned32BitValue();
+		IOLog("VoodooHDA DBG: LayoutId plist -> mLayoutId=%u\n", (unsigned)mLayoutId);
+	}
+	IOLog("VoodooHDA DBG: final mLayoutId=%u\n", (unsigned)mLayoutId);
+	if (mLayoutId)
+		errorMsg("AppleALC: layout-id=%u\n", (unsigned int)mLayoutId);
+
 //done:
 	mPciNub->close(this);
 
+	IOLog("VoodooHDA DBG: probe() returning result=%p\n", result);
 	return result;
 }
 
@@ -428,6 +466,8 @@ bool VoodooHDADevice::initHardware(IOService *provider)
 	UInt16 config, vendorId;
 	UInt32 gCtl;
 	UInt16 msiCtl;
+
+	IOLog("VoodooHDA DBG: initHardware() called\n");
 
 //moved here from init ----------
   mMsgBufferEnabled = false;
@@ -657,6 +697,7 @@ void VoodooHDADevice::stop(IOService *provider)
 
 void VoodooHDADevice::free()
 {
+	IOLog("VoodooHDA DBG: free() called\n");
 	logMsg("VoodooHDADevice[%p]::free\n", this);
 
 	// if probe or initHardware (called by super start) fails, we end up here - stop is not called
@@ -885,6 +926,7 @@ bool VoodooHDADevice::resume()
 
 //			logMsg("Power up audio FG cad=%d nid=%d...\n", funcGroup->codec->cad, funcGroup->nid);
 			powerup(funcGroup);
+			applyAppleALCWakeVerbs(funcGroup);
 //			logMsg("AFG commit...\n");
 			audioCommit(funcGroup);
 //			logMsg("HP switch init...\n");

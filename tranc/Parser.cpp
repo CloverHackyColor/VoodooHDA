@@ -7,6 +7,7 @@
 #include "Models.h"
 #include "Common.h"
 #include "Verbs.h"
+#include "AppleALCPinConfigs.h"
 
 #ifdef TIGER
 #include "TigerAdditionals.h"
@@ -202,6 +203,7 @@ void VoodooHDADevice::probeFunction(Codec *codec, nid_t nid)
 
 	dumpMsg("Powering up...\n");
 	powerup(funcGroup);
+	applyAppleALCExtraVerbs(funcGroup);
 	dumpMsg("Parsing audio FG...\n");
 	audioParse(funcGroup);
 	dumpMsg("Parsing vendor patch...\n");
@@ -221,6 +223,7 @@ void VoodooHDADevice::probeFunction(Codec *codec, nid_t nid)
 	audioDisableUseless(funcGroup);
 	dumpMsg("Patched pins configuration:\n");
 	dumpPinConfigs(funcGroup);
+	adjustPinAssociationsForSwitching(funcGroup);
 	dumpMsg("Parsing pin associations...\n");
 	audioAssociationParse(funcGroup);
 	dumpMsg("Building AFG tree...\n");
@@ -311,6 +314,65 @@ void VoodooHDADevice::powerup(FunctionGroup *funcGroup)
 	for (int i = funcGroup->startNode; i < funcGroup->endNode; i++)
 		sendCommand(HDA_CMD_SET_POWER_STATE(cad, i, HDA_CMD_POWER_STATE_D0), cad);
 	IODelay(1000);
+}
+
+void VoodooHDADevice::applyAppleALCExtraVerbs(FunctionGroup *funcGroup)
+{
+	if (mLayoutId == 0)
+		return;
+
+	UInt32 codecId = CODEC_ID(funcGroup->codec);
+	const ALCConfigEntry *entry = alcLookupPinConfig(codecId, mLayoutId);
+	if (!entry || entry->extraVerbCount == 0)
+		return;
+
+	nid_t cad = funcGroup->codec->cad;
+	dumpMsg("AppleALC: applying %u extra verbs for codec=0x%08lx layout=%u\n",
+			entry->extraVerbCount, (long unsigned int)codecId, mLayoutId);
+
+	for (UInt16 i = 0; i < entry->extraVerbCount; i++) {
+		UInt32 verb = gALCExtraVerbs[entry->extraVerbStart + i];
+		/* Substitute real CAD into bits [31:28] */
+		verb = (verb & 0x0FFFFFFF) | (((UInt32)cad) << 28);
+		sendCommand(verb, cad);
+	}
+}
+
+void VoodooHDADevice::applyAppleALCWakeVerbs(FunctionGroup *funcGroup)
+{
+	if (mLayoutId == 0)
+		return;
+
+	UInt32 codecId = CODEC_ID(funcGroup->codec);
+	const ALCConfigEntry *entry = alcLookupPinConfig(codecId, mLayoutId);
+	if (!entry)
+		return;
+
+	nid_t cad = funcGroup->codec->cad;
+
+	/* Use wake verbs if available, otherwise replay extra verbs */
+	const UInt32 *verbs;
+	UInt16 verbStart, verbCount;
+	if (entry->wakeVerbCount > 0) {
+		verbs = gALCWakeVerbs;
+		verbStart = entry->wakeVerbStart;
+		verbCount = entry->wakeVerbCount;
+	} else if (entry->extraVerbCount > 0) {
+		verbs = gALCExtraVerbs;
+		verbStart = entry->extraVerbStart;
+		verbCount = entry->extraVerbCount;
+	} else {
+		return;
+	}
+
+	dumpMsg("AppleALC: applying %u wake verbs for codec=0x%08lx layout=%u\n",
+			verbCount, (long unsigned int)codecId, mLayoutId);
+
+	for (UInt16 i = 0; i < verbCount; i++) {
+		UInt32 verb = verbs[verbStart + i];
+		verb = (verb & 0x0FFFFFFF) | (((UInt32)cad) << 28);
+		sendCommand(verb, cad);
+	}
 }
 
 void VoodooHDADevice::audioParse(FunctionGroup *funcGroup)
@@ -1087,8 +1149,9 @@ void VoodooHDADevice::audioAssociationParse(FunctionGroup *funcGroup)
 				assocs[cnt].defaultPin = seq;
 			} else {
 				assocs[cnt].jackPin = seq; //Last seq will be jack
-				/* Redirection only for headphones. */
-				hpredir = (type == HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT);
+				/* Redirection for headphones and input jacks. */
+				hpredir = (type == HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT) ||
+						(assocs[cnt].dir == HDA_CTL_IN);
 			}
 
 			assocs[cnt].pins[seq] = widget->nid;
@@ -2685,6 +2748,95 @@ void VoodooHDADevice::dumpPinConfig(Widget *widget, UInt32 conf)
 			(widget->enable == 0) ? " [DISABLED]" : "");
 }
 
+/*
+ * Adjust pin associations for jack sensing (auto-switching).
+ *
+ * AppleALC pin configs place HP Out and Speaker in separate associations,
+ * and External Mic and Internal Mic in separate associations. This is correct
+ * for AppleHDA but VoodooHDA requires pins that should auto-switch to share
+ * the same association so that hpredir is set and jack detection is enabled.
+ *
+ * This function merges HP→Speaker's association and ExtMic→IntMic's association.
+ */
+void VoodooHDADevice::adjustPinAssociationsForSwitching(FunctionGroup *funcGroup)
+{
+	if (mLayoutId == 0)
+		return;
+
+	/* Find relevant pins */
+	Widget *hpWidget = NULL;
+	Widget *spkWidget = NULL;
+	Widget *extMicWidget = NULL;
+	Widget *intMicWidget = NULL;
+
+	for (int i = funcGroup->startNode; i < funcGroup->endNode; i++) {
+		Widget *widget = widgetGet(funcGroup, i);
+		if (!widget || !widget->enable)
+			continue;
+		if (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
+			continue;
+
+		UInt32 config = widget->pin.config;
+		UInt32 type = config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
+		UInt32 conn = config & HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_MASK;
+
+		if (type == HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT &&
+				conn == HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_JACK) {
+			hpWidget = widget;
+		} else if (type == HDA_CONFIG_DEFAULTCONF_DEVICE_SPEAKER &&
+				conn == HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_FIXED) {
+			spkWidget = widget;
+		} else if ((type == HDA_CONFIG_DEFAULTCONF_DEVICE_MIC_IN ||
+				type == HDA_CONFIG_DEFAULTCONF_DEVICE_LINE_IN) &&
+				conn == HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_JACK) {
+			extMicWidget = widget;
+		} else if (type == HDA_CONFIG_DEFAULTCONF_DEVICE_MIC_IN &&
+				conn == HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_FIXED) {
+			intMicWidget = widget;
+		}
+	}
+
+	/* Merge HP into Speaker's association if they differ */
+	if (hpWidget && spkWidget) {
+		UInt32 hpAssoc = HDA_CONFIG_DEFAULTCONF_ASSOCIATION(hpWidget->pin.config);
+		UInt32 spkAssoc = HDA_CONFIG_DEFAULTCONF_ASSOCIATION(spkWidget->pin.config);
+		UInt32 spkSeq = HDA_CONFIG_DEFAULTCONF_SEQUENCE(spkWidget->pin.config);
+
+		if (hpAssoc != spkAssoc) {
+			UInt32 newSeq = spkSeq + 1;
+			if (newSeq > 15) newSeq = 15;
+
+			hpWidget->pin.config &= ~(HDA_CONFIG_DEFAULTCONF_ASSOCIATION_MASK |
+					HDA_CONFIG_DEFAULTCONF_SEQUENCE_MASK);
+			hpWidget->pin.config |= (spkAssoc << HDA_CONFIG_DEFAULTCONF_ASSOCIATION_SHIFT) |
+					(newSeq << HDA_CONFIG_DEFAULTCONF_SEQUENCE_SHIFT);
+
+			dumpMsg("Jack sensing: merged HP Out nid=%d into association %d seq=%d (with Speaker nid=%d)\n",
+					hpWidget->nid, (int)spkAssoc, (int)newSeq, spkWidget->nid);
+		}
+	}
+
+	/* Merge External Mic into Internal Mic's association if they differ */
+	if (extMicWidget && intMicWidget) {
+		UInt32 extAssoc = HDA_CONFIG_DEFAULTCONF_ASSOCIATION(extMicWidget->pin.config);
+		UInt32 intAssoc = HDA_CONFIG_DEFAULTCONF_ASSOCIATION(intMicWidget->pin.config);
+		UInt32 intSeq = HDA_CONFIG_DEFAULTCONF_SEQUENCE(intMicWidget->pin.config);
+
+		if (extAssoc != intAssoc) {
+			UInt32 newSeq = intSeq + 1;
+			if (newSeq > 15) newSeq = 15;
+
+			extMicWidget->pin.config &= ~(HDA_CONFIG_DEFAULTCONF_ASSOCIATION_MASK |
+					HDA_CONFIG_DEFAULTCONF_SEQUENCE_MASK);
+			extMicWidget->pin.config |= (intAssoc << HDA_CONFIG_DEFAULTCONF_ASSOCIATION_SHIFT) |
+					(newSeq << HDA_CONFIG_DEFAULTCONF_SEQUENCE_SHIFT);
+
+			dumpMsg("Jack sensing: merged Ext Mic nid=%d into association %d seq=%d (with Int Mic nid=%d)\n",
+					extMicWidget->nid, (int)intAssoc, (int)newSeq, intMicWidget->nid);
+		}
+	}
+}
+
 void VoodooHDADevice::dumpPinConfigs(FunctionGroup *funcGroup)
 {
 	for (int i = funcGroup->startNode; i < funcGroup->endNode; i++) {
@@ -3286,6 +3438,47 @@ UInt32 VoodooHDADevice::widgetPinGetConfig(Widget *widget)
 	cad = widget->funcGroup->codec->cad;
 	nid = widget->nid;
 	id = CODEC_ID(widget->funcGroup->codec);
+
+	/*
+	 * AppleALC pin config override.
+	 *
+	 * When a valid layout-id is set (via alc-layout-id or layout-id device
+	 * property), we look up the codec+layout pair in the embedded AppleALC
+	 * pin config table (gALCPinConfigs[], generated by tools/gen_pinconfigs.py
+	 * from AppleALC's PinConfigs.kext/Contents/Info.plist).
+	 *
+	 * For each matching NID we:
+	 *   1. Override the BIOS pin config with the AppleALC-verified value,
+	 *      which fixes broken/missing BIOS defaults on many laptops.
+	 *   2. Store pins[i].nameIdx into widget->alcNameIdx. This index
+	 *      references gALCPinNames[] — a string pool of Apple-style device
+	 *      names ("Internal Speakers", "Headphones", "Internal Microphone",
+	 *      etc.) derived from the pin config's device_type and connectivity
+	 *      fields by gen_pinconfigs.py::derive_name().
+	 *
+	 * The stored alcNameIdx is later consumed by catPinName() to display
+	 * user-friendly names in Sound Preferences instead of generic HDA names
+	 * like "Speaker (Analog Internal)".
+	 *
+	 * nameIdx == 0 means "no name available" — catPinName() falls through
+	 * to the original generic naming logic in that case.
+	 */
+	if (mLayoutId != 0) {
+		const ALCConfigEntry *entry = alcLookupPinConfig(id, mLayoutId);
+		if (entry && entry->pinConfigCount > 0) {
+			const ALCPinConfig *pins = &gALCPinConfigs[entry->pinConfigStart];
+			for (UInt8 i = 0; i < entry->pinConfigCount; i++) {
+				if (pins[i].nid == (UInt8)nid) {
+					widget->alcNameIdx = pins[i].nameIdx;
+#ifdef DEBUG
+					dumpMsg("AppleALC pin config nid=%u: 0x%08lx (layout=%u)\n",
+							nid, (long unsigned int)pins[i].pinConfig, mLayoutId);
+#endif
+					return pins[i].pinConfig;
+				}
+			}
+		}
+	}
 
 	config = sendCommand(HDA_CMD_GET_CONFIGURATION_DEFAULT(cad, nid), cad);
 	orig = config;
@@ -4698,10 +4891,38 @@ void VoodooHDADevice::hdaa_eld_handler(Widget *widget)
 }
 
 //Slice
-//Change widget name
+/*
+ * catPinName — assign a human-readable name to a pin widget.
+ *
+ * This name appears in macOS Sound Preferences as the device label
+ * (e.g. "Internal Speakers", "Headphones", "Internal Microphone").
+ *
+ * Naming priority:
+ *   1. AppleALC name (alcNameIdx > 0): derived at build time from the pin
+ *      config's device_type + connectivity fields by gen_pinconfigs.py.
+ *      The index was stored by widgetPinGetConfig() when it matched an
+ *      AppleALC entry. This produces Apple-style names like:
+ *        "Internal Speakers", "Headphones", "Internal Microphone",
+ *        "External Microphone", "Line In", "Line Out", "HDMI", etc.
+ *
+ *   2. Generic HDA name (fallback): built from pin config register fields
+ *      — device type string + location/color/connection info, producing
+ *      names like "Speaker (Analog Internal)", "Mic (Front Pink)".
+ *
+ * The "pin: " prefix is always prepended; downstream code (getPortName in
+ * VoodooHDADevice.cpp) strips it and uses the remainder as the port name.
+ */
 void VoodooHDADevice::catPinName(Widget *widget)
 {
-	
+	/* AppleALC name: use pre-derived Apple-style name if available */
+	if (widget->alcNameIdx > 0 && widget->alcNameIdx < ALC_PIN_NAMES_COUNT) {
+		strlcpy(widget->name, "pin: ", 6);
+		strlcat(widget->name, gALCPinNames[widget->alcNameIdx], sizeof(widget->name));
+		return;
+	}
+
+	/* Fallback: build generic name from pin config register fields */
+
 	const char *devstr = gDeviceTypes[(widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK) >>
 									  HDA_CONFIG_DEFAULTCONF_DEVICE_SHIFT];
 	int conn = (widget->pin.config & HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_MASK) >> HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_SHIFT;
