@@ -4905,7 +4905,7 @@ void VoodooHDADevice::hdaa_eld_handler(Widget *widget)
  *        "Internal Speakers", "Headphones", "Internal Microphone",
  *        "External Microphone", "Line In", "Line Out", "HDMI", etc.
  *
- *   2. Generic HDA name (fallback): built from pin config register fields
+ *   2. Generic HDA name (fallback): built from pin config  fields
  *      — device type string + location/color/connection info, producing
  *      names like "Speaker (Analog Internal)", "Mic (Front Pink)".
  *
@@ -4921,7 +4921,7 @@ void VoodooHDADevice::catPinName(Widget *widget)
 		return;
 	}
 
-	/* Fallback: build generic name from pin config register fields */
+	/* Fallback: build generic name from pin config  fields */
 
 	const char *devstr = gDeviceTypes[(widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK) >>
 									  HDA_CONFIG_DEFAULTCONF_DEVICE_SHIFT];

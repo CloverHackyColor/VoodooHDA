@@ -4,7 +4,7 @@
 #define _REGISTERS_H
 
 /****************************************************************************
- * HDA Controller Register Set
+ * HDA Controller  Set
  ****************************************************************************/
 #define HDAC_GCAP       0x00	/* 2 - Global Capabilities*/
 #define HDAC_VMIN       0x02	/* 1 - Minor Version */
@@ -86,7 +86,7 @@
 #define _HDAC_BSDBDBU(n, iss, oss)		(0x1c + _HDAC_BSDOFFSET(n, iss, oss))
 
 /****************************************************************************
- * HDA Controller Register Fields
+ * HDA Controller  Fields
  ****************************************************************************/
 
 /* GCAP - Global Capabilities */

@@ -164,14 +164,14 @@ inline static Float32 ClipFloat32ForSInt32(Float32 inSample)
 #if defined(__i386__) || defined(__x86_64__) || defined(__arm64__) || defined(__aarch64__)
 static void	ClipFloat32ToSInt8_4(const Float32* inInputBuffer, SInt8* outOutputBuffer, UInt32 inNumberSamples)
 {
-	register UInt32 theLeftOvers = inNumberSamples % 4;
+  UInt32 theLeftOvers = inNumberSamples % 4;
 	
 	while(inNumberSamples > theLeftOvers)
 	{
-		register Float32 theFloat32Value1 = *(inInputBuffer + 0);
-		register Float32 theFloat32Value2 = *(inInputBuffer + 1);
-		register Float32 theFloat32Value3 = *(inInputBuffer + 2);
-		register Float32 theFloat32Value4 = *(inInputBuffer + 3);
+    Float32 theFloat32Value1 = *(inInputBuffer + 0);
+    Float32 theFloat32Value2 = *(inInputBuffer + 1);
+    Float32 theFloat32Value3 = *(inInputBuffer + 2);
+    Float32 theFloat32Value4 = *(inInputBuffer + 3);
 		
 		inInputBuffer += 4;
 		
@@ -191,7 +191,7 @@ static void	ClipFloat32ToSInt8_4(const Float32* inInputBuffer, SInt8* outOutputB
 	
 	while(inNumberSamples > 0)
 	{
-		register Float32	theFloat32Value = *inInputBuffer;
+    Float32	theFloat32Value = *inInputBuffer;
 		
 		++inInputBuffer;
 		
@@ -208,14 +208,14 @@ static void	ClipFloat32ToSInt8_4(const Float32* inInputBuffer, SInt8* outOutputB
 //	Float32 -> SInt16
 static void	ClipFloat32ToSInt16LE_4(const Float32* inInputBuffer, SInt16* outOutputBuffer, UInt32 inNumberSamples)
 {
-	register UInt32 theLeftOvers = inNumberSamples % 4;
+  UInt32 theLeftOvers = inNumberSamples % 4;
 
 	while(inNumberSamples > theLeftOvers)
 	{
-		register Float32 theFloat32Value1 = *(inInputBuffer + 0);
-		register Float32 theFloat32Value2 = *(inInputBuffer + 1);
-		register Float32 theFloat32Value3 = *(inInputBuffer + 2);
-		register Float32 theFloat32Value4 = *(inInputBuffer + 3);
+    Float32 theFloat32Value1 = *(inInputBuffer + 0);
+    Float32 theFloat32Value2 = *(inInputBuffer + 1);
+    Float32 theFloat32Value3 = *(inInputBuffer + 2);
+    Float32 theFloat32Value4 = *(inInputBuffer + 3);
 		
 		inInputBuffer += 4;
 		
@@ -235,7 +235,7 @@ static void	ClipFloat32ToSInt16LE_4(const Float32* inInputBuffer, SInt16* outOut
 	
 	while(inNumberSamples > 0)
 	{
-		register Float32	theFloat32Value = *inInputBuffer;
+    Float32	theFloat32Value = *inInputBuffer;
 		
 		++inInputBuffer;
 		
@@ -252,18 +252,18 @@ static void	ClipFloat32ToSInt16LE_4(const Float32* inInputBuffer, SInt16* outOut
 // Stereo
 	static void	ClipFloat32ToSInt24LE_8(const Float32* inInputBuffer, SInt32* outOutputBuffer, UInt32 inNumberSamples)
 	{
-		register UInt32 theLeftOvers = inNumberSamples % 8;
+    UInt32 theLeftOvers = inNumberSamples % 8;
 		
 		while(inNumberSamples > theLeftOvers)
 		{
-			register Float32 theFloat32Value11 = *(inInputBuffer + 0);
-			register Float32 theFloat32Value21 = *(inInputBuffer + 2);
-			register Float32 theFloat32Value31 = *(inInputBuffer + 4);
-			register Float32 theFloat32Value41 = *(inInputBuffer + 6);
-			register Float32 theFloat32Value12 = *(inInputBuffer + 1);
-			register Float32 theFloat32Value22 = *(inInputBuffer + 3);
-			register Float32 theFloat32Value32 = *(inInputBuffer + 5);
-			register Float32 theFloat32Value42 = *(inInputBuffer + 7);
+      Float32 theFloat32Value11 = *(inInputBuffer + 0);
+      Float32 theFloat32Value21 = *(inInputBuffer + 2);
+      Float32 theFloat32Value31 = *(inInputBuffer + 4);
+      Float32 theFloat32Value41 = *(inInputBuffer + 6);
+      Float32 theFloat32Value12 = *(inInputBuffer + 1);
+      Float32 theFloat32Value22 = *(inInputBuffer + 3);
+      Float32 theFloat32Value32 = *(inInputBuffer + 5);
+      Float32 theFloat32Value42 = *(inInputBuffer + 7);
 			
 			inInputBuffer += 8;
 			
@@ -277,25 +277,25 @@ static void	ClipFloat32ToSInt16LE_4(const Float32* inInputBuffer, SInt16* outOut
 			theFloat32Value42 = ClipFloat32ForSInt24(theFloat32Value42);
 			
 			// Multiply by kFloat32ToSInt32 instead of kFloat32toSInt24 to make the binary operations below work properly.
-			register UInt32 a1 = (UInt32)(SInt32)(theFloat32Value11 * kFloat32ToSInt32);
-			register UInt32 b1 = (UInt32)(SInt32)(theFloat32Value21 * kFloat32ToSInt32);
-			register UInt32 c1 = (UInt32)(SInt32)(theFloat32Value31 * kFloat32ToSInt32);
-			register UInt32 d1 = (UInt32)(SInt32)(theFloat32Value41 * kFloat32ToSInt32);
-			register UInt32 a2 = (UInt32)(SInt32)(theFloat32Value12 * kFloat32ToSInt32);
-			register UInt32 b2 = (UInt32)(SInt32)(theFloat32Value22 * kFloat32ToSInt32);
-			register UInt32 c2 = (UInt32)(SInt32)(theFloat32Value32 * kFloat32ToSInt32);
-			register UInt32 d2 = (UInt32)(SInt32)(theFloat32Value42 * kFloat32ToSInt32);
+			 UInt32 a1 = (UInt32)(SInt32)(theFloat32Value11 * kFloat32ToSInt32);
+			 UInt32 b1 = (UInt32)(SInt32)(theFloat32Value21 * kFloat32ToSInt32);
+			 UInt32 c1 = (UInt32)(SInt32)(theFloat32Value31 * kFloat32ToSInt32);
+			 UInt32 d1 = (UInt32)(SInt32)(theFloat32Value41 * kFloat32ToSInt32);
+			 UInt32 a2 = (UInt32)(SInt32)(theFloat32Value12 * kFloat32ToSInt32);
+			 UInt32 b2 = (UInt32)(SInt32)(theFloat32Value22 * kFloat32ToSInt32);
+			 UInt32 c2 = (UInt32)(SInt32)(theFloat32Value32 * kFloat32ToSInt32);
+			 UInt32 d2 = (UInt32)(SInt32)(theFloat32Value42 * kFloat32ToSInt32);
 			//						a    b    c    d					a    b    c    d
 			//	IN REGISTER:		123X 456X 789X ABCX					abc0 def0 ghi0 jkl0
 			//	OUT REGISTERS:		6123 8945 ABC7						fabc hide jklg
 			//	OUT MEMORY:			3216 5498 7CBA
 			
-			register SInt32 theOutputValue11 = ((b1 << 16) & 0xFF000000) | (a1 >> 8);
-			register SInt32 theOutputValue21 = ((c1 << 8) & 0xFFFF0000) | ((b1 >> 16) & 0x0000FFFF);
-			register SInt32 theOutputValue31 = (d1 & 0xFFFFFF00) | ((c1 >> 24) & 0x000000FF);
-			register SInt32 theOutputValue12 = ((b2 << 16) & 0xFF000000) | (a2 >> 8);
-			register SInt32 theOutputValue22 = ((c2 << 8) & 0xFFFF0000) | ((b2 >> 16) & 0x0000FFFF);
-			register SInt32 theOutputValue32 = (d2 & 0xFFFFFF00) | ((c2 >> 24) & 0x000000FF);
+			 SInt32 theOutputValue11 = ((b1 << 16) & 0xFF000000) | (a1 >> 8);
+			 SInt32 theOutputValue21 = ((c1 << 8) & 0xFFFF0000) | ((b1 >> 16) & 0x0000FFFF);
+			 SInt32 theOutputValue31 = (d1 & 0xFFFFFF00) | ((c1 >> 24) & 0x000000FF);
+			 SInt32 theOutputValue12 = ((b2 << 16) & 0xFF000000) | (a2 >> 8);
+			 SInt32 theOutputValue22 = ((c2 << 8) & 0xFFFF0000) | ((b2 >> 16) & 0x0000FFFF);
+			 SInt32 theOutputValue32 = (d2 & 0xFFFFFF00) | ((c2 >> 24) & 0x000000FF);
 			//	store everything back to memory
 			*(outOutputBuffer + 0) = theOutputValue11;
 			*(outOutputBuffer + 1) = theOutputValue12;
@@ -312,13 +312,13 @@ static void	ClipFloat32ToSInt16LE_4(const Float32* inInputBuffer, SInt16* outOut
 		SInt8* theOutputBuffer = (SInt8*)outOutputBuffer;
 		while(inNumberSamples > 0)
 		{
-			register Float32 theFloat32Value = *inInputBuffer;
+			 Float32 theFloat32Value = *inInputBuffer;
 			++inInputBuffer;
 			
 			theFloat32Value = ClipFloat32ForSInt24(theFloat32Value);
 			
 			// Multiply by kFloat32ToSInt32 instead of kFloat32toSInt24 to make the binary operations below work properly.
-			register SInt32 theSInt32Value = (SInt32)(theFloat32Value * kFloat32ToSInt32);
+			 SInt32 theSInt32Value = (SInt32)(theFloat32Value * kFloat32ToSInt32);
 			
 			// Byte swapping will be handled automatically by the CPU if necessary.
 			*(theOutputBuffer + 0) = (SInt8)((((UInt32)theSInt32Value) >> 8) & 0x000000FF);
@@ -338,14 +338,14 @@ static void	ClipFloat32ToSInt16LE_4(const Float32* inInputBuffer, SInt16* outOut
 #if 0
 static void	ClipFloat32ToSInt24LE_4(const Float32* inInputBuffer, SInt32* outOutputBuffer, UInt32 inNumberSamples)
 {
-	register UInt32 theLeftOvers = inNumberSamples % 4;
+	 UInt32 theLeftOvers = inNumberSamples % 4;
 	
 	while(inNumberSamples > theLeftOvers)
 	{
-		register Float32 theFloat32Value1 = *(inInputBuffer + 0);
-		register Float32 theFloat32Value2 = *(inInputBuffer + 1);
-		register Float32 theFloat32Value3 = *(inInputBuffer + 2);
-		register Float32 theFloat32Value4 = *(inInputBuffer + 3);
+		 Float32 theFloat32Value1 = *(inInputBuffer + 0);
+		 Float32 theFloat32Value2 = *(inInputBuffer + 1);
+		 Float32 theFloat32Value3 = *(inInputBuffer + 2);
+		 Float32 theFloat32Value4 = *(inInputBuffer + 3);
 		
 		inInputBuffer += 4;
 		
@@ -355,10 +355,10 @@ static void	ClipFloat32ToSInt24LE_4(const Float32* inInputBuffer, SInt32* outOut
 		theFloat32Value4 = ClipFloat32ForSInt24(theFloat32Value4);
 
 		// Multiply by kFloat32ToSInt32 instead of kFloat32toSInt24 to make the binary operations below work properly.
-		register UInt32 a = (UInt32)(SInt32)(theFloat32Value1 * kFloat32ToSInt32);
-		register UInt32 b = (UInt32)(SInt32)(theFloat32Value2 * kFloat32ToSInt32);
-		register UInt32 c = (UInt32)(SInt32)(theFloat32Value3 * kFloat32ToSInt32);
-		register UInt32 d = (UInt32)(SInt32)(theFloat32Value4 * kFloat32ToSInt32);
+		 UInt32 a = (UInt32)(SInt32)(theFloat32Value1 * kFloat32ToSInt32);
+		 UInt32 b = (UInt32)(SInt32)(theFloat32Value2 * kFloat32ToSInt32);
+		 UInt32 c = (UInt32)(SInt32)(theFloat32Value3 * kFloat32ToSInt32);
+		 UInt32 d = (UInt32)(SInt32)(theFloat32Value4 * kFloat32ToSInt32);
 		
 		#if	defined(__ppc__)
 		
@@ -372,9 +372,9 @@ static void	ClipFloat32ToSInt24LE_4(const Float32* inInputBuffer, SInt32* outOut
 			//	like this in three registers: 3216 5498 7CBA. We want to avoid
 			//	any non-aligned memory writes if at all possible.
 			
-			register SInt32	theOutputValue1 = ((a << 16) & 0xFF000000) | (a & 0x00FF0000) | ((a >> 16) & 0x0000FF00) | ((b >> 8) & 0x000000FF);	// 3216
-			register SInt32	theOutputValue2 = ((b << 8) & 0xFF000000) | ((b >> 8) & 0x00FF0000) | (c & 0x0000FF00) | ((c >> 16) & 0x000000FF);
-			register SInt32	theOutputValue3 = (c & 0xFF000000) | ((d << 8) & 0x00FF0000) | ((d >> 8) & 0x0000FF00) | ((d >> 24) & 0x000000FF);
+			 SInt32	theOutputValue1 = ((a << 16) & 0xFF000000) | (a & 0x00FF0000) | ((a >> 16) & 0x0000FF00) | ((b >> 8) & 0x000000FF);	// 3216
+			 SInt32	theOutputValue2 = ((b << 8) & 0xFF000000) | ((b >> 8) & 0x00FF0000) | (c & 0x0000FF00) | ((c >> 16) & 0x000000FF);
+			 SInt32	theOutputValue3 = (c & 0xFF000000) | ((d << 8) & 0x00FF0000) | ((d >> 8) & 0x0000FF00) | ((d >> 24) & 0x000000FF);
 			
 		#elif defined(__i386__) || defined(__x86_64__)
 			//						a    b    c    d					a    b    c    d
@@ -382,9 +382,9 @@ static void	ClipFloat32ToSInt24LE_4(const Float32* inInputBuffer, SInt32* outOut
 			//	OUT REGISTERS:		6123 8945 ABC7						fabc hide jklg
 			//	OUT MEMORY:			3216 5498 7CBA
 		
-			register SInt32 theOutputValue1 = ((b << 16) & 0xFF000000) | (a >> 8);
-			register SInt32 theOutputValue2 = ((c << 8) & 0xFFFF0000) | ((b >> 16) & 0x0000FFFF);
-			register SInt32 theOutputValue3 = (d & 0xFFFFFF00) | ((c >> 24) & 0x000000FF);
+			 SInt32 theOutputValue1 = ((b << 16) & 0xFF000000) | (a >> 8);
+			 SInt32 theOutputValue2 = ((c << 8) & 0xFFFF0000) | ((b >> 16) & 0x0000FFFF);
+			 SInt32 theOutputValue3 = (d & 0xFFFFFF00) | ((c >> 24) & 0x000000FF);
 		
 		#endif
 		
@@ -401,13 +401,13 @@ static void	ClipFloat32ToSInt24LE_4(const Float32* inInputBuffer, SInt32* outOut
 	SInt8* theOutputBuffer = (SInt8*)outOutputBuffer;
 	while(inNumberSamples > 0)
 	{
-		register Float32 theFloat32Value = *inInputBuffer;
+		 Float32 theFloat32Value = *inInputBuffer;
 		++inInputBuffer;
 		
 		theFloat32Value = ClipFloat32ForSInt24(theFloat32Value);
 		
 		// Multiply by kFloat32ToSInt32 instead of kFloat32toSInt24 to make the binary operations below work properly.
-		register SInt32 theSInt32Value = (SInt32)(theFloat32Value * kFloat32ToSInt32);
+		 SInt32 theSInt32Value = (SInt32)(theFloat32Value * kFloat32ToSInt32);
 		
 		// Byte swapping will be handled automatically by the CPU if necessary.
 		*(theOutputBuffer + 0) = (SInt8)((((UInt32)theSInt32Value) >> 8) & 0x000000FF);
@@ -423,14 +423,14 @@ static void	ClipFloat32ToSInt24LE_4(const Float32* inInputBuffer, SInt32* outOut
 //	Float32 -> SInt32
 static void	ClipFloat32ToSInt32LE_4(const Float32* inInputBuffer, SInt32* outOutputBuffer, UInt32 inNumberSamples)
 {
-	register UInt32 theLeftOvers = inNumberSamples % 4;
+	 UInt32 theLeftOvers = inNumberSamples % 4;
 	
 	while(inNumberSamples > theLeftOvers)
 	{
-		register Float32 theFloat32Value1 = *(inInputBuffer + 0);
-		register Float32 theFloat32Value2 = *(inInputBuffer + 1);
-		register Float32 theFloat32Value3 = *(inInputBuffer + 2);
-		register Float32 theFloat32Value4 = *(inInputBuffer + 3);
+		 Float32 theFloat32Value1 = *(inInputBuffer + 0);
+		 Float32 theFloat32Value2 = *(inInputBuffer + 1);
+		 Float32 theFloat32Value3 = *(inInputBuffer + 2);
+		 Float32 theFloat32Value4 = *(inInputBuffer + 3);
 		
 		inInputBuffer += 4;
 		
@@ -450,7 +450,7 @@ static void	ClipFloat32ToSInt32LE_4(const Float32* inInputBuffer, SInt32* outOut
 	
 	while(inNumberSamples > 0)
 	{
-		register Float32 theFloat32Value = *inInputBuffer;
+		 Float32 theFloat32Value = *inInputBuffer;
 		++inInputBuffer;
 		
 		theFloat32Value = ClipFloat32ForSInt32(theFloat32Value);
@@ -1235,10 +1235,10 @@ void StereoFilter4thOrderPhaseComp (Float32 *in, Float32 *low, Float32 *high, UI
 #if	defined(__ppc__)
 
 // this behaves incorrectly in Float32ToSwapInt24 if not declared volatile
-#define __lwbrx( index, base )	({ register long result; __asm__ __volatile__("lwbrx %0, %1, %2" : "=r" (result) : "b%" (index), "r" (base) : "memory" ); result; } )
+#define __lwbrx( index, base )	({  long result; __asm__ __volatile__("lwbrx %0, %1, %2" : "=r" (result) : "b%" (index), "r" (base) : "memory" ); result; } )
 
 #define __lhbrx(index, base)	\
-  ({ register signed short lhbrxResult; \
+  ({  signed short lhbrxResult; \
 	 __asm__ ("lhbrx %0, %1, %2" : "=r" (lhbrxResult) : "b%" (index), "r" (base) : "memory"); \
 	 /*return*/ lhbrxResult; } )
 	// dsw: make signed to get sign-extension
@@ -1255,9 +1255,9 @@ void StereoFilter4thOrderPhaseComp (Float32 *in, Float32 *low, Float32 *high, UI
 #define __stfiwx( value, offset, addr )			\
 	asm( "stfiwx %0, %1, %2" : /*no result*/ : "f" (value), "b%" (offset), "r" (addr) : "memory" )
 
-static inline double __fctiw( register double B )
+static inline double __fctiw(  double B )
 {
-	register double result;
+	 double result;
 	asm( "fctiw %0, %1" : "=f" (result) : "f" (B)  );
 	return result;
 }
@@ -1265,11 +1265,11 @@ static inline double __fctiw( register double B )
 // aml, adding 8 bit version
 void Int8ToFloat32( SInt8 *src, float *dest, unsigned int count )
 {
-	register float bias;
-	register long exponentMask = ((0x97UL - 8) << 23) | 0x8000;	//FP exponent + bias for sign
-	register long int0, int1, int2, int3;
-	register float float0, float1, float2, float3;
-	register unsigned long loopCount;
+	 float bias;
+	 long exponentMask = ((0x97UL - 8) << 23) | 0x8000;	//FP exponent + bias for sign
+	 long int0, int1, int2, int3;
+	 float float0, float1, float2, float3;
+	 unsigned long loopCount;
 	union
 	{
 		float	f;
@@ -1407,7 +1407,7 @@ void Int8ToFloat32( SInt8 *src, float *dest, unsigned int count )
 
 	while( count-- )
 	{
-		register long value = (++src)[0];
+		 long value = (++src)[0];
 		value += exponentMask;
 		((long*) dest)[0] = value;
 		dest[0] -= bias;
@@ -1418,11 +1418,11 @@ void Int8ToFloat32( SInt8 *src, float *dest, unsigned int count )
 // bitDepth may be less than 16, e.g. for low-aligned 12 bit samples
 void NativeInt16ToFloat32( signed short *src, float *dest, unsigned int count, int bitDepth )
 {
-	register float bias;
-	register long exponentMask = ((0x97UL - bitDepth) << 23) | 0x8000;	//FP exponent + bias for sign
-	register long int0, int1, int2, int3;
-	register float float0, float1, float2, float3;
-	register unsigned long loopCount;
+	 float bias;
+	 long exponentMask = ((0x97UL - bitDepth) << 23) | 0x8000;	//FP exponent + bias for sign
+	 long int0, int1, int2, int3;
+	 float float0, float1, float2, float3;
+	 unsigned long loopCount;
 	union
 	{
 		float	f;
@@ -1560,7 +1560,7 @@ void NativeInt16ToFloat32( signed short *src, float *dest, unsigned int count, i
 
 	while( count-- )
 	{
-		register long value = (++src)[0];
+		 long value = (++src)[0];
 		value += exponentMask;
 		((long*) dest)[0] = value;
 		dest[0] -= bias;
@@ -1572,11 +1572,11 @@ void NativeInt16ToFloat32( signed short *src, float *dest, unsigned int count, i
 // bitDepth may be less than 16, e.g. for low-aligned 12 bit samples
 void SwapInt16ToFloat32( signed short *src, float *dest, unsigned int count, int bitDepth )
 {
-	register float bias;
-	register long exponentMask = ((0x97UL - bitDepth) << 23) | 0x8000;	//FP exponent + bias for sign
-	register long int0, int1, int2, int3;
-	register float float0, float1, float2, float3;
-	register unsigned long loopCount;
+	 float bias;
+	 long exponentMask = ((0x97UL - bitDepth) << 23) | 0x8000;	//FP exponent + bias for sign
+	 long int0, int1, int2, int3;
+	 float float0, float1, float2, float3;
+	 unsigned long loopCount;
 	union
 	{
 		float	f;
@@ -1714,7 +1714,7 @@ void SwapInt16ToFloat32( signed short *src, float *dest, unsigned int count, int
 
 	while( count-- )
 	{
-		register long value = __lhbrx(0, ++src);
+		 long value = __lhbrx(0, ++src);
 		value += exponentMask;
 		((long*) dest)[0] = value;
 		dest[0] -= bias;
@@ -1729,12 +1729,12 @@ void NativeInt24ToFloat32( long *src, float *dest, unsigned int count, int bitDe
 		double			d[4];
 		unsigned int	i[8];
 	} transfer;
-	register double			dBias;
-	register unsigned int	loopCount, load0SignMask;
-	register unsigned long	load0, load1, load2;
-	register unsigned long	int0, int1, int2, int3;
-	register double			d0, d1, d2, d3;
-	register float		f0, f1, f2, f3;
+	 double			dBias;
+	 unsigned int	loopCount, load0SignMask;
+	 unsigned long	load0, load1, load2;
+	 unsigned long	int0, int1, int2, int3;
+	 double			d0, d1, d2, d3;
+	 float		f0, f1, f2, f3;
 
 	transfer.i[0] = transfer.i[2] = transfer.i[4] = transfer.i[6] = (0x434UL - bitDepth) << 20; //0x41C00000UL;
 	transfer.i[1] = 0x00800000;
@@ -1918,12 +1918,12 @@ void SwapInt24ToFloat32( long *src, float *dest, unsigned int count, int bitDept
 		double		d[4];
 		unsigned int	i[8];
 	}transfer;
-	register double			dBias;
-	register unsigned int	loopCount, load2SignMask;
-	register unsigned long	load0, load1, load2;
-	register unsigned long	int0, int1, int2, int3;
-	register double			d0, d1, d2, d3;
-	register float		f0, f1, f2, f3;
+	 double			dBias;
+	 unsigned int	loopCount, load2SignMask;
+	 unsigned long	load0, load1, load2;
+	 unsigned long	int0, int1, int2, int3;
+	 double			d0, d1, d2, d3;
+	 float		f0, f1, f2, f3;
 
 	transfer.i[0] = transfer.i[2] = transfer.i[4] = transfer.i[6] = 0x41400000UL;
 	transfer.i[1] = 0x80000000;
@@ -2120,11 +2120,11 @@ void NativeInt32ToFloat32( long *src, float *dest, unsigned int count, int bitDe
 		double		d[4];
 		unsigned int	i[8];
 	}transfer;
-	register double dBias;
-	register unsigned int loopCount;
-	register long	int0, int1, int2, int3;
-	register double		d0, d1, d2, d3;
-	register float	f0, f1, f2, f3;
+	 double dBias;
+	 unsigned int loopCount;
+	 long	int0, int1, int2, int3;
+	 double		d0, d1, d2, d3;
+	 float	f0, f1, f2, f3;
 
 	transfer.i[0] = transfer.i[2] = transfer.i[4] = transfer.i[6] = (0x434UL - bitDepth) << 20;
 		//0x41400000UL;
@@ -2291,11 +2291,11 @@ void SwapInt32ToFloat32( long *src, float *dest, unsigned int count, int bitDept
 		double		d[4];
 		unsigned int	i[8];
 	}transfer;
-	register double dBias;
-	register unsigned int loopCount;
-	register long	int0, int1, int2, int3;
-	register double		d0, d1, d2, d3;
-	register float	f0, f1, f2, f3;
+	 double dBias;
+	 unsigned int loopCount;
+	 long	int0, int1, int2, int3;
+	 double		d0, d1, d2, d3;
+	 float	f0, f1, f2, f3;
 
 	transfer.i[0] = transfer.i[2] = transfer.i[4] = transfer.i[6] = (0x434UL - bitDepth) << 20;
 		//0x41400000UL;
@@ -2458,14 +2458,14 @@ void SwapInt32ToFloat32( long *src, float *dest, unsigned int count, int bitDept
 
 void Float32ToInt8( float *src, SInt8 *dst, unsigned int count )
 {
-	register double		scale = 2147483648.0;
-	register double		round = 128.0;
+	 double		scale = 2147483648.0;
+	 double		round = 128.0;
 	unsigned long		loopCount = count / 4;
 	long				buffer[2];
-	register float		startingFloat;
-	register double 	scaled;
-	register double 	converted;
-	register SInt8		copy;
+	 float		startingFloat;
+	 double 	scaled;
+	 double 	converted;
+	 SInt8		copy;
 
 	//
 	//	The fastest way to do this is to set up a staggered loop that models a 7 stage virtual pipeline:
@@ -2544,10 +2544,10 @@ void Float32ToInt8( float *src, SInt8 *dst, unsigned int count )
 		count &= 1;
 		while( loopCount-- )
 		{
-			register float	startingFloat2;
-			register double scaled2;
-			register double converted2;
-			register SInt8	copy2;
+			 float	startingFloat2;
+			 double scaled2;
+			 double converted2;
+			 SInt8	copy2;
 			
 			//virtual Cycle A
 			(dst++)[0] = copy;
@@ -2611,14 +2611,14 @@ void Float32ToInt8( float *src, SInt8 *dst, unsigned int count )
 
 void Float32ToNativeInt16( float *src, signed short *dst, unsigned int count )
 {
-	register double		scale = 2147483648.0;
-	register double		round = 32768.0;
+	 double		scale = 2147483648.0;
+	 double		round = 32768.0;
 	unsigned long		loopCount = count / 4;
 	long				buffer[2];
-	register float		startingFloat;
-	register double scaled;
-	register double converted;
-	register short		copy;
+	 float		startingFloat;
+	 double scaled;
+	 double converted;
+	 short		copy;
 
 	//
 	//	The fastest way to do this is to set up a staggered loop that models a 7 stage virtual pipeline:
@@ -2697,10 +2697,10 @@ void Float32ToNativeInt16( float *src, signed short *dst, unsigned int count )
 		count &= 1;
 		while( loopCount-- )
 		{
-			register float	startingFloat2;
-			register double scaled2;
-			register double converted2;
-			register short	copy2;
+			 float	startingFloat2;
+			 double scaled2;
+			 double converted2;
+			 short	copy2;
 			
 			//virtual Cycle A
 			(dst++)[0] = copy;
@@ -2763,14 +2763,14 @@ void Float32ToNativeInt16( float *src, signed short *dst, unsigned int count )
 
 void Float32ToSwapInt16( float *src, signed short *dst, unsigned int count )
 {
-	register double		scale = 2147483648.0;
-	register double		round = 32768.0;
+	 double		scale = 2147483648.0;
+	 double		round = 32768.0;
 	unsigned long	loopCount = count / 4;
 	long		buffer[2];
-	register float	startingFloat;
-	register double scaled;
-	register double converted;
-	register short	copy;
+	 float	startingFloat;
+	 double scaled;
+	 double converted;
+	 short	copy;
 
 	//
 	//	The fastest way to do this is to set up a staggered loop that models a 7 stage virtual pipeline:
@@ -2849,10 +2849,10 @@ void Float32ToSwapInt16( float *src, signed short *dst, unsigned int count )
 		count &= 1;
 		while( loopCount-- )
 		{
-			register float	startingFloat2;
-			register double scaled2;
-			register double converted2;
-			register short	copy2;
+			 float	startingFloat2;
+			 double scaled2;
+			 double converted2;
+			 short	copy2;
 			
 			//virtual Cycle A
 //			  (dst++)[0] = copy;
@@ -2920,18 +2920,18 @@ void Float32ToSwapInt16( float *src, signed short *dst, unsigned int count )
 //PPC
 void Float32ToNativeInt24( float *src, signed long *dst, unsigned int count )
 {
-	register double		scale = 2147483648.0;
-	register double		round = 0.5 * 256.0;
+	 double		scale = 2147483648.0;
+	 double		round = 0.5 * 256.0;
 	unsigned long	loopCount = count / 4;
 	long		buffer[4];
-	register float	startingFloat, startingFloat2;
-	register double scaled, scaled2;
-	register double converted, converted2;
-	register long	copy1;//, merge1, rotate1;
-	register long	copy2;//, merge2, rotate2;
-	register long	copy3;//, merge3, rotate3;
-	register long	copy4;//, merge4, rotate4;
-	register double		oldSetting;
+	 float	startingFloat, startingFloat2;
+	 double scaled, scaled2;
+	 double converted, converted2;
+	 long	copy1;//, merge1, rotate1;
+	 long	copy2;//, merge2, rotate2;
+	 long	copy3;//, merge3, rotate3;
+	 long	copy4;//, merge4, rotate4;
+	 double		oldSetting;
 
 
 	//Set the FPSCR to round to -Inf mode
@@ -2941,7 +2941,7 @@ void Float32ToNativeInt24( float *src, signed long *dst, unsigned int count )
 			double	d;
 			int		i[2];
 		}setting;
-		register double newSetting;
+		 double newSetting;
 
 		//Read the the current FPSCR value
 		asm volatile ( "mffs %0" : "=f" ( oldSetting ) );
@@ -2954,7 +2954,7 @@ void Float32ToNativeInt24( float *src, signed long *dst, unsigned int count )
 		//Finally, then store the result back
 		setting.i[1] |= 3;
 
-		//Load the new FPSCR setting into the FP register file again
+		//Load the new FPSCR setting into the FP  file again
 		newSetting = setting.d;
 
 		//Change the FPSCR to the new setting
@@ -3176,18 +3176,18 @@ void Float32ToNativeInt24( float *src, signed long *dst, unsigned int count )
 
 void Float32ToSwapInt24( float *src, signed long *dst, unsigned int count )
 {
-	register double		scale = 2147483648.0;
-	register double		round = 0.5 * 256.0;
+	 double		scale = 2147483648.0;
+	 double		round = 0.5 * 256.0;
 	unsigned long	loopCount = count / 4;
 	long		buffer[4];
-	register float	startingFloat, startingFloat2;
-	register double scaled, scaled2;
-	register double converted, converted2;
-	register long	copy1;
-	register long	copy2;
-	register long	copy3;
-	register long	copy4;
-	register double		oldSetting;
+	 float	startingFloat, startingFloat2;
+	 double scaled, scaled2;
+	 double converted, converted2;
+	 long	copy1;
+	 long	copy2;
+	 long	copy3;
+	 long	copy4;
+	 double		oldSetting;
 
 
 	//Set the FPSCR to round to -Inf mode
@@ -3197,7 +3197,7 @@ void Float32ToSwapInt24( float *src, signed long *dst, unsigned int count )
 			double	d;
 			int		i[2];
 		}setting;
-		register double newSetting;
+		 double newSetting;
 
 		//Read the the current FPSCR value
 		asm volatile ( "mffs %0" : "=f" ( oldSetting ) );
@@ -3210,7 +3210,7 @@ void Float32ToSwapInt24( float *src, signed long *dst, unsigned int count )
 		//Finally, then store the result back
 		setting.i[1] |= 3;
 
-		//Load the new FPSCR setting into the FP register file again
+		//Load the new FPSCR setting into the FP  file again
 		newSetting = setting.d;
 
 		//Change the FPSCR to the new setting
@@ -3429,14 +3429,14 @@ void Float32ToSwapInt24( float *src, signed long *dst, unsigned int count )
 
 void Float32ToSwapInt32( float *src, signed long *dst, unsigned int count )
 {
-	register double		scale = 2147483648.0;
+	 double		scale = 2147483648.0;
 	unsigned long	loopCount = count / 4;
 	long			buffer[2];
-	register float		startingFloat;
-	register double scaled;
-	register double converted;
-	register long		copy;
-	register double		oldSetting;
+	 float		startingFloat;
+	 double scaled;
+	 double converted;
+	 long		copy;
+	 double		oldSetting;
 
 	//Set the FPSCR to round to -Inf mode
 	{
@@ -3445,7 +3445,7 @@ void Float32ToSwapInt32( float *src, signed long *dst, unsigned int count )
 			double	d;
 			int		i[2];
 		}setting;
-		register double newSetting;
+		 double newSetting;
 		
 		//Read the the current FPSCR value
 		asm volatile ( "mffs %0" : "=f" ( oldSetting ) );
@@ -3458,7 +3458,7 @@ void Float32ToSwapInt32( float *src, signed long *dst, unsigned int count )
 		//Finally, then store the result back
 		setting.i[1] &= 0xFFFFFFFC;
 		
-		//Load the new FPSCR setting into the FP register file again
+		//Load the new FPSCR setting into the FP  file again
 		newSetting = setting.d;
 		
 		//Change the FPSCR to the new setting
@@ -3543,10 +3543,10 @@ void Float32ToSwapInt32( float *src, signed long *dst, unsigned int count )
 		count &= 1;
 		while( loopCount-- )
 		{
-			register float	startingFloat2;
-			register double scaled2;
-			register double converted2;
-			register long	copy2;
+			 float	startingFloat2;
+			 double scaled2;
+			 double converted2;
+			 long	copy2;
 			
 			//virtual Cycle A
 //			  (dst++)[0] = copy;
@@ -3616,12 +3616,12 @@ void Float32ToSwapInt32( float *src, signed long *dst, unsigned int count )
 
 void Float32ToNativeInt32( float *src, signed long *dst, unsigned int count )
 {
-	register double		scale = 2147483648.0;
+	 double		scale = 2147483648.0;
 	unsigned long	loopCount;
-	register float	startingFloat;
-	register double scaled;
-	register double converted;
-	register double		oldSetting;
+	 float	startingFloat;
+	 double scaled;
+	 double converted;
+	 double		oldSetting;
 
 	//Set the FPSCR to round to -Inf mode
 	{
@@ -3630,7 +3630,7 @@ void Float32ToNativeInt32( float *src, signed long *dst, unsigned int count )
 			double	d;
 			int		i[2];
 		}setting;
-		register double newSetting;
+		 double newSetting;
 		
 		//Read the the current FPSCR value
 		asm volatile ( "mffs %0" : "=f" ( oldSetting ) );
@@ -3643,7 +3643,7 @@ void Float32ToNativeInt32( float *src, signed long *dst, unsigned int count )
 		//Finally, then store the result back
 		setting.i[1] &= 0xFFFFFFFC;
 		
-		//Load the new FPSCR setting into the FP register file again
+		//Load the new FPSCR setting into the FP  file again
 		newSetting = setting.d;
 		
 		//Change the FPSCR to the new setting
@@ -3696,10 +3696,10 @@ void Float32ToNativeInt32( float *src, signed long *dst, unsigned int count )
 		count &= 1;
 		while( loopCount-- )
 		{
-			register float	startingFloat2;
-			register double scaled2;
-			register double converted2;
-			//register short	copy2;
+			 float	startingFloat2;
+			 double scaled2;
+			 double converted2;
+			// short	copy2;
 			
 			//virtual Cycle A
 			startingFloat2 = (src)[0];
@@ -3938,9 +3938,9 @@ IOReturn VoodooHDAEngine::convertInputSamples(const void *sampleBuf, void *destB
 											  __unused IOAudioStream *audioStream)
 {
 	UInt32	numSamplesLeft, numSamples;
-	float 	*floatDestBuf;
+//	float 	*floatDestBuf;
 	
-    floatDestBuf = (float *)destBuf;
+//    floatDestBuf = (float *)destBuf;
 	UInt32 firstSample = firstSampleFrame * streamFormat->fNumChannels;
 	numSamples = numSamplesLeft = numSampleFrames * streamFormat->fNumChannels;
 	UInt32 noiseMask = (~0U) << mChannel->noiseLevel;
@@ -4012,7 +4012,7 @@ IOReturn VoodooHDAEngine::convertInputSamples(const void *sampleBuf, void *destB
 #endif							
 						{
 							// Multiply by 3 because 20 and 24 bit samples are packed into only three bytes, so we have to index bytes, not shorts or longs
-							register SInt32 inputSample;
+							 SInt32 inputSample;
 							
 							// [rdar://4311684] - Fixed 24-bit input convert routine. /thw
 							while (numSamplesLeft-- > 1) 
