@@ -535,10 +535,10 @@ const MixerValueName MixerValueNamesBind[SOUND_MIXER_NRDEVICES] = {
 {"Line",	SOUND_MIXER_LINE, 75},		// (was 75) SOUND_MIXER_LINE
 {"Mic",		SOUND_MIXER_MIC, 50},		// SOUND_MIXER_MIC
 {"CD",		SOUND_MIXER_CD, 90},	// SOUND_MIXER_CD
-{"iMix",	SOUND_MIXER_IMIX, 0},		// 0: input monitor muted by default to prevent startup pop
+{"iMix",	SOUND_MIXER_IMIX, 70},		// 70: main PCM playback path (NID 2→NID 12→speaker) — must not be 0
 {"AltPCM",	SOUND_MIXER_ALTPCM, 30},		// [?] SOUND_MIXER_ALTPCM
 {"Rec",		SOUND_MIXER_RECLEV, 75},		// SOUND_MIXER_RECLEV
-{"iGain",	SOUND_MIXER_IGAIN, 0},		// 0: input monitor muted by default to prevent startup pop
+{"iGain",	SOUND_MIXER_IGAIN, 0},		// 0: loopback path (NID 11→NID 12) muted to prevent startup pop (was 80)
 {"oGain",	SOUND_MIXER_OGAIN, 50},		// SOUND_MIXER_OGAIN
 {"Line1",	SOUND_MIXER_LINE1, 30},		// (was 75) SOUND_MIXER_LINE1
 {"Line2",	SOUND_MIXER_LINE2, 10},		// [?] SOUND_MIXER_LINE2
