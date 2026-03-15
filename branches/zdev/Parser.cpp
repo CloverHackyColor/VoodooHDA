@@ -248,9 +248,6 @@ void VoodooHDADevice::probeFunction(Codec *codec, nid_t nid)
 				dumpMsg(" %s", gQuirkTypes[i].key);
 		dumpMsg("\n");
 	}
-	/* Enable EAPD after mixer defaults are applied (pop prevention). */
-	audioCommitEapd(funcGroup);
-
 	//Slice - move here
 	dumpMsg("HP switch init...\n");
 	switchInit(funcGroup);
@@ -2377,8 +2374,7 @@ void VoodooHDADevice::audioCommit(FunctionGroup *funcGroup)
 	/* Commit controls. */
 	audioCtlCommit(funcGroup);
 
-	/* Commit selectors and pins (EAPD is deferred to audioCommitEapd,
-	 * called after mixerSetDefaults, to prevent startup pop). */
+	/* Commit selectors, pins and EAPD. */
 	for (int i = 0; i < funcGroup->numNodes; i++) {
 		Widget *widget = &funcGroup->widgets[i];
 		if (!widget)
@@ -2389,6 +2385,13 @@ void VoodooHDADevice::audioCommit(FunctionGroup *funcGroup)
 			widgetConnectionSelect(widget, widget->selconn);
 		if (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
 			sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, widget->nid, widget->pin.ctrl), cad);
+		if (widget->params.eapdBtl != HDAC_INVALID) {
+		    UInt32 val;
+			val = widget->params.eapdBtl;
+			if (funcGroup->audio.quirks & HDA_QUIRK_EAPDINV)
+				val ^= HDA_CMD_SET_EAPD_BTL_ENABLE_EAPD;
+			sendCommand(HDA_CMD_SET_EAPD_BTL_ENABLE(cad, widget->nid, val), cad);
+		}
 	}
 
 	/* Commit GPIOs. */
@@ -2425,23 +2428,6 @@ void VoodooHDADevice::audioCommit(FunctionGroup *funcGroup)
 		sendCommand(HDA_CMD_SET_GPIO_ENABLE_MASK(cad, funcGroup->nid, gmask), cad);
 		sendCommand(HDA_CMD_SET_GPIO_DIRECTION(cad, funcGroup->nid, gdir), cad);
 		sendCommand(HDA_CMD_SET_GPIO_DATA(cad, funcGroup->nid, gdata), cad);
-	}
-}
-
-/* Enable EAPD on all widgets that support it.  Called after mixerSetDefaults()
- * so that the external amplifier is switched on only once all volume controls
- * are at their final values, preventing the startup pop. */
-void VoodooHDADevice::audioCommitEapd(FunctionGroup *funcGroup)
-{
-	nid_t cad = funcGroup->codec->cad;
-	for (int i = 0; i < funcGroup->numNodes; i++) {
-		Widget *widget = &funcGroup->widgets[i];
-		if (!widget || widget->params.eapdBtl == HDAC_INVALID)
-			continue;
-		UInt32 val = widget->params.eapdBtl;
-		if (funcGroup->audio.quirks & HDA_QUIRK_EAPDINV)
-			val ^= HDA_CMD_SET_EAPD_BTL_ENABLE_EAPD;
-		sendCommand(HDA_CMD_SET_EAPD_BTL_ENABLE(cad, widget->nid, val), cad);
 	}
 }
 

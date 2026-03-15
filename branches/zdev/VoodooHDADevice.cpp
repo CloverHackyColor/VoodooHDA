@@ -895,8 +895,6 @@ bool VoodooHDADevice::resume()
 //				logMsg("OSS mixer reinitialization...\n");
 				mixerResume(&funcGroup->audio.pcmDevices[i]);
 			}
-			/* Enable EAPD after volumes are restored (pop prevention on wake). */
-			audioCommitEapd(funcGroup);
 
 			LOCK(); // xxx
 
