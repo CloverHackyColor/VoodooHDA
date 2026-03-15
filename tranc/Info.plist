@@ -31,7 +31,7 @@
 			<key>CFBundleIdentifier</key>
 			<string>org.voodoo.driver.VoodooHDA</string>
 			<key>DisableInputMonitor</key>
-			<false/>
+			<true/>
 			<key>IOClass</key>
 			<string>VoodooHDADevice</string>
 			<key>IOPCIClassMatch</key>
@@ -47,13 +47,13 @@
 			<key>MixerValues</key>
 			<dict>
 				<key>PCM</key>
-				<integer>100</integer>
+				<integer>95</integer>
 				<key>Rec</key>
-				<integer>70</integer>
+				<integer>95</integer>
 				<key>iGain</key>
-				<integer>0</integer>
+				<integer>95</integer>
 				<key>iMix</key>
-				<integer>0</integer>
+				<integer>95</integer>
 			</dict>
 			<key>NodesToPatch</key>
 			<array/>
