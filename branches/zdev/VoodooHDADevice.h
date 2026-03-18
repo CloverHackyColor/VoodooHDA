@@ -266,6 +266,7 @@ public:
 	void hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 res);
 	void switchHandler(FunctionGroup *funcGroup, bool first);
 	void switchInit(FunctionGroup *funcGroup);
+	void audioCommitEapd(FunctionGroup *funcGroup);
 
 	char *audioCtlMixerMaskToString(UInt32 mask, char *buf, size_t len);
 
