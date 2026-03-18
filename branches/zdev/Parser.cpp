@@ -4462,6 +4462,7 @@ void VoodooHDADevice::hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 
 	if (!widget || (widget->enable == 0) || (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX))
 		return;
 	int assocsNum = widget->bindAssoc;
+	UInt32 triggerPinType = widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
 	//Change device name
 //	SwitchHandlerRename(funcGroup, nid ,assocsNum, res);
 
@@ -4516,36 +4517,40 @@ void VoodooHDADevice::hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 
 			}
 		}
 	}
-	/* (Un)Mute output pins from other associations (e.g. external speakers). */
-	for (int otherAssoc = 0; otherAssoc < funcGroup->audio.numAssocs; otherAssoc++) {
-		if (otherAssoc == assocsNum)
-			continue;
-		if (assocs[otherAssoc].dir != HDA_CTL_OUT)
-			continue;
-		if (assocs[otherAssoc].hpredir >= 0)
-			continue;
-		for (int j = 0; j < 16; j++) {
-			int pin = assocs[otherAssoc].pins[j];
-			if (pin <= 0)
+	/* (Un)Mute output pins from other associations (e.g. external speakers).
+	 * Only triggered by a genuine HP_OUT pin to avoid falsely muting speakers
+	 * when a non-HP pin (SPEAKER, LINE_OUT) incorrectly reports presence. */
+	if (triggerPinType == HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT) {
+		for (int otherAssoc = 0; otherAssoc < funcGroup->audio.numAssocs; otherAssoc++) {
+			if (otherAssoc == assocsNum)
 				continue;
-			control = audioCtlAmpGet(funcGroup, pin, HDA_CTL_IN, -1, 1);
-			if (control && control->mute) {
-				val = (res != 0) ? 1 : 0;
-				if (val == (UInt32)control->forcemute)
+			if (assocs[otherAssoc].dir != HDA_CTL_OUT)
+				continue;
+			if (assocs[otherAssoc].hpredir >= 0)
+				continue;
+			for (int j = 0; j < 16; j++) {
+				int pin = assocs[otherAssoc].pins[j];
+				if (pin <= 0)
 					continue;
-				control->forcemute = val;
-				audioCtlAmpSet(control, HDA_AMP_MUTE_DEFAULT, HDA_AMP_VOL_DEFAULT, HDA_AMP_VOL_DEFAULT);
-				continue;
-			}
-			widget = widgetGet(funcGroup, pin);
-			if (widget && (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)) {
-				if (res != 0)
-					val = widget->pin.ctrl & ~HDA_CMD_SET_PIN_WIDGET_CTRL_OUT_ENABLE;
-				else
-					val = widget->pin.ctrl | HDA_CMD_SET_PIN_WIDGET_CTRL_OUT_ENABLE;
-				if (val != widget->pin.ctrl) {
-					widget->pin.ctrl = val;
-					sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, widget->nid, widget->pin.ctrl), cad);
+				control = audioCtlAmpGet(funcGroup, pin, HDA_CTL_IN, -1, 1);
+				if (control && control->mute) {
+					val = (res != 0) ? 1 : 0;
+					if (val == (UInt32)control->forcemute)
+						continue;
+					control->forcemute = val;
+					audioCtlAmpSet(control, HDA_AMP_MUTE_DEFAULT, HDA_AMP_VOL_DEFAULT, HDA_AMP_VOL_DEFAULT);
+					continue;
+				}
+				widget = widgetGet(funcGroup, pin);
+				if (widget && (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)) {
+					if (res != 0)
+						val = widget->pin.ctrl & ~HDA_CMD_SET_PIN_WIDGET_CTRL_OUT_ENABLE;
+					else
+						val = widget->pin.ctrl | HDA_CMD_SET_PIN_WIDGET_CTRL_OUT_ENABLE;
+					if (val != widget->pin.ctrl) {
+						widget->pin.ctrl = val;
+						sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, widget->nid, widget->pin.ctrl), cad);
+					}
 				}
 			}
 		}
