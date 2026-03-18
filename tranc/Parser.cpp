@@ -4825,6 +4825,47 @@ void VoodooHDADevice::switchHandler(FunctionGroup *funcGroup, bool first)
 		}
 		assocs[assocNum].dirty |= res;
 	}
+	/* Handle HP_OUT pins in standalone associations (hpredir < 0):
+	 * read presence detection and update HPHN_ENABLE so that macOS does
+	 * not select disconnected headphones as the default output. */
+	for (int nid = funcGroup->startNode; nid < funcGroup->endNode; nid++) {
+		widget = widgetGet(funcGroup, nid);
+		if (!widget || (widget->enable == 0) || (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX))
+			continue;
+		if (HDA_PARAM_PIN_CAP_PRESENCE_DETECT_CAP(widget->pin.cap) == 0)
+			continue;
+		if ((HDA_CONFIG_DEFAULTCONF_MISC(widget->pin.config) & 1) != 0)
+			continue;
+		if ((widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK) != HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT)
+			continue;
+		assocNum = widget->bindAssoc;
+		if (assocs[assocNum].hpredir >= 0)
+			continue; /* already handled by the main loop above */
+		res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, nid), cad);
+		res = HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT(res);
+		if (funcGroup->audio.quirks & HDA_QUIRK_SENSEINV)
+			res ^= 1;
+		if (!first && (widget->sense == res))
+			continue;
+		widget->sense = res;
+		logMsg("HP standalone pin sense: cad %d nid=%d res=%d\n", (int)cad, (int)nid, (int)res);
+		/* Enable headphone amplifier only when headphones are present. */
+		UInt32 val;
+		if (res != 0)
+			val = widget->pin.ctrl | HDA_CMD_SET_PIN_WIDGET_CTRL_HPHN_ENABLE;
+		else
+			val = widget->pin.ctrl & ~HDA_CMD_SET_PIN_WIDGET_CTRL_HPHN_ENABLE;
+		if (val != widget->pin.ctrl) {
+			widget->pin.ctrl = val;
+			sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, nid, widget->pin.ctrl), cad);
+		}
+		/* Mute/unmute other output associations (e.g. external speakers). */
+		hpSwitchHandler(funcGroup, nid, res);
+		if (!assocs[assocNum].dirty) {
+			SwitchHandlerRename(funcGroup, nid, assocNum, res);
+		}
+		assocs[assocNum].dirty |= res;
+	}
 }
 
 /*
