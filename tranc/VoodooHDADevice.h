@@ -188,15 +188,15 @@ public:
 	void writeData16(UInt32 offset, UInt16 value);
 	void writeData32(UInt32 offset, UInt32 value);
 
-	virtual bool init(OSDictionary *dictionary = 0);
-	virtual IOService *probe(IOService *provider, SInt32 *score);
-	virtual bool initHardware(IOService *provider);
+	virtual bool init(OSDictionary *dictionary = 0) override;
+	virtual IOService *probe(IOService *provider, SInt32 *score) override;
+	virtual bool initHardware(IOService *provider) override;
 	virtual bool createAudioEngine(Channel *channel);
-	virtual void stop(IOService *provider);
-	virtual void free();
+	virtual void stop(IOService *provider) override;
+	virtual void free() override;
 
 	virtual IOReturn performPowerStateChange(IOAudioDevicePowerState oldPowerState,
-			IOAudioDevicePowerState newPowerState, UInt32 *microsecondsUntilComplete);
+			IOAudioDevicePowerState newPowerState, UInt32 *microsecondsUntilComplete) override;
 	bool suspend();
 	bool resume();
 

@@ -20,16 +20,16 @@ public:
 	void messageHandler(UInt32 type, const char *format, ...) __attribute__ ((format (printf, 3, 4)));
 
 	/* IOService overrides */
-	virtual bool start(IOService *provider);
+	virtual bool start(IOService *provider) override;
 
 	/* IOUserClient overrides */
-	virtual IOReturn clientClose();
+	virtual IOReturn clientClose() override;
 
-	virtual bool didTerminate(IOService *provider, IOOptionBits options, bool *defer);
+	virtual bool didTerminate(IOService *provider, IOOptionBits options, bool *defer) override;
 
-	virtual IOExternalMethod *getTargetAndMethodForIndex(IOService **targetP, UInt32 index);
+	virtual IOExternalMethod *getTargetAndMethodForIndex(IOService **targetP, UInt32 index)  override;
 
-	virtual IOReturn clientMemoryForType(UInt32 type, IOOptionBits *options, IOMemoryDescriptor **memory);
+	virtual IOReturn clientMemoryForType(UInt32 type, IOOptionBits *options, IOMemoryDescriptor **memory)  override;
 
 	/* External methods */
 	IOReturn actionMethod(UInt32 *dataIn, UInt32 *dataOut, IOByteCount inputSize, IOByteCount *outputSize);
