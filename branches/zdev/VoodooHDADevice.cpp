@@ -1061,32 +1061,32 @@ done:
 
 UInt8 VoodooHDADevice::readData8(UInt32 offset)
 {
-	return *((UInt8 *) mRegBase + offset);
+	return *(volatile UInt8 *) ((UInt8 *) mRegBase + offset);
 }
 
 UInt16 VoodooHDADevice::readData16(UInt32 offset)
 {
-	return *(UInt16 *) ((UInt8 *) mRegBase + offset);
+	return *(volatile UInt16 *) ((UInt8 *) mRegBase + offset);
 }
 
 UInt32 VoodooHDADevice::readData32(UInt32 offset)
 {
-	return *(UInt32 *) ((UInt8 *) mRegBase + offset);
+	return *(volatile UInt32 *) ((UInt8 *) mRegBase + offset);
 }
 
 void VoodooHDADevice::writeData8(UInt32 offset, UInt8 value)
 {
-	*((UInt8 *) mRegBase + offset) = value;
+	*(volatile UInt8 *) ((UInt8 *) mRegBase + offset) = value;
 }
 
 void VoodooHDADevice::writeData16(UInt32 offset, UInt16 value)
 {
-	*(UInt16 *) ((UInt8 *) mRegBase + offset) = value;
+	*(volatile UInt16 *) ((UInt8 *) mRegBase + offset) = value;
 }
 
 void VoodooHDADevice::writeData32(UInt32 offset, UInt32 value)
 {
-	*(UInt32 *) ((UInt8 *) mRegBase + offset) = value;
+	*(volatile UInt32 *) ((UInt8 *) mRegBase + offset) = value;
 }
 
 /******************************************************************************************/
