@@ -3204,9 +3204,8 @@ void VoodooHDADevice::pinDump()
 						HDA_PARAM_PIN_CAP_EAPD_CAP(pinCap) ? "EAPD" : "",
 						HDA_PARAM_PIN_CAP_VREF_CTRL(pinCap) ? "VREF" : "");
 				if (HDA_PARAM_PIN_CAP_IMP_SENSE_CAP(pinCap) || HDA_PARAM_PIN_CAP_PRESENCE_DETECT_CAP(pinCap)) {
-					UInt32 delay, result;
+					UInt32 delay = 0, result = 0;
 					if (HDA_PARAM_PIN_CAP_TRIGGER_REQD(pinCap)) {
-						delay = 0;
 						sendCommand(HDA_CMD_SET_PIN_SENSE(cad, widget->nid, 0), cad);
 						for (delay = 0; delay < 10000; delay++) {
 							result = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, widget->nid), cad);
@@ -3215,12 +3214,12 @@ void VoodooHDADevice::pinDump()
 							IODelay(10);
 						}
 					} else {
-						delay = 0;
 						result = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, widget->nid), cad);
 					}
 					dumpMsg(" Sense: 0x%08lx", (long unsigned int)result);
-					if (delay > 0)
-						dumpMsg(" delay %ldus", (long int)delay * 10);
+          if (delay > 0) {
+            dumpMsg(" delay %ldus", (long int)delay * 10);
+          }
 				}
 				dumpMsg("\n");
 			}
