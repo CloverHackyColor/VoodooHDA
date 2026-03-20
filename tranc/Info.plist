@@ -27,15 +27,15 @@
 			<key>AllowMSI</key>
 			<true/>
 			<key>Boost</key>
-			<integer>0</integer>
+			<integer>1</integer>
 			<key>CFBundleIdentifier</key>
 			<string>org.voodoo.driver.VoodooHDA</string>
 			<key>DisableInputMonitor</key>
-			<false/>
+			<true/>
 			<key>IOClass</key>
 			<string>VoodooHDADevice</string>
-			<key>IOPCIClassMatch</key>
-			<string>0x04000000&amp;0xfffc0000</string>
+			<key>IONameMatch</key>
+			<string>HDAS</string>
 			<key>IOProviderClass</key>
 			<string>IOPCIDevice</string>
 			<key>IOUserClientClass</key>
@@ -45,16 +45,27 @@
 			<key>MixerValues</key>
 			<dict>
 				<key>PCM</key>
-				<integer>100</integer>
+				<integer>95</integer>
 				<key>Rec</key>
-				<integer>70</integer>
+				<integer>95</integer>
 				<key>iGain</key>
 				<integer>0</integer>
 				<key>iMix</key>
-				<integer>0</integer>
+				<integer>95</integer>
 			</dict>
 			<key>NodesToPatch</key>
-			<array/>
+			<array>
+				<dict>
+					<key>Codec</key>
+					<integer>99</integer>
+					<key>Comment</key>
+					<string>Sample patch, codec usually=0</string>
+					<key>Node</key>
+					<integer>20</integer>
+					<key>Config</key>
+					<string>0x01014010</string>
+				</dict>
+			</array>
 			<key>Noise</key>
 			<integer>0</integer>
 			<key>Vectorize</key>
