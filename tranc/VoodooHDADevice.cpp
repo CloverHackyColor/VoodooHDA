@@ -23,8 +23,8 @@
 
 #define HDAC_REVISION "20120126_0002"
 
-#define LOCK()	//	lock(__FUNCTION__)
-#define UNLOCK()	//unlock(__FUNCTION__)
+#define LOCK()		lock(__FUNCTION__)
+#define UNLOCK()	unlock(__FUNCTION__)
 
 #define super IOAudioDevice
 OSDefineMetaClassAndStructors(VoodooHDADevice, IOAudioDevice)
@@ -473,7 +473,7 @@ bool VoodooHDADevice::initHardware(IOService *provider)
 	// Note: kIOMapInhibitCache is the default for PCI bars... - Zenith432
 	mBarMap = mPciNub->mapDeviceMemoryWithIndex(0U);
 	if (!mBarMap) {
-		errorMsg("error: mapDeviceMemoryWithRegister for BAR0 failed\n");
+		errorMsg("error: mapDeviceMemoryWith for BAR0 failed\n");
 		goto done;
 	}
 	mRegBase = mBarMap->getVirtualAddress();
@@ -1522,7 +1522,7 @@ void VoodooHDADevice::lock(const char *callerName)
 {
 	if (mVerbose >= 4)
 		logMsg("VoodooHDADevice[%p]::lock(%s)\n", this, callerName);
-	ASSERT(mLock);
+	//ASSERT(mLock);
 	IOLockLock(mLock);
 }
 
@@ -1530,7 +1530,7 @@ void VoodooHDADevice::unlock(const char *callerName)
 {
 	if (mVerbose >= 4)
 		logMsg("VoodooHDADevice[%p]::unlock(%s)\n", this, callerName);
-	ASSERT(mLock);
+	//ASSERT(mLock);
 	IOLockUnlock(mLock);
 }
 

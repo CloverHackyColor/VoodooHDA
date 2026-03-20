@@ -335,6 +335,7 @@
 				);
 				OTHER_LDFLAGS = "-Wl,-no_source_version";
 				SDKROOT = macosx;
+				STRINGS_FILE_OUTPUT_ENCODING = "UTF-8";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				STRIPFLAGS = "";
 			};
