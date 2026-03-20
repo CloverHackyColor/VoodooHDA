@@ -1780,11 +1780,13 @@ void VoodooHDADevice::initCorb()
 	mCorbWritePtr = 0;
 	writeData16(HDAC_CORBWP, mCorbWritePtr);
 	writeData16(HDAC_CORBRP, HDAC_CORBRP_CORBRPRST);
+  IODelay(1000);
 	/* The HDA specification indicates that the CORBRPRST bit will always
 	 * read as zero. Unfortunately, it seems that at least the 82801G
 	 * doesn't reset the bit to zero, which stalls the corb engine.
 	 * manually reset the bit to zero before continuing. */
 	writeData16(HDAC_CORBRP, 0);
+  IODelay(1000);
 
 #if 0
 	/* Enable CORB error reporting */
