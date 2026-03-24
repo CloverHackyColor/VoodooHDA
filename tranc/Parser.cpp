@@ -272,9 +272,6 @@ void VoodooHDADevice::probeFunction(Codec *codec, nid_t nid)
 				dumpMsg(" %s", gQuirkTypes[i].key);
 		dumpMsg("\n");
 	}
-	/* Enable EAPD after mixer defaults are applied (pop prevention). */
-	audioCommitEapd(funcGroup);
-
 	//Slice - move here
 	dumpMsg("HP switch init...\n");
 	switchInit(funcGroup);
@@ -2460,36 +2457,7 @@ void VoodooHDADevice::audioCommit(FunctionGroup *funcGroup)
 	/* Commit controls. */
 	audioCtlCommit(funcGroup);
 
-	/* Unmute output amps on enabled output pins.  audioCtlCommit mutes
-	 * disabled controls, but output pin amps must always pass audio —
-	 * switching is handled exclusively by input amps and pin ctrl. */
-	{
-		AudioControl *ctl;
-		for (int i = 0; (ctl = audioCtlEach(funcGroup, i)); i++) {
-			if (ctl->enable != 0)
-				continue;
-			if (!(ctl->dir & HDA_CTL_OUT))
-				continue;
-			if (!ctl->widget)
-				continue;
-			Widget *w = ctl->widget;
-			if (w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
-				continue;
-			UInt32 devType = w->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
-			if (devType != HDA_CONFIG_DEFAULTCONF_DEVICE_LINE_OUT &&
-				devType != HDA_CONFIG_DEFAULTCONF_DEVICE_SPEAKER &&
-				devType != HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT)
-				continue;
-			int z = ctl->offset;
-			if (z > ctl->step)
-				z = ctl->step;
-			audioCtlAmpSet(ctl, HDA_AMP_MUTE_NONE, z, z);
-			dumpMsg("Unmuted output amp on output pin nid=%d (0dB)\n", w->nid);
-		}
-	}
-
-	/* Commit selectors and pins (EAPD is deferred to audioCommitEapd,
-	 * called after mixerSetDefaults, to prevent startup pop). */
+	/* Commit selectors, pins and EAPD. */
 	for (int i = 0; i < funcGroup->numNodes; i++) {
 		Widget *widget = &funcGroup->widgets[i];
 		if (!widget)
@@ -2500,6 +2468,13 @@ void VoodooHDADevice::audioCommit(FunctionGroup *funcGroup)
 			widgetConnectionSelect(widget, widget->selconn);
 		if (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
 			sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, widget->nid, widget->pin.ctrl), cad);
+		if (widget->params.eapdBtl != HDAC_INVALID) {
+		    UInt32 val;
+			val = widget->params.eapdBtl;
+			if (funcGroup->audio.quirks & HDA_QUIRK_EAPDINV)
+				val ^= HDA_CMD_SET_EAPD_BTL_ENABLE_EAPD;
+			sendCommand(HDA_CMD_SET_EAPD_BTL_ENABLE(cad, widget->nid, val), cad);
+		}
 	}
 
 	/* Commit GPIOs. */
@@ -2536,23 +2511,6 @@ void VoodooHDADevice::audioCommit(FunctionGroup *funcGroup)
 		sendCommand(HDA_CMD_SET_GPIO_ENABLE_MASK(cad, funcGroup->nid, gmask), cad);
 		sendCommand(HDA_CMD_SET_GPIO_DIRECTION(cad, funcGroup->nid, gdir), cad);
 		sendCommand(HDA_CMD_SET_GPIO_DATA(cad, funcGroup->nid, gdata), cad);
-	}
-}
-
-/* Enable EAPD on all widgets that support it.  Called after mixerSetDefaults()
- * so that the external amplifier is switched on only once all volume controls
- * are at their final values, preventing the startup pop. */
-void VoodooHDADevice::audioCommitEapd(FunctionGroup *funcGroup)
-{
-	nid_t cad = funcGroup->codec->cad;
-	for (int i = 0; i < funcGroup->numNodes; i++) {
-		Widget *widget = &funcGroup->widgets[i];
-		if (!widget || widget->params.eapdBtl == HDAC_INVALID)
-			continue;
-		UInt32 val = widget->params.eapdBtl;
-		if (funcGroup->audio.quirks & HDA_QUIRK_EAPDINV)
-			val ^= HDA_CMD_SET_EAPD_BTL_ENABLE_EAPD;
-		sendCommand(HDA_CMD_SET_EAPD_BTL_ENABLE(cad, widget->nid, val), cad);
 	}
 }
 
@@ -2855,112 +2813,6 @@ void VoodooHDADevice::adjustPinAssociationsForSwitching(FunctionGroup *funcGroup
 
 			dumpMsg("Jack sensing: merged HP Out nid=%d into association %d seq=%d (with Speaker nid=%d)\n",
 					hpWidget->nid, (int)spkAssoc, (int)newSeq, spkWidget->nid);
-		}
-	}
-
-	/* Generic single-DAC merge: on 2-channel codecs (ALC2xx etc.) only one
-	 * DAC actually works.  If all output pins can reach the same single DAC,
-	 * merge all output associations into one so they share it via switching.
-	 * This must run after the HP-into-Speaker merge above. */
-	{
-		/* Collect all enabled output pins and their reachable DACs. */
-		nid_t commonDAC = 0;
-		bool singleDAC = true;
-		Widget *primaryOutPin = NULL; /* pin in the lowest-numbered assoc */
-		UInt32 primaryAssoc = 16;
-
-		for (int i = funcGroup->startNode; i < funcGroup->endNode; i++) {
-			Widget *w = widgetGet(funcGroup, i);
-			if (!w || !w->enable)
-				continue;
-			if (w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
-				continue;
-			UInt32 type = w->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
-			UInt32 conn = (w->pin.config >> 30) & 0x3;
-			if (conn == 1) /* N/C */
-				continue;
-			/* Only output pin types */
-			if (type != HDA_CONFIG_DEFAULTCONF_DEVICE_LINE_OUT &&
-				type != HDA_CONFIG_DEFAULTCONF_DEVICE_SPEAKER &&
-				type != HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT)
-				continue;
-			UInt32 assoc = HDA_CONFIG_DEFAULTCONF_ASSOCIATION(w->pin.config);
-			if (assoc == 0 || assoc == 15)
-				continue;
-
-			/* Find DACs this pin can reach (direct connections to audio output) */
-			nid_t pinDAC = 0;
-			int dacCount = 0;
-			for (int c = 0; c < w->nconns; c++) {
-				Widget *cw = widgetGet(funcGroup, w->conns[c]);
-				if (cw && cw->enable &&
-					cw->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_OUTPUT) {
-					if (dacCount == 0)
-						pinDAC = cw->nid;
-					dacCount++;
-				}
-			}
-			if (dacCount == 0) {
-				singleDAC = false;
-				break;
-			}
-			if (commonDAC == 0) {
-				commonDAC = pinDAC;
-			} else if (pinDAC != commonDAC) {
-				/* Multiple pins have different primary DACs — check if they
-				 * all share a common one (pin may have multiple connections) */
-				bool hasCommon = false;
-				for (int c = 0; c < w->nconns; c++) {
-					Widget *cw = widgetGet(funcGroup, w->conns[c]);
-					if (cw && cw->enable &&
-						cw->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_OUTPUT &&
-						cw->nid == commonDAC) {
-						hasCommon = true;
-						break;
-					}
-				}
-				if (!hasCommon) {
-					singleDAC = false;
-					break;
-				}
-			}
-			/* Track primary output association (lowest assoc number) */
-			if (assoc < primaryAssoc) {
-				primaryAssoc = assoc;
-				primaryOutPin = w;
-			}
-		}
-
-		/* Merge all output pins into the primary association */
-		if (singleDAC && commonDAC != 0 && primaryOutPin) {
-			UInt32 nextSeq = HDA_CONFIG_DEFAULTCONF_SEQUENCE(primaryOutPin->pin.config) + 1;
-			for (int i = funcGroup->startNode; i < funcGroup->endNode; i++) {
-				Widget *w = widgetGet(funcGroup, i);
-				if (!w || !w->enable || w == primaryOutPin)
-					continue;
-				if (w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
-					continue;
-				UInt32 type = w->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
-				UInt32 conn = (w->pin.config >> 30) & 0x3;
-				if (conn == 1)
-					continue;
-				if (type != HDA_CONFIG_DEFAULTCONF_DEVICE_LINE_OUT &&
-					type != HDA_CONFIG_DEFAULTCONF_DEVICE_SPEAKER &&
-					type != HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT)
-					continue;
-				UInt32 assoc = HDA_CONFIG_DEFAULTCONF_ASSOCIATION(w->pin.config);
-				if (assoc == 0 || assoc == 15 || assoc == primaryAssoc)
-					continue;
-
-				if (nextSeq > 15) nextSeq = 15;
-				w->pin.config &= ~(HDA_CONFIG_DEFAULTCONF_ASSOCIATION_MASK |
-						HDA_CONFIG_DEFAULTCONF_SEQUENCE_MASK);
-				w->pin.config |= (primaryAssoc << HDA_CONFIG_DEFAULTCONF_ASSOCIATION_SHIFT) |
-						(nextSeq << HDA_CONFIG_DEFAULTCONF_SEQUENCE_SHIFT);
-				dumpMsg("Single-DAC merge: moved output nid=%d into association %d seq=%d (common DAC=%d)\n",
-						w->nid, (int)primaryAssoc, (int)nextSeq, (int)commonDAC);
-				nextSeq++;
-			}
 		}
 	}
 
@@ -3338,8 +3190,9 @@ void VoodooHDADevice::pinDump()
 						HDA_PARAM_PIN_CAP_EAPD_CAP(pinCap) ? "EAPD" : "",
 						HDA_PARAM_PIN_CAP_VREF_CTRL(pinCap) ? "VREF" : "");
 				if (HDA_PARAM_PIN_CAP_IMP_SENSE_CAP(pinCap) || HDA_PARAM_PIN_CAP_PRESENCE_DETECT_CAP(pinCap)) {
-					UInt32 delay = 0, result = 0;
+					UInt32 delay, result;
 					if (HDA_PARAM_PIN_CAP_TRIGGER_REQD(pinCap)) {
+						delay = 0;
 						sendCommand(HDA_CMD_SET_PIN_SENSE(cad, widget->nid, 0), cad);
 						for (delay = 0; delay < 10000; delay++) {
 							result = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, widget->nid), cad);
@@ -3348,12 +3201,12 @@ void VoodooHDADevice::pinDump()
 							IODelay(10);
 						}
 					} else {
+						delay = 0;
 						result = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, widget->nid), cad);
 					}
 					dumpMsg(" Sense: 0x%08lx", (long unsigned int)result);
-          if (delay > 0) {
-            dumpMsg(" delay %ldus", (long int)delay * 10);
-          }
+					if (delay > 0)
+						dumpMsg(" delay %ldus", (long int)delay * 10);
 				}
 				dumpMsg("\n");
 			}
@@ -4808,7 +4661,6 @@ void VoodooHDADevice::hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 
 	if (!widget || (widget->enable == 0) || (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX))
 		return;
 	int assocsNum = widget->bindAssoc;
-	UInt32 triggerPinType = widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
 	//Change device name
 //	SwitchHandlerRename(funcGroup, nid ,assocsNum, res);
 	
@@ -4823,6 +4675,8 @@ void VoodooHDADevice::hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 
 		}
 	} else {
 		/* If there is no muter - disable pin output. */
+	//	widget = widgetGet(funcGroup, nid); // assocs[assocsNum].pins[15]);
+	//	if (widget && (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)) {
 			if (res != 0)
 				val = widget->pin.ctrl | HDA_CMD_SET_PIN_WIDGET_CTRL_OUT_ENABLE;
 			else
@@ -4831,6 +4685,7 @@ void VoodooHDADevice::hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 
 				widget->pin.ctrl = val;
 				sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, widget->nid, widget->pin.ctrl), cad);
 			}
+	//	}
 	}
 	/* (Un)Mute other pins. */
 	for (int j = 0; j < 16; j++) {
@@ -4857,44 +4712,6 @@ void VoodooHDADevice::hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 
 			if (val != widget->pin.ctrl) {
 				widget->pin.ctrl = val;
 				sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, widget->nid, widget->pin.ctrl), cad);
-			}
-		}
-	}
-	/* (Un)Mute output pins from other associations (e.g. external speakers).
-	 * Only triggered by a genuine HP_OUT pin to avoid falsely muting speakers
-	 * when a non-HP pin (SPEAKER, LINE_OUT) incorrectly reports presence. */
-	if (triggerPinType == HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT) {
-		for (int otherAssoc = 0; otherAssoc < funcGroup->audio.numAssocs; otherAssoc++) {
-			if (otherAssoc == assocsNum)
-				continue;
-			if (assocs[otherAssoc].dir != HDA_CTL_OUT)
-				continue;
-			if (assocs[otherAssoc].hpredir >= 0)
-				continue;
-			for (int j = 0; j < 16; j++) {
-				int pin = assocs[otherAssoc].pins[j];
-				if (pin <= 0)
-					continue;
-				control = audioCtlAmpGet(funcGroup, pin, HDA_CTL_IN, -1, 1);
-				if (control && control->mute) {
-					val = (res != 0) ? 1 : 0;
-					if (val == (UInt32)control->forcemute)
-						continue;
-					control->forcemute = val;
-					audioCtlAmpSet(control, HDA_AMP_MUTE_DEFAULT, HDA_AMP_VOL_DEFAULT, HDA_AMP_VOL_DEFAULT);
-					continue;
-				}
-				widget = widgetGet(funcGroup, pin);
-				if (widget && (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)) {
-					if (res != 0)
-						val = widget->pin.ctrl & ~HDA_CMD_SET_PIN_WIDGET_CTRL_OUT_ENABLE;
-					else
-						val = widget->pin.ctrl | HDA_CMD_SET_PIN_WIDGET_CTRL_OUT_ENABLE;
-					if (val != widget->pin.ctrl) {
-						widget->pin.ctrl = val;
-						sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, widget->nid, widget->pin.ctrl), cad);
-					}
-				}
 			}
 		}
 	}
@@ -4954,116 +4771,6 @@ void VoodooHDADevice::switchHandler(FunctionGroup *funcGroup, bool first)
 			SwitchHandlerRename(funcGroup, nid ,assocNum, res);
 		}
 		assocs[assocNum].dirty |= res;
-	}
-	/* Handle HP_OUT pins in standalone associations (hpredir < 0):
-	 * read presence detection and update HPHN_ENABLE so that macOS does
-	 * not select disconnected headphones as the default output. */
-	for (int nid = funcGroup->startNode; nid < funcGroup->endNode; nid++) {
-		widget = widgetGet(funcGroup, nid);
-		if (!widget || (widget->enable == 0) || (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX))
-			continue;
-		if (HDA_PARAM_PIN_CAP_PRESENCE_DETECT_CAP(widget->pin.cap) == 0)
-			continue;
-		if ((HDA_CONFIG_DEFAULTCONF_MISC(widget->pin.config) & 1) != 0)
-			continue;
-		if ((widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK) != HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT)
-			continue;
-		assocNum = widget->bindAssoc;
-		if (assocs[assocNum].hpredir >= 0)
-			continue; /* already handled by the main loop above */
-		res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, nid), cad);
-		res = HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT(res);
-		if (funcGroup->audio.quirks & HDA_QUIRK_SENSEINV)
-			res ^= 1;
-		if (!first && (widget->sense == res))
-			continue;
-		widget->sense = res;
-		logMsg("HP standalone pin sense: cad %d nid=%d res=%d\n", (int)cad, (int)nid, (int)res);
-		/* Enable headphone amplifier only when headphones are present. */
-		UInt32 val;
-		if (res != 0)
-			val = widget->pin.ctrl | HDA_CMD_SET_PIN_WIDGET_CTRL_HPHN_ENABLE;
-		else
-			val = widget->pin.ctrl & ~HDA_CMD_SET_PIN_WIDGET_CTRL_HPHN_ENABLE;
-		if (val != widget->pin.ctrl) {
-			widget->pin.ctrl = val;
-			sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, nid, widget->pin.ctrl), cad);
-		}
-		/* Mute/unmute other output associations (e.g. external speakers). */
-		hpSwitchHandler(funcGroup, nid, res);
-		if (!assocs[assocNum].dirty) {
-			SwitchHandlerRename(funcGroup, nid, assocNum, res);
-		}
-		assocs[assocNum].dirty |= res;
-	}
-	/* S/PDIF fallback: if no analog output pin detects presence, mute all
-	 * analog outputs so that S/PDIF becomes the only active output.
-	 * When any analog jack is later inserted, the unsolicited handler will
-	 * unmute it normally. */
-	{
-		bool anyAnalogPresent = false;
-		/* Check all analog output pins with presence detection capability. */
-		for (int nid = funcGroup->startNode; nid < funcGroup->endNode; nid++) {
-			widget = widgetGet(funcGroup, nid);
-			if (!widget || (widget->enable == 0) ||
-			    (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX))
-				continue;
-			int a = widget->bindAssoc;
-			if (a < 0 || a >= funcGroup->audio.numAssocs)
-				continue;
-			if (assocs[a].dir != HDA_CTL_OUT)
-				continue;
-			/* Skip digital (S/PDIF, HDMI) outputs. */
-			UInt32 devType = widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
-			if (devType == HDA_CONFIG_DEFAULTCONF_DEVICE_SPDIF_OUT ||
-			    devType == HDA_CONFIG_DEFAULTCONF_DEVICE_DIGITAL_OTHER_OUT)
-				continue;
-			if (HDA_PARAM_PIN_CAP_PRESENCE_DETECT_CAP(widget->pin.cap) == 0)
-				continue;
-			if ((HDA_CONFIG_DEFAULTCONF_MISC(widget->pin.config) & 1) != 0)
-				continue;
-			res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, nid), cad);
-			res = HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT(res);
-			if (funcGroup->audio.quirks & HDA_QUIRK_SENSEINV)
-				res ^= 1;
-			if (res) {
-				anyAnalogPresent = true;
-				break;
-			}
-		}
-		if (!anyAnalogPresent) {
-			logMsg("No analog output jack detected — muting analog, S/PDIF remains active\n");
-			for (int nid = funcGroup->startNode; nid < funcGroup->endNode; nid++) {
-				widget = widgetGet(funcGroup, nid);
-				if (!widget || (widget->enable == 0) ||
-				    (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX))
-					continue;
-				int a = widget->bindAssoc;
-				if (a < 0 || a >= funcGroup->audio.numAssocs)
-					continue;
-				if (assocs[a].dir != HDA_CTL_OUT)
-					continue;
-				UInt32 devType = widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
-				if (devType == HDA_CONFIG_DEFAULTCONF_DEVICE_SPDIF_OUT ||
-				    devType == HDA_CONFIG_DEFAULTCONF_DEVICE_DIGITAL_OTHER_OUT)
-					continue;
-				/* Disable analog output pin. */
-				UInt32 val = widget->pin.ctrl &
-					~(HDA_CMD_SET_PIN_WIDGET_CTRL_OUT_ENABLE |
-					  HDA_CMD_SET_PIN_WIDGET_CTRL_HPHN_ENABLE);
-				if (val != widget->pin.ctrl) {
-					widget->pin.ctrl = val;
-					sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, nid, widget->pin.ctrl), cad);
-				}
-				/* Mute the pin's output amplifier if available. */
-				AudioControl *ctl = audioCtlAmpGet(funcGroup, nid, HDA_CTL_IN, -1, 1);
-				if (ctl && ctl->mute && !ctl->forcemute) {
-					ctl->forcemute = 1;
-					audioCtlAmpSet(ctl, HDA_AMP_MUTE_DEFAULT,
-						       HDA_AMP_VOL_DEFAULT, HDA_AMP_VOL_DEFAULT);
-				}
-			}
-		}
 	}
 }
 
@@ -5128,37 +4835,13 @@ void VoodooHDADevice::switchInit(FunctionGroup *funcGroup)
     hdaa_eld_handler(widget);
 
 	}
-	/* Handle HP_OUT pins in standalone associations (hpredir < 0).
-	 * These are skipped by the loop above but still need unsolicited response
-	 * registration and sense initialisation so that switchHandler is called
-	 * at boot and on jack events, allowing HPHN_ENABLE to be managed. */
-	for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
-		Widget *widget = widgetGet(funcGroup, j);
-		if (!widget || (widget->enable == 0) || (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX))
-			continue;
-		if ((HDA_PARAM_PIN_CAP_PRESENCE_DETECT_CAP(widget->pin.cap) == 0) ||
-		    ((HDA_CONFIG_DEFAULTCONF_MISC(widget->pin.config) & 1) != 0))
-			continue;
-		if (assocs[widget->bindAssoc].hpredir >= 0)
-			continue; /* already handled by the loop above */
-		if ((widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK) != HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT)
-			continue;
-		enable = 1;
-		if (HDA_PARAM_AUDIO_WIDGET_CAP_UNSOL_CAP(widget->params.widgetCap)) {
-			sendCommand(HDA_CMD_SET_UNSOLICITED_RESPONSE(cad, j,
-					HDA_CMD_SET_UNSOLICITED_RESPONSE_ENABLE | HDAC_UNSOLTAG_EVENT_HP), cad);
-		}
-		int res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, j), cad);
-		res = HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT(res);
-		if (funcGroup->audio.quirks & HDA_QUIRK_SENSEINV)
-			res ^= 1;
-		widget->sense = res;
-		logMsg("Enabling HP standalone output switching at node %d\n", j);
-	}
 	funcGroup->mSwitchEnable = enable;
-	if (enable) {
-		switchHandler(funcGroup, true);
-	}
+/*	if (enable) {
+			//switchHandler(funcGroup, true);
+		
+		if (poll)
+			errorMsg("XXX\nXXX: poll based jack detection unimplemented\nXXX\n");
+	}*/
 }
 
 void VoodooHDADevice::hdaa_eld_handler(Widget *widget)
