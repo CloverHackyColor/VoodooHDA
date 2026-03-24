@@ -12,6 +12,7 @@
 		8D202CF30486D31800D8A456 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7ADFEA557BF11CA2CBB /* Cocoa.framework */; };
 		8D202CF40486D31800D8A456 /* PreferencePanes.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F506C035013D953901CA16C8 /* PreferencePanes.framework */; };
 		F47190CF0F97D04F00AC2757 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F47190CE0F97D04F00AC2757 /* IOKit.framework */; };
+		AB0C8CD218EB200A004FAFDE /* VoodooHDAPref.icns in Resources */ = {isa = PBXBuildFile; fileRef = AB0C8CD118EB2008004FAFDE /* VoodooHDAPref.icns */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -182,6 +183,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8D202CEF0486D31800D8A456 /* VoodooHDAPref.xib in Resources */,
+				AB0C8CD218EB200A004FAFDE /* VoodooHDAPref.icns in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -254,7 +256,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CURRENT_PROJECT_VERSION = 1.2.2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEPLOYMENT_POSTPROCESSING = YES;
+				DEPLOYMENT_POSTPROCESSING = NO;
 				DYLIB_COMPATIBILITY_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				DYLIB_CURRENT_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -280,7 +282,7 @@
 					"-ftree-vectorize",
 					"-fno-stack-protector",
 				);
-				OTHER_LDFLAGS = "-Wl,-no_source_version,-no_function_starts,-no_data_in_code_info,-no_version_load_command,-no_dependent_dr_info";
+				OTHER_LDFLAGS = "-Wl,-no_source_version,-no_function_starts,-no_data_in_code_info";
 				SDKROOT = macosx;
 				STRIPFLAGS = "-no_uuid";
 			};

@@ -12,6 +12,43 @@
 
 @implementation VoodooHDAPref
 
+/* Query content area width via osascript (Accessibility API).
+   Spawns osascript as a child process to walk the System Settings
+   AX tree: Window → SplitGroup → rightmost Group → size. */
+static CGFloat detectContentAreaWidth(void) {
+	NSTask *task = [[NSTask alloc] init];
+	task.executableURL = [NSURL fileURLWithPath:@"/usr/bin/osascript"];
+	task.arguments = @[
+		@"-l", @"JavaScript", @"-e",
+		@"var se=Application('System Events');"
+		@"var p=se.processes.byName('System Settings');"
+		@"var sg=p.windows[0].groups[0].splitterGroups[0];"
+		@"var gs=sg.groups();"
+		@"var maxX=-1,w=0;"
+		@"for(var i=0;i<gs.length;i++){"
+		@"  var pos=gs[i].position();"
+		@"  if(pos[0]>maxX){maxX=pos[0];w=gs[i].size()[0]}"
+		@"}"
+		@"w"
+	];
+	NSPipe *pipe = [NSPipe pipe];
+	task.standardOutput = pipe;
+	task.standardError = [NSPipe pipe];
+
+	NSError *err = nil;
+	if (![task launchAndReturnError:&err]) return 0.0;
+	[task waitUntilExit];
+
+	if (task.terminationStatus != 0) return 0.0;
+
+	NSData *data = [pipe.fileHandleForReading readDataToEndOfFile];
+	NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+	CGFloat contentWidth = [output doubleValue];
+
+	if (contentWidth < 300 || contentWidth > 1200) return 0.0;
+	return contentWidth;
+}
+
 static
 NSArray* getServices()
 {
@@ -435,6 +472,21 @@ NSString* trimIORegistryPathForDisplay(NSString* path)
 - (void) mainViewDidLoad
 {
 	[super mainViewDidLoad];
+	NSView *mv = [self mainView];
+	/* Save XIB dimensions before any layout changes — these are read from
+	   the actual XIB at load time, not hardcoded. */
+	initialViewWidth = NSWidth(mv.frame);
+	for (NSView *sub in mv.subviews) {
+		if ([sub isKindOfClass:[NSBox class]]) {
+			designBoxWidth = NSWidth(sub.frame);
+			break;
+		}
+	}
+	mv.postsFrameChangedNotifications = YES;
+	[[NSNotificationCenter defaultCenter] addObserver:self
+											 selector:@selector(mainViewFrameChanged:)
+												 name:NSViewFrameDidChangeNotification
+											   object:mv];
 	services = getServices();
 	if (services.count > 0U)
 		currentService = 0;
@@ -698,6 +750,136 @@ void disableViewRecursive(NSView* view)
 	}
 }
 
+- (void) adjustLayout
+{
+	if (inAdjustLayout) return;
+	inAdjustLayout = YES;
+
+	NSView *mainView = [self mainView];
+	CGFloat viewWidth = NSWidth(mainView.frame);
+
+	if (viewWidth <= initialViewWidth) {
+		/* Tahoe: host didn't resize us — detect real content area via
+		   CGWindowList and resize view+window to fill it. */
+		if (detectedContentWidth <= 0.0)
+			detectedContentWidth = detectContentAreaWidth();
+
+		if (detectedContentWidth > 0.0) {
+			/* Resize view and window to actual content area width */
+			NSRect vf = mainView.frame;
+			vf.size.width = detectedContentWidth;
+			mainView.frame = vf;
+			NSWindow *win = mainView.window;
+			if (win) {
+				NSRect wf = win.frame;
+				wf.size.width = detectedContentWidth;
+				[win setFrame:wf display:YES];
+			}
+			viewWidth = detectedContentWidth;
+			/* Fall through to stretch logic below */
+		} else {
+			/* Fallback: use design width (functional but not perfectly margined) */
+			NSRect vf = mainView.frame;
+			vf.size.width = designBoxWidth;
+			mainView.frame = vf;
+
+			NSWindow *win = mainView.window;
+			if (win) {
+				NSRect wf = win.frame;
+				wf.size.width = designBoxWidth;
+				[win setFrame:wf display:YES];
+			}
+			return;
+		}
+	}
+
+	/* Sequoia: host gave us more space — add margins and stretch. */
+	CGFloat margin = 15.0;
+	CGFloat boxWidth = viewWidth - 2 * margin;
+	CGFloat delta = boxWidth - designBoxWidth;
+
+	for (NSView *subview in mainView.subviews) {
+		NSRect f = subview.frame;
+		if ([subview isKindOfClass:[NSBox class]]) {
+			f.origin.x = margin;
+			f.size.width = boxWidth;
+			subview.frame = f;
+			/* Force contentView to match new box size */
+			NSView *content = [(NSBox *)subview contentView];
+			NSSize contentMargins = [(NSBox *)subview contentViewMargins];
+			NSRect cr = content.frame;
+			cr.size.width = boxWidth - 2 * contentMargins.width - 2;
+			content.frame = cr;
+			CGFloat contentWidth = cr.size.width;
+			CGFloat rightPad = 10.0;
+			CGFloat midpoint = designBoxWidth / 2.0;
+			for (NSView *child in content.subviews) {
+				NSRect cf = child.frame;
+				/* Skip small "0" indicator labels — position them later */
+				if ([child isKindOfClass:[NSTextField class]] && cf.size.width < 30)
+					continue;
+				if (cf.origin.x > midpoint) {
+					/* Right-side element: shift */
+					cf.origin.x += delta;
+				} else if (cf.origin.x + cf.size.width > midpoint + 50) {
+					/* Wide element spanning most of width: stretch */
+					cf.size.width += delta;
+				}
+				/* Clamp right edge so controls don't touch the border */
+				CGFloat rightEdge = cf.origin.x + cf.size.width;
+				if (rightEdge > contentWidth - rightPad) {
+					cf.size.width = contentWidth - rightPad - cf.origin.x;
+				}
+				child.frame = cf;
+			}
+			/* Position "0" indicator labels at the zero point of their slider */
+			for (NSView *child in content.subviews) {
+				if (![child isKindOfClass:[NSTextField class]]) continue;
+				NSRect cf = child.frame;
+				if (cf.size.width >= 30) continue;
+				for (NSView *other in content.subviews) {
+					if (![other isKindOfClass:[NSSlider class]]) continue;
+					NSRect sf = other.frame;
+					if (fabs(sf.origin.y - cf.origin.y) > 30) continue;
+					/* Found the associated slider — compute zero position */
+					NSSlider *slider = (NSSlider *)other;
+					double minVal = slider.minValue;
+					double maxVal = slider.maxValue;
+					double zeroFrac = (0.0 - minVal) / (maxVal - minVal);
+					CGFloat knob = slider.knobThickness;
+					CGFloat trackStart = sf.origin.x + knob / 2.0;
+					CGFloat trackLen = sf.size.width - knob;
+					cf.origin.x = trackStart + trackLen * zeroFrac - cf.size.width / 2.0 + 3.0;
+					child.frame = cf;
+					break;
+				}
+			}
+		} else if (f.size.width > 400) {
+			/* Full-width text field (title, version) */
+			f.origin.x = margin;
+			f.size.width = boxWidth;
+			subview.frame = f;
+		} else if (f.origin.x > viewWidth * 0.5) {
+			/* Right-side control (Volume label, knob) */
+			f.origin.x += delta;
+			subview.frame = f;
+		}
+	}
+
+	inAdjustLayout = NO;
+}
+
+- (void) mainViewFrameChanged:(NSNotification *)note
+{
+	[self adjustLayout];
+}
+
+- (void) didSelect
+{
+	[super didSelect];
+	[self adjustLayout];
+}
+
 - (void) willSelect
 {
 	[super willSelect];
@@ -726,6 +908,7 @@ failure:
 
 - (void) dealloc
 {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
 	if (chInfo) {
 		free(chInfo);
 		chInfo = 0;

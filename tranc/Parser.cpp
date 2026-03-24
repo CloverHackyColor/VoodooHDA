@@ -2460,6 +2460,34 @@ void VoodooHDADevice::audioCommit(FunctionGroup *funcGroup)
 	/* Commit controls. */
 	audioCtlCommit(funcGroup);
 
+	/* Unmute output amps on enabled output pins.  audioCtlCommit mutes
+	 * disabled controls, but output pin amps must always pass audio —
+	 * switching is handled exclusively by input amps and pin ctrl. */
+	{
+		AudioControl *ctl;
+		for (int i = 0; (ctl = audioCtlEach(funcGroup, i)); i++) {
+			if (ctl->enable != 0)
+				continue;
+			if (!(ctl->dir & HDA_CTL_OUT))
+				continue;
+			if (!ctl->widget)
+				continue;
+			Widget *w = ctl->widget;
+			if (w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
+				continue;
+			UInt32 devType = w->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
+			if (devType != HDA_CONFIG_DEFAULTCONF_DEVICE_LINE_OUT &&
+				devType != HDA_CONFIG_DEFAULTCONF_DEVICE_SPEAKER &&
+				devType != HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT)
+				continue;
+			int z = ctl->offset;
+			if (z > ctl->step)
+				z = ctl->step;
+			audioCtlAmpSet(ctl, HDA_AMP_MUTE_NONE, z, z);
+			dumpMsg("Unmuted output amp on output pin nid=%d (0dB)\n", w->nid);
+		}
+	}
+
 	/* Commit selectors and pins (EAPD is deferred to audioCommitEapd,
 	 * called after mixerSetDefaults, to prevent startup pop). */
 	for (int i = 0; i < funcGroup->numNodes; i++) {
@@ -2827,6 +2855,112 @@ void VoodooHDADevice::adjustPinAssociationsForSwitching(FunctionGroup *funcGroup
 
 			dumpMsg("Jack sensing: merged HP Out nid=%d into association %d seq=%d (with Speaker nid=%d)\n",
 					hpWidget->nid, (int)spkAssoc, (int)newSeq, spkWidget->nid);
+		}
+	}
+
+	/* Generic single-DAC merge: on 2-channel codecs (ALC2xx etc.) only one
+	 * DAC actually works.  If all output pins can reach the same single DAC,
+	 * merge all output associations into one so they share it via switching.
+	 * This must run after the HP-into-Speaker merge above. */
+	{
+		/* Collect all enabled output pins and their reachable DACs. */
+		nid_t commonDAC = 0;
+		bool singleDAC = true;
+		Widget *primaryOutPin = NULL; /* pin in the lowest-numbered assoc */
+		UInt32 primaryAssoc = 16;
+
+		for (int i = funcGroup->startNode; i < funcGroup->endNode; i++) {
+			Widget *w = widgetGet(funcGroup, i);
+			if (!w || !w->enable)
+				continue;
+			if (w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
+				continue;
+			UInt32 type = w->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
+			UInt32 conn = (w->pin.config >> 30) & 0x3;
+			if (conn == 1) /* N/C */
+				continue;
+			/* Only output pin types */
+			if (type != HDA_CONFIG_DEFAULTCONF_DEVICE_LINE_OUT &&
+				type != HDA_CONFIG_DEFAULTCONF_DEVICE_SPEAKER &&
+				type != HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT)
+				continue;
+			UInt32 assoc = HDA_CONFIG_DEFAULTCONF_ASSOCIATION(w->pin.config);
+			if (assoc == 0 || assoc == 15)
+				continue;
+
+			/* Find DACs this pin can reach (direct connections to audio output) */
+			nid_t pinDAC = 0;
+			int dacCount = 0;
+			for (int c = 0; c < w->nconns; c++) {
+				Widget *cw = widgetGet(funcGroup, w->conns[c]);
+				if (cw && cw->enable &&
+					cw->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_OUTPUT) {
+					if (dacCount == 0)
+						pinDAC = cw->nid;
+					dacCount++;
+				}
+			}
+			if (dacCount == 0) {
+				singleDAC = false;
+				break;
+			}
+			if (commonDAC == 0) {
+				commonDAC = pinDAC;
+			} else if (pinDAC != commonDAC) {
+				/* Multiple pins have different primary DACs — check if they
+				 * all share a common one (pin may have multiple connections) */
+				bool hasCommon = false;
+				for (int c = 0; c < w->nconns; c++) {
+					Widget *cw = widgetGet(funcGroup, w->conns[c]);
+					if (cw && cw->enable &&
+						cw->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_OUTPUT &&
+						cw->nid == commonDAC) {
+						hasCommon = true;
+						break;
+					}
+				}
+				if (!hasCommon) {
+					singleDAC = false;
+					break;
+				}
+			}
+			/* Track primary output association (lowest assoc number) */
+			if (assoc < primaryAssoc) {
+				primaryAssoc = assoc;
+				primaryOutPin = w;
+			}
+		}
+
+		/* Merge all output pins into the primary association */
+		if (singleDAC && commonDAC != 0 && primaryOutPin) {
+			UInt32 nextSeq = HDA_CONFIG_DEFAULTCONF_SEQUENCE(primaryOutPin->pin.config) + 1;
+			for (int i = funcGroup->startNode; i < funcGroup->endNode; i++) {
+				Widget *w = widgetGet(funcGroup, i);
+				if (!w || !w->enable || w == primaryOutPin)
+					continue;
+				if (w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
+					continue;
+				UInt32 type = w->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
+				UInt32 conn = (w->pin.config >> 30) & 0x3;
+				if (conn == 1)
+					continue;
+				if (type != HDA_CONFIG_DEFAULTCONF_DEVICE_LINE_OUT &&
+					type != HDA_CONFIG_DEFAULTCONF_DEVICE_SPEAKER &&
+					type != HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT)
+					continue;
+				UInt32 assoc = HDA_CONFIG_DEFAULTCONF_ASSOCIATION(w->pin.config);
+				if (assoc == 0 || assoc == 15 || assoc == primaryAssoc)
+					continue;
+
+				if (nextSeq > 15) nextSeq = 15;
+				w->pin.config &= ~(HDA_CONFIG_DEFAULTCONF_ASSOCIATION_MASK |
+						HDA_CONFIG_DEFAULTCONF_SEQUENCE_MASK);
+				w->pin.config |= (primaryAssoc << HDA_CONFIG_DEFAULTCONF_ASSOCIATION_SHIFT) |
+						(nextSeq << HDA_CONFIG_DEFAULTCONF_SEQUENCE_SHIFT);
+				dumpMsg("Single-DAC merge: moved output nid=%d into association %d seq=%d (common DAC=%d)\n",
+						w->nid, (int)primaryAssoc, (int)nextSeq, (int)commonDAC);
+				nextSeq++;
+			}
 		}
 	}
 
@@ -4689,8 +4823,6 @@ void VoodooHDADevice::hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 
 		}
 	} else {
 		/* If there is no muter - disable pin output. */
-	//	widget = widgetGet(funcGroup, nid); // assocs[assocsNum].pins[15]);
-	//	if (widget && (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)) {
 			if (res != 0)
 				val = widget->pin.ctrl | HDA_CMD_SET_PIN_WIDGET_CTRL_OUT_ENABLE;
 			else
@@ -4699,7 +4831,6 @@ void VoodooHDADevice::hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 
 				widget->pin.ctrl = val;
 				sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, widget->nid, widget->pin.ctrl), cad);
 			}
-	//	}
 	}
 	/* (Un)Mute other pins. */
 	for (int j = 0; j < 16; j++) {

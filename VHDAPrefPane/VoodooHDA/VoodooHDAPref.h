@@ -99,6 +99,10 @@ enum {
 	NSInteger currentService;
 	UInt8 currentChannel;
 	ChannelInfo *chInfo;
+	CGFloat initialViewWidth;
+	CGFloat designBoxWidth;
+	CGFloat detectedContentWidth;
+	BOOL inAdjustLayout;
 }
 //- (bool) updateChannelInfo;
 - (bool) updateMath;
