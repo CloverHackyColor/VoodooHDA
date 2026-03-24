@@ -3751,7 +3751,7 @@ IOReturn VoodooHDAEngine::clipOutputSamples(const void *mixBuf, void *sampleBuf,
 	if(!streamFormat)
 	{
         return kIOReturnBadArgument;
-    }
+  }
 	UInt32 firstSample = firstSampleFrame * streamFormat->fNumChannels;
 	UInt32 numSamples = numSampleFrames * streamFormat->fNumChannels;
 	int lastSample = firstSample + numSamples;
@@ -3764,7 +3764,7 @@ IOReturn VoodooHDAEngine::clipOutputSamples(const void *mixBuf, void *sampleBuf,
 	SInt32* theOutputBufferSInt32;
 	UInt32 noiseMask = (~0U) << mChannel->noiseLevel;
 #if !defined(TIGER) && !defined(NO_SSE2)
-	bool SSE2 = mChannel->vectorize;
+  bool SSE2 = true; //mChannel->vectorize;
   UInt8 *sourceBuf = (UInt8 *) sampleBuf;
 #endif
 
@@ -3950,7 +3950,7 @@ IOReturn VoodooHDAEngine::convertInputSamples(const void *sampleBuf, void *destB
 	const UInt8 *inputBuf24;
 	SInt32 *inputBuf32;
 #if !defined(TIGER) && !defined(NO_SSE2)
-	bool SSE2 = mChannel->vectorize;
+  bool SSE2 = true; //mChannel->vectorize;
 #endif	
 	
 	// figure out what sort of blit we need to do
