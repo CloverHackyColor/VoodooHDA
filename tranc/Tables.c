@@ -28,6 +28,22 @@ const ControllerListItem gControllerList[] = {
 	{ HDA_INTEL_SRPT,		"Intel Sunrise Point"},
 	{ HDA_INTEL_KBLK,		"Intel Kabylake"},
 	{ HDA_INTEL_UNPT,			"Intel Union Point"},
+	{ HDA_INTEL_CNLK,			"Intel Cannon Lake"},
+	{ HDA_INTEL_CML_S,			"Intel Comet Lake-S"},
+	{ HDA_INTEL_CML_LP,			"Intel Comet Lake-LP"},
+	{ HDA_INTEL_CML_H,			"Intel Comet Lake-H"},
+	{ HDA_INTEL_ICLK,			"Intel Ice Lake"},
+	{ HDA_INTEL_JSL,			"Intel Jasper Lake"},
+	{ HDA_INTEL_TGLLP,			"Intel Tiger Lake"},
+	{ HDA_INTEL_DG1,			"Intel DG1"},
+	{ HDA_INTEL_ADLS,			"Intel Alder Lake"},
+	{ HDA_INTEL_ADLP,			"Intel Alder Lake-P"},
+	{ HDA_INTEL_ADLN,			"Intel Alder Lake-N"},
+	{ HDA_INTEL_RPLS,			"Intel Raptor Lake"},
+	{ HDA_INTEL_RPLP,			"Intel Raptor Lake-P"},
+	{ HDA_INTEL_MTLP,			"Intel Meteor Lake"},
+	{ HDA_INTEL_ARLS,			"Intel Arrow Lake"},
+	{ HDA_INTEL_LNLP,			"Intel Lunar Lake"},
 	{ HDA_INTEL_82801F,			"Intel 82801F" },
 	{ HDA_INTEL_63XXESB,		"Intel 631x/632xESB" },
 	{ HDA_INTEL_82801G,			"Intel 82801G" },
@@ -124,8 +140,8 @@ const CodecListItem gCodecList[] = {
 	{ HDA_CODEC_CS4210,			"Cirrus Logic CS4210" },
 	{ HDA_CODEC_ALC221,			"Realtek ALC221" },
 	{ HDA_CODEC_ALC233,			"Realtek ALC233" },
-  { HDA_CODEC_ALC256,     "Realtek ALC256" },
-  { HDA_CODEC_ALC257,     "Realtek ALC257" },
+	{ HDA_CODEC_ALC256,			"Realtek ALC256" },
+	{ HDA_CODEC_ALC257,			"Realtek ALC257" },
 	{ HDA_CODEC_ALC260,			"Realtek ALC260" },
 	{ HDA_CODEC_ALC262,			"Realtek ALC262" },
 	{ HDA_CODEC_ALC267,			"Realtek ALC267" },
@@ -138,7 +154,7 @@ const CodecListItem gCodecList[] = {
 	{ HDA_CODEC_ALC276,			"Realtek ALC276" },
 	{ HDA_CODEC_ALC282,			"Realtek ALC282" },
 	{ HDA_CODEC_ALC292,			"Realtek ALC292" },
-  { HDA_CODEC_ALC293,     "Realtek ALC293" },
+	{ HDA_CODEC_ALC293,			"Realtek ALC293" },
   { HDA_CODEC_ALC294,     "Realtek ALC294" },
 	{ HDA_CODEC_ALC295,			"Realtek ALC295" },
 	{ HDA_CODEC_ALC660,			"Realtek ALC660" },
@@ -394,6 +410,14 @@ const CodecListItem gCodecList[] = {
 	{ HDA_CODEC_INTELBDW,		"Intel Broadwell HDMI" },
 	{ HDA_CODEC_INTELSKLK,		"Intel Skylake HDMI" },
 	{ HDA_CODEC_INTELKBLK,		"Intel Kabylake HDMI" },
+	{ HDA_CODEC_INTELCFLK,		"Intel Coffee Lake HDMI" },
+	{ HDA_CODEC_INTELCNLK,		"Intel Cannon Lake HDMI" },
+	{ HDA_CODEC_INTELCMLK,		"Intel Comet Lake HDMI" },
+	{ HDA_CODEC_INTELICLK,		"Intel Ice Lake HDMI" },
+	{ HDA_CODEC_INTELTGLLK,	"Intel Tiger Lake HDMI" },
+	{ HDA_CODEC_INTELADLK,		"Intel Alder Lake HDMI" },
+	{ HDA_CODEC_INTELRPLK,		"Intel Raptor Lake HDMI" },
+	{ HDA_CODEC_INTELMTLK,		"Intel Meteor Lake HDMI" },
 	{ HDA_CODEC_INTELCL,		"Intel Crestline HDMI" },
 	{ HDA_CODEC_INTELWB,		"Intel Wellsburg HDMI"},
 	{ HDA_CODEC_SII1390,		"Silicon Image SiI1390 HDMI" },
@@ -536,10 +560,10 @@ const MixerValueName MixerValueNamesBind[SOUND_MIXER_NRDEVICES] = {
 {"Line",	SOUND_MIXER_LINE, 75},		// (was 75) SOUND_MIXER_LINE
 {"Mic",		SOUND_MIXER_MIC, 50},		// SOUND_MIXER_MIC
 {"CD",		SOUND_MIXER_CD, 90},	// SOUND_MIXER_CD
-{"iMix",	SOUND_MIXER_IMIX, 70},		// [?] SOUND_MIXER_IMIX
+{"iMix",	SOUND_MIXER_IMIX, 70},		// 70: main PCM playback path (NID 2→NID 12→speaker) — must not be 0
 {"AltPCM",	SOUND_MIXER_ALTPCM, 30},		// [?] SOUND_MIXER_ALTPCM
 {"Rec",		SOUND_MIXER_RECLEV, 75},		// SOUND_MIXER_RECLEV
-{"iGain",	SOUND_MIXER_IGAIN, 80},		// SOUND_MIXER_IGAIN
+{"iGain",	SOUND_MIXER_IGAIN, 0},		// 0: loopback path (NID 11→NID 12) muted to prevent startup pop (was 80)
 {"oGain",	SOUND_MIXER_OGAIN, 50},		// SOUND_MIXER_OGAIN
 {"Line1",	SOUND_MIXER_LINE1, 30},		// (was 75) SOUND_MIXER_LINE1
 {"Line2",	SOUND_MIXER_LINE2, 10},		// [?] SOUND_MIXER_LINE2

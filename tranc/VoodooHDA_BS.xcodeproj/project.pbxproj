@@ -10,6 +10,12 @@
 		120156031244377E00611BC7 /* AppleAudioClip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 12BDC91012440B5D00B327AE /* AppleAudioClip.cpp */; settings = {COMPILER_FLAGS = "-Wno-unused-function -fvisibility=hidden"; }; };
 		12BDC90E12440B4E00B327AE /* TigerAdditionals.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 12BDC90C12440B4E00B327AE /* TigerAdditionals.cpp */; };
 		12F24FCC12860D9600B294D6 /* PCMBlitterLib.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEF7C0A40EF74C2700A14C68 /* PCMBlitterLib.cpp */; settings = {COMPILER_FLAGS = "-fvisibility=hidden"; }; };
+		A5FD73732FABCC3C0074576F /* VoodooGFXHDA.h in Headers */ = {isa = PBXBuildFile; fileRef = A5FD736F2FABCC3C0074576F /* VoodooGFXHDA.h */; };
+		A5FD73742FABCC3C0074576F /* VoodooHDAFramebufferNotifier.h in Headers */ = {isa = PBXBuildFile; fileRef = A5FD73712FABCC3C0074576F /* VoodooHDAFramebufferNotifier.h */; };
+		A5FD73752FABCC3C0074576F /* AppleALCPinConfigs.h in Headers */ = {isa = PBXBuildFile; fileRef = A5FD736D2FABCC3C0074576F /* AppleALCPinConfigs.h */; };
+		A5FD73762FABCC3C0074576F /* AppleALCPinConfigs.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5FD736E2FABCC3C0074576F /* AppleALCPinConfigs.cpp */; };
+		A5FD73772FABCC3C0074576F /* VoodooGFXHDA.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5FD73702FABCC3C0074576F /* VoodooGFXHDA.cpp */; };
+		A5FD73782FABCC3C0074576F /* VoodooHDAFramebufferNotifier.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5FD73722FABCC3C0074576F /* VoodooHDAFramebufferNotifier.cpp */; };
 		CE5D398B0EF4784000140715 /* Parser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE5D398A0EF4784000140715 /* Parser.cpp */; };
 		CE6725A40EF078B100FAFBED /* VoodooHDADevice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE6725A00EF078B100FAFBED /* VoodooHDADevice.cpp */; };
 		CE6725A60EF078B100FAFBED /* VoodooHDAEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE6725A20EF078B100FAFBED /* VoodooHDAEngine.cpp */; };
@@ -26,6 +32,12 @@
 		12BDC91212440B5D00B327AE /* AppleAudioCommon.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppleAudioCommon.h; sourceTree = "<group>"; };
 		32D94FCF0562CBF700B6AF17 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		32D94FD00562CBF700B6AF17 /* VoodooHDA.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoodooHDA.kext; sourceTree = BUILT_PRODUCTS_DIR; };
+		A5FD736D2FABCC3C0074576F /* AppleALCPinConfigs.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppleALCPinConfigs.h; sourceTree = "<group>"; };
+		A5FD736E2FABCC3C0074576F /* AppleALCPinConfigs.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = AppleALCPinConfigs.cpp; sourceTree = "<group>"; };
+		A5FD736F2FABCC3C0074576F /* VoodooGFXHDA.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VoodooGFXHDA.h; sourceTree = "<group>"; };
+		A5FD73702FABCC3C0074576F /* VoodooGFXHDA.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VoodooGFXHDA.cpp; sourceTree = "<group>"; };
+		A5FD73712FABCC3C0074576F /* VoodooHDAFramebufferNotifier.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VoodooHDAFramebufferNotifier.h; sourceTree = "<group>"; };
+		A5FD73722FABCC3C0074576F /* VoodooHDAFramebufferNotifier.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VoodooHDAFramebufferNotifier.cpp; sourceTree = "<group>"; };
 		CE45220E0EF210FD00600B68 /* Models.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Models.h; sourceTree = "<group>"; };
 		CE45220F0EF210FD00600B68 /* Private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Private.h; sourceTree = "<group>"; };
 		CE4522100EF210FD00600B68 /* Registers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Registers.h; sourceTree = "<group>"; };
@@ -91,6 +103,12 @@
 		247142CAFF3F8F9811CA285C /* Source */ = {
 			isa = PBXGroup;
 			children = (
+				A5FD736D2FABCC3C0074576F /* AppleALCPinConfigs.h */,
+				A5FD736E2FABCC3C0074576F /* AppleALCPinConfigs.cpp */,
+				A5FD736F2FABCC3C0074576F /* VoodooGFXHDA.h */,
+				A5FD73702FABCC3C0074576F /* VoodooGFXHDA.cpp */,
+				A5FD73712FABCC3C0074576F /* VoodooHDAFramebufferNotifier.h */,
+				A5FD73722FABCC3C0074576F /* VoodooHDAFramebufferNotifier.cpp */,
 				12BDC91012440B5D00B327AE /* AppleAudioClip.cpp */,
 				12BDC91112440B5D00B327AE /* AppleAudioClip.h */,
 				12BDC91212440B5D00B327AE /* AppleAudioCommon.h */,
@@ -130,6 +148,9 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A5FD73732FABCC3C0074576F /* VoodooGFXHDA.h in Headers */,
+				A5FD73742FABCC3C0074576F /* VoodooHDAFramebufferNotifier.h in Headers */,
+				A5FD73752FABCC3C0074576F /* AppleALCPinConfigs.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -221,6 +242,9 @@
 				CE5D398B0EF4784000140715 /* Parser.cpp in Sources */,
 				CE709B500EFF2AA400EE77FF /* VoodooHDAUserClient.cpp in Sources */,
 				12BDC90E12440B4E00B327AE /* TigerAdditionals.cpp in Sources */,
+				A5FD73762FABCC3C0074576F /* AppleALCPinConfigs.cpp in Sources */,
+				A5FD73772FABCC3C0074576F /* VoodooGFXHDA.cpp in Sources */,
+				A5FD73782FABCC3C0074576F /* VoodooHDAFramebufferNotifier.cpp in Sources */,
 				120156031244377E00611BC7 /* AppleAudioClip.cpp in Sources */,
 				12F24FCC12860D9600B294D6 /* PCMBlitterLib.cpp in Sources */,
 				E5A3BD951E7095C100F91F3D /* PCMBlitterLibX86.cpp in Sources */,
@@ -239,13 +263,13 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_ENTITLEMENTS = "";
 				CODE_SIGN_IDENTITY = "-";
-				CURRENT_PROJECT_VERSION = 3.0.5;
+				CURRENT_PROJECT_VERSION = 3.4.0;
 				DEVELOPMENT_TEAM = "";
 				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../MacKernelSDK/Headers";
 				INFOPLIST_FILE = Info.plist;
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../MacKernelSDK/Library/universal";
 				MACOSX_DEPLOYMENT_TARGET = 10.9;
-				MARKETING_VERSION = 3.0.5;
+				MARKETING_VERSION = 3.4.0;
 				MODULE_NAME = org.voodoo.driver.VoodooHDA;
 				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				OTHER_CFLAGS = (
@@ -296,7 +320,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3.0.5;
+				CURRENT_PROJECT_VERSION = 3.4.0;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEPLOYMENT_POSTPROCESSING = YES;
@@ -311,7 +335,7 @@
 				GCC_FAST_MATH = YES;
 				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_OPTIMIZATION_LEVEL = 3;
+				GCC_OPTIMIZATION_LEVEL = 2;
 				GCC_PREPROCESSOR_DEFINITIONS = MULTICHANNEL;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;

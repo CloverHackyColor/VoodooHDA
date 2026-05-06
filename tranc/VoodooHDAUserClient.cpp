@@ -220,6 +220,38 @@ IOReturn VoodooHDAUserClient::clientMemoryForType(UInt32 type, IOOptionBits *opt
 		*memory = memDesc; // automatically released after memory is mapped into task
 		result = kIOReturnSuccess;
 		break;
+	/* Diag-mode persistent shared regions. Allocated lazily; the same
+	 * IOBufferMemoryDescriptor is returned to every mapper, so multiple
+	 * userland tasks see the same physical pages. retain() balances the
+	 * release the framework performs when the mapping is destroyed. */
+	case kVoodooHDAMemoryDiagPCMRing:
+		if (!mDevice->allocateDiagBuffers() || !mDevice->mDiagPCMRingDesc) {
+			result = kIOReturnNoMemory;
+			break;
+		}
+		mDevice->mDiagPCMRingDesc->retain();
+		*memory = mDevice->mDiagPCMRingDesc;
+		result = kIOReturnSuccess;
+		break;
+	case kVoodooHDAMemoryDiagSnapshot:
+		if (!mDevice->allocateDiagBuffers() || !mDevice->mDiagSnapshotDesc) {
+			result = kIOReturnNoMemory;
+			break;
+		}
+		mDevice->mDiagSnapshotDesc->retain();
+		*options |= kIOMapReadOnly;
+		*memory = mDevice->mDiagSnapshotDesc;
+		result = kIOReturnSuccess;
+		break;
+	case kVoodooHDAMemoryDiagELD:
+		if (!mDevice->allocateDiagBuffers() || !mDevice->mDiagELDDesc) {
+			result = kIOReturnNoMemory;
+			break;
+		}
+		mDevice->mDiagELDDesc->retain();
+		*memory = mDevice->mDiagELDDesc;
+		result = kIOReturnSuccess;
+		break;
 	default:
 		result = kIOReturnBadArgument;
 		break;

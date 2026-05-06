@@ -79,8 +79,62 @@
 			<key>VoodooHDAEnableVolumeChangeFix</key>
 			<false/>
 			<key>VoodooHDAVerboseLevel</key>
-			<integer>0</integer>
+			<integer>2</integer>
 		</dict>
+		<key>VoodooHDA-HDMI</key>
+		<dict>
+			<key>AllowMSI</key>
+			<true/>
+			<key>Boost</key>
+			<integer>1</integer>
+			<key>CFBundleIdentifier</key>
+			<string>org.voodoo.driver.VoodooHDA</string>
+			<key>DisableInputMonitor</key>
+			<true/>
+			<key>Disable24BitOutput</key>
+			<true/>
+			<key>IOClass</key>
+			<string>VoodooHDADevice</string>
+			<key>IOPCIClassMatch</key>
+			<string>0x04000000&amp;0xfffc0000</string>
+			<key>IOPCIMatch</key>
+			<string>0xAAF81002 0xAAF01002 0xABF81002 0xAB201002 0xAAE01002 0xAB381002 0xAB281002</string>
+			<key>IOProbeScore</key>
+			<integer>100000</integer>
+			<key>IOProviderClass</key>
+			<string>IOPCIDevice</string>
+			<key>IOUserClientClass</key>
+			<string>VoodooHDAUserClient</string>
+			<key>InhibitCache</key>
+			<false/>
+			<key>MixerValues</key>
+			<dict>
+				<key>PCM</key>
+				<integer>95</integer>
+				<key>Rec</key>
+				<integer>95</integer>
+				<key>iGain</key>
+				<integer>0</integer>
+				<key>iMix</key>
+				<integer>95</integer>
+			</dict>
+			<key>NodesToPatch</key>
+			<array/>
+			<key>Noise</key>
+			<integer>0</integer>
+			<key>Vectorize</key>
+			<true/>
+			<key>VoodooHDAEnableHalfMicVolumeFix</key>
+			<false/>
+			<key>VoodooHDAEnableHalfVolumeFix</key>
+			<false/>
+			<key>VoodooHDAEnableMuteFix</key>
+			<false/>
+			<key>VoodooHDAEnableVolumeChangeFix</key>
+			<false/>
+			<key>VoodooHDAVerboseLevel</key>
+			<integer>2</integer>
+		</dict>		
 	</dict>
 	<key>OSBundleLibraries</key>
 	<dict>

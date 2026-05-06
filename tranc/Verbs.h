@@ -727,6 +727,52 @@ HDA_CMD_VERB_SET_HDMI_DIP_XMIT, (payload)))
 #define	HDA_HDMI_CODING_TYPE_WMAPRO			14
 #define	HDA_HDMI_CODING_TYPE_REF_CTX			15
 
+/* ATI/AMD specific HDA pin verbs (AMD HDA Verbs specification) */
+#define ATI_VERB_SET_RAMP_RATE              0x770
+#define ATI_VERB_SET_CHANNEL_ALLOCATION     0x771
+#define ATI_VERB_SET_DOWNMIX_INFO           0x772
+#define ATI_VERB_SET_AUDIO_DESCRIPTOR       0x776
+#define ATI_VERB_SET_MULTICHANNEL_01        0x777
+#define ATI_VERB_SET_MULTICHANNEL_23        0x778
+#define ATI_VERB_SET_MULTICHANNEL_45        0x779
+#define ATI_VERB_SET_MULTICHANNEL_67        0x77a
+#define ATI_VERB_SET_HBR_CONTROL            0x77c
+#define ATI_VERB_SET_SINK_INFO_INDEX        0x780
+#define ATI_VERB_SET_MULTICHANNEL_1         0x785
+#define ATI_VERB_SET_MULTICHANNEL_3         0x786
+#define ATI_VERB_SET_MULTICHANNEL_5         0x787
+#define ATI_VERB_SET_MULTICHANNEL_7         0x788
+#define ATI_VERB_SET_MULTICHANNEL_MODE      0x789
+
+#define ATI_VERB_GET_RAMP_RATE              0xf70
+#define ATI_VERB_GET_SPEAKER_ALLOCATION     0xf70
+#define ATI_VERB_GET_CHANNEL_ALLOCATION     0xf71
+#define ATI_VERB_GET_DOWNMIX_INFO           0xf72
+#define ATI_VERB_GET_AUDIO_DESCRIPTOR       0xf76
+#define ATI_VERB_GET_MULTICHANNEL_01        0xf77
+#define ATI_VERB_GET_MULTICHANNEL_23        0xf78
+#define ATI_VERB_GET_MULTICHANNEL_45        0xf79
+#define ATI_VERB_GET_MULTICHANNEL_67        0xf7a
+#define ATI_VERB_GET_AUDIO_VIDEO_DELAY      0xf7b
+#define ATI_VERB_GET_HBR_CONTROL            0xf7c
+#define ATI_VERB_GET_SINK_INFO_INDEX        0xf80
+#define ATI_VERB_GET_SINK_INFO_DATA         0xf81
+#define ATI_VERB_GET_MULTICHANNEL_1         0xf85
+#define ATI_VERB_GET_MULTICHANNEL_3         0xf86
+#define ATI_VERB_GET_MULTICHANNEL_5         0xf87
+#define ATI_VERB_GET_MULTICHANNEL_7         0xf88
+#define ATI_VERB_GET_MULTICHANNEL_MODE      0xf89
+
+#define ATI_OUT_ENABLE                      0x1
+#define ATI_MULTICHANNEL_MODE_PAIRED        0
+#define ATI_MULTICHANNEL_MODE_SINGLE        1
+#define ATI_HBR_CAPABLE                     0x01
+#define ATI_HBR_ENABLE                      0x10
+
+/* ATI verb helper macros */
+#define ATI_CMD_12BIT(cad, nid, verb, payload) \
+    HDA_CMD_12BIT((cad), (nid), (verb), (payload))
+
 /* Function Reset */
 #define HDA_CMD_VERB_FUNCTION_RESET						0x7ff
 
