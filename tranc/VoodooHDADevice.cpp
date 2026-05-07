@@ -2987,14 +2987,14 @@ Channel *VoodooHDADevice::channelInit(PcmDevice *pcmDevice, int direction)
 
 int VoodooHDADevice::channelSetFormat(Channel *channel, UInt32 format)
 {
-//    // 🔧 Разрешаем 32-бит для цифровых потоков (HDMI/DP), даже если кодек не объявил его в caps
-//    if (channel->pcmDevice && channel->pcmDevice->digital >= 2) {
-//        if (format & AFMT_S32_LE) {
-//            channel->format = format;
-//            return 0;
-//        }
-//    }
-//    
+    // 🔧 Разрешаем 32-бит для цифровых потоков (HDMI/DP), даже если кодек не объявил его в caps
+    if (channel->pcmDevice && channel->pcmDevice->digital >= 2) {
+        if (format & AFMT_S32_LE) {
+            channel->format = format;
+            return 0;
+        }
+    }
+    
     // Стандартная проверка для аналога и S/PDIF
 	for (int i = 0; channel->caps.formats[i] != 0; i++) {
 		if (format == channel->caps.formats[i]) {
@@ -3267,6 +3267,39 @@ void VoodooHDADevice::streamSetup(Channel *channel)
 		map = 0;
 	 else if (assoc->pinset == 0x0017) // Standard 7.1
 		map = 1;
+  
+  // 🔧 Формируем SDFMT на основе channel->format и channel->bit32
+  UInt16 sdfmt = 0;
+  
+  // Sample Rate (упрощённо: берём из channel->speed)
+  switch (channel->speed) {
+    case 48000: sdfmt |= 0x0000; break;  // Base=48k, Multiplier=1
+    case 44100: sdfmt |= 0x0002; break;  // Base=44.1k
+    case 96000: sdfmt |= 0x0001; break;  // Base=48k, Multiplier=2
+    case 88200: sdfmt |= 0x0003; break;  // Base=44.1k, Multiplier=2
+    default:    sdfmt |= 0x0000; break;  // Fallback to 48k
+  }
+  
+  // Channels - 1 (max 7)
+  sdfmt |= ((totalchn - 1) & 0x7) << 0;
+  
+  // Sample Size field (биты 4:5 в SDFMT)
+  UInt8 sampleSizeField = 1 << 4; // Default: 16-bit (01)
+  if (channel->format & AFMT_S32_LE) {
+    // VoodooHDA использует AFMT_S32_LE для 20/24/32 бит
+    // channel->bit32: 2=20-bit, 3=24-bit, 4=32-bit
+    if (channel->bit32 == 2) {
+      sampleSizeField = 2 << 4; // 20-bit → SDFMT bits 4:5 = 10
+    } else {
+      sampleSizeField = 3 << 4; // 24/32-bit → SDFMT bits 4:5 = 11
+    }
+  } else if (channel->format & AFMT_S16_LE) {
+    sampleSizeField = 1 << 4; // 16-bit → SDFMT bits 4:5 = 01
+  }
+  sdfmt |= sampleSizeField;
+
+  // Записываем SDFMT
+  writeData16(channel->off + HDAC_SDFMT, sdfmt);
 
 	/* Mirror AppleGFXHDAWidget::setIEC60958
 	 * (decompile:36262-36320).  PCM: DIGEN | COPY (= 0x11), encoding
@@ -3279,8 +3312,22 @@ void VoodooHDADevice::streamSetup(Channel *channel)
 		digFormat |= HDA_CMD_SET_DIGITAL_CONV_FMT1_NAUDIO;
 	//else
 	//	digFormat |= HDA_CMD_SET_DIGITAL_CONV_FMT1_COPY;
+  
+  // Применяем DIGITAL_CONVERTER ко всем цифровым виджетам канала
+  for (int i = 0; channel->io[i] != -1; i++) {
+    Widget *widget = widgetGet(channel->funcGroup, channel->io[i]);
+    if (!widget) continue;
+    if (HDA_PARAM_AUDIO_WIDGET_CAP_DIGITAL(widget->params.widgetCap)) {
+      sendCommand(HDA_CMD_SET_DIGITAL_CONV_FMT1(                                                         channel->funcGroup->codec->cad, channel->io[i], digFormat),
+                           channel->funcGroup->codec->cad);
+    }
+  }
 
-	writeData16(channel->off + HDAC_SDFMT, format);
+  
+  // Применяем поле размера в SDFMT
+//  format = (format & ~(0x3 << 4)) | sampleSizeField;
+//
+//	writeData16(channel->off + HDAC_SDFMT, format);
     
 	/* AppleGFXHDA never uses stripe mode for HDMI audio.  Stripe causes
 	 * FIFO errors (SDSTS_FIFOE) on AMD/ATI GPU HDA controllers, producing

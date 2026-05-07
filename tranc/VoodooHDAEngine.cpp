@@ -1118,9 +1118,14 @@ IOReturn VoodooHDAEngine::performAudioEngineStart()
     mDevice->channelStart(mChannel);
     if (mDigitalStream)
         mDigitalStream->resetClipPosition(0);
+  
+  // 🔧 Полное обнуление DMA-буфера перед стартом (убирает "икание" от старых данных)
+  if (mChannel && mChannel->buffer)
+    bzero(reinterpret_cast<void *>(mChannel->buffer->virtAddr), mChannel->buffer->size);
+
 
     // Polaris DCE 11.2: фиксированная задержка стабильнее опроса SDLPIB
-    IODelay(1000);
+    IODelay(1500);
 
     // Пересчёт смещений по текущей частоте (критично после сна/смены трека)
     const IOAudioSampleRate *rate = getSampleRate();
@@ -1140,9 +1145,15 @@ IOReturn VoodooHDAEngine::performAudioEngineStop()
     
     // Дренаж аппаратного FIFO перед выключением
     IODelay(500);
-    
+  
+  // 🔧 Сброс позиции клипа для предотвращения эхо/дублирования
+  resetClipPosition(mStream, 0);
     if (mDigitalStream)
         mDigitalStream->resetClipPosition(0);
+  
+  // Очистка буфера после стопа (гарантирует чистый старт следующего трека)
+  if (mChannel && mChannel->buffer)
+    bzero(reinterpret_cast<void *>(mChannel->buffer->virtAddr), mChannel->buffer->size);
 
 	return kIOReturnSuccess;
 }
