@@ -44,10 +44,12 @@
 			<false/>
 			<key>MixerValues</key>
 			<dict>
+				<key>Monitor</key>
+				<integer>0</integer>
 				<key>PCM</key>
 				<integer>95</integer>
 				<key>Rec</key>
-				<integer>95</integer>
+				<integer>38</integer>
 				<key>iGain</key>
 				<integer>0</integer>
 				<key>iMix</key>
@@ -134,12 +136,14 @@
 			<false/>
 			<key>VoodooHDAVerboseLevel</key>
 			<integer>2</integer>
-		</dict>		
+		</dict>
 	</dict>
 	<key>OSBundleLibraries</key>
 	<dict>
 		<key>com.apple.iokit.IOAudioFamily</key>
 		<string>1.1fc9</string>
+		<key>com.apple.iokit.IOGraphicsFamily</key>
+		<string>2.0</string>
 		<key>com.apple.iokit.IOPCIFamily</key>
 		<string>2.1</string>
 		<key>com.apple.kpi.iokit</key>
