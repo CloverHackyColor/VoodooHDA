@@ -1,4 +1,4 @@
-#include "License.h"
+﻿#include "License.h"
 
 #include "VoodooHDADevice.h"
 #include "VoodooHDAEngine.h"
@@ -322,179 +322,192 @@ UInt32 VoodooGFXHDAController::getLinkPosition(Channel *channel, bool *valid)
 
 	return position;
 }
-
-void VoodooGFXHDAController::setupStream(Channel *channel, nid_t dac, AudioAssoc *assoc, int totalchn, int totalext)
+void VoodooGFXHDAController::setupStream(Channel* channel, nid_t dac, AudioAssoc* assoc, int totalchn, int totalext)
 {
-	FunctionGroup *funcGroup = channel->funcGroup;
-	UInt8 csum;
-	UInt16 AudioInfopacketBufferSize = 0xFFFFU;
+	FunctionGroup* funcGroup = channel->funcGroup;
 	nid_t cad = funcGroup->codec->cad;
 	nid_t nid_pin;
-	Widget *widget_pin;
+	Widget* widget_pin;
 	bool atiCodec = isAtiHdmiCodec(funcGroup->codec);
-	IOLog("VoodooHDA HDMI: streamSetup dac=%d ati=%d totalchn=%d totalext=%d codec=0x%04x:0x%04x\n",
-	      dac, atiCodec, totalchn, totalext, funcGroup->codec->vendorId, funcGroup->codec->deviceId);
 
 	const static UInt8 hdmica[2][8] =
-	{{ 0x02, 0x00, 0x04, 0x08, 0x0a, 0x0e, 0x12, 0x12 },
-	 { 0x01, 0x03, 0x01, 0x03, 0x09, 0x0b, 0x0f, 0x13 }};
+	{ { 0x02, 0x00, 0x04, 0x08, 0x0a, 0x0e, 0x12, 0x12 },
+	 { 0x01, 0x03, 0x01, 0x03, 0x09, 0x0b, 0x0f, 0x13 } };
 	const static UInt32 hdmich[2][8] =
-	{{ 0xFFFF0F00, 0xFFFFFF10, 0xFFF2FF10, 0xFF32FF10,
-	   0xFF324F10, 0xF5324F10, 0x54326F10, 0x54326F10 },
+	{ { 0xFFFF0F00, 0xFFFFFF10, 0xFFF2FF10, 0xFF32FF10,
+		 0xFF324F10, 0xF5324F10, 0x54326F10, 0x54326F10 },
 	 { 0xFFFFF000, 0xFFFF0100, 0xFFFFF210, 0xFFFF2310,
-	   0xFF32F410, 0xFF324510, 0xF6324510, 0x76325410 }};
+		 0xFF32F410, 0xFF324510, 0xF6324510, 0x76325410 } };
 
 	for (int j = 0; j < 16; j++) {
-		if (assoc->dacs[j] != dac)
-			continue;
+		if (assoc->dacs[j] != dac) continue;
 		nid_pin = assoc->pins[j];
 		widget_pin = mDevice->widgetGet(funcGroup, nid_pin);
-		if (!widget_pin)
-			continue;
+		if (!widget_pin) continue;
 		if (!HDA_PARAM_PIN_CAP_DP(widget_pin->pin.cap) &&
-		    !HDA_PARAM_PIN_CAP_HDMI(widget_pin->pin.cap))
-			continue;
+			!HDA_PARAM_PIN_CAP_HDMI(widget_pin->pin.cap)) continue;
 
 		if (atiCodec && mDevice->mFBNotifier)
 			mDevice->mFBNotifier->ensureAudioPipeEnabled(cad, nid_pin);
 
-		IOLog("VoodooHDA HDMI: streamSetup nid_pin=%d dac=%d eld_len=%d (before re-read) pinCap=0x%08x\n",
-		      nid_pin, dac, widget_pin->eld_len, (unsigned)widget_pin->pin.cap);
 		mDevice->hdaa_eld_handler(widget_pin);
-		IOLog("VoodooHDA HDMI: streamSetup nid_pin=%d eld_len=%d (after re-read)\n",
-		      nid_pin, widget_pin->eld_len);
 
 		UInt32 dipSizeTest = mDevice->sendCommand(HDA_CMD_GET_HDMI_DIP_SIZE(cad, nid_pin, 0x00), cad);
 		bool useStandardPath = (dipSizeTest != HDA_INVALID) && ((dipSizeTest & 0xff) > 0);
 
-		IOLog("VoodooHDA HDMI: streamSetup nid_pin=%d DIP_SIZE(0x00)=0x%08x -> useStandard=%d ati=%d\n",
-		      nid_pin, (unsigned)dipSizeTest, useStandardPath, atiCodec);
-
+		// ==================== ATI VENDOR PATH ====================
 		if (atiCodec && !useStandardPath) {
 			int ca = hdmica[totalext == 0 ? 0 : 1][totalchn - 1];
-			IOLog("VoodooHDA HDMI: ATI verb path nid_pin=%d ca=0x%02x totalchn=%d\n",
-			      nid_pin, ca, totalchn);
 
+			// Multichannel slot verbs
 			static const UInt16 ati_paired_verbs[4] = {
-				ATI_VERB_SET_MULTICHANNEL_01,
-				ATI_VERB_SET_MULTICHANNEL_23,
-				ATI_VERB_SET_MULTICHANNEL_45,
-				ATI_VERB_SET_MULTICHANNEL_67
+				ATI_VERB_SET_MULTICHANNEL_01, ATI_VERB_SET_MULTICHANNEL_23,
+				ATI_VERB_SET_MULTICHANNEL_45, ATI_VERB_SET_MULTICHANNEL_67
 			};
-
 			for (int k = 0; k < 4; k++) {
 				int base_slot = k * 2;
 				int enable = (base_slot < totalchn) ? 1 : 0;
 				UInt32 val = (base_slot << 4) | enable;
 				mDevice->sendCommand(ATI_CMD_12BIT(cad, nid_pin, ati_paired_verbs[k], val), cad);
-				IOLog("VoodooHDA HDMI: ATI MC%d%d=0x%02x\n", base_slot, base_slot + 1, val);
 			}
 
 			mDevice->sendCommand(ATI_CMD_12BIT(cad, nid_pin, ATI_VERB_SET_CHANNEL_ALLOCATION, ca), cad);
-			IOLog("VoodooHDA HDMI: ATI CA=0x%02x pinCtrl=0x%02x\n", ca, widget_pin->pin.ctrl);
 
 			if (HDA_PARAM_PIN_CAP_HDMI(widget_pin->pin.cap) &&
-			    HDA_PARAM_PIN_CAP_HBR(widget_pin->pin.cap)) {
+				HDA_PARAM_PIN_CAP_HBR(widget_pin->pin.cap)) {
 				UInt32 hbr = ((channel->format & AFMT_AC3) && (totalchn == 8)) ? ATI_HBR_ENABLE : 0;
 				mDevice->sendCommand(ATI_CMD_12BIT(cad, nid_pin, ATI_VERB_SET_HBR_CONTROL, hbr), cad);
 			}
-
-			mDevice->logMsg("ATI HDMI verb path: nid=%d ca=0x%02x totalchn=%d\n", nid_pin, ca, totalchn);
 
 			widget_pin->pin.ctrl |= 0x40;
 			mDevice->sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, nid_pin, widget_pin->pin.ctrl), cad);
 
 			for (int k = 0; k < 8; k++) {
-				UInt16 slotVerb;
-				if (k < totalchn)
-					slotVerb = (((hdmich[totalext == 0 ? 0 : 1][totalchn - 1] >> (k * 4)) & 0xf) << 4) | k;
-				else
-					slotVerb = 0xf0 | k;
+				UInt16 slotVerb = (k < totalchn) ?
+					(((hdmich[totalext == 0 ? 0 : 1][totalchn - 1] >> (k * 4)) & 0xf) << 4) | k :
+					(0xf0 | k);
 				mDevice->sendCommand(HDA_CMD_SET_HDMI_CHAN_SLOT(cad, nid_pin, slotVerb), cad);
 			}
 
-			{
-				int caAti = hdmica[totalext == 0 ? 0 : 1][totalchn - 1];
-				UInt8 csumAti = -(0x84 + 0x01 + 0x0a + (totalchn - 1) + caAti);
-
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_XMIT(cad, nid_pin, 0x00), cad);
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x84), cad);
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x01), cad);
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x0a), cad);
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, csumAti), cad);
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, totalchn - 1), cad);
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, caAti), cad);
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
-				mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_XMIT(cad, nid_pin, 0xc0), cad);
+			// ===== InfoFrame (единый расчёт для ATI) =====
+			UInt8 sf = 0;
+			switch (channel->speed) {
+				case 32000: sf = 1; break;
+				case 44100: sf = 2; break;
+				case 48000: sf = 3; break;
+				case 88200: sf = 4; break; 
+				case 96000: sf = 5; break;
+				case 176400: sf = 6; break; 
+				case 192000: sf = 7; break;
+				default: sf = 3; break;
 			}
-			IOLog("VoodooHDA HDMI: ATI path + CHAN_SLOT + InfoFrame + DIP_XMIT=0xc0 nid=%d ca=0x%02x chn=%d\n",
-			      nid_pin, hdmica[totalext == 0 ? 0 : 1][totalchn - 1], totalchn);
+			UInt8 ss = 0;
+			if (channel->format & AFMT_S16_LE) ss = 1;
+			else if (channel->format & AFMT_S32_LE) {
+				switch (channel->bit32) {
+					case 2: ss = 2; break; 
+					case 3: 
+					case 4: 
+					default: ss = 3; break;
+				}
+			}
+			UInt8 ct = (channel->format & AFMT_AC3) ? 1 : 0;
+			UInt8 cc = (totalchn > 0) ? (totalchn - 1) : 0;
+			UInt8 pb0 = ((sf & 0x3) << 6) | ((ss & 0x3) << 4) | ((ct & 0x1) << 3) | (cc & 0x7);
+			UInt8 caAti = (totalchn == 2) ? 0x00 : hdmica[totalext == 0 ? 0 : 1][totalchn - 1];
+			UInt8 csum = -(0x84 + 0x01 + 0x0a + pb0 + caAti);
+
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_XMIT(cad, nid_pin, 0x00), cad);
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x84), cad);
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x01), cad);
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x0a), cad);
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, csum), cad);
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, pb0), cad);  // ← ИМЕННО pb0
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, caAti), cad);
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
+			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_XMIT(cad, nid_pin, 0xc0), cad);
 			continue;
 		}
 
-		IOLog("VoodooHDA HDMI: standard HDA path nid_pin=%d\n", nid_pin);
-
+		// ==================== STANDARD HDA PATH ====================
 		for (int k = 0; k < 8; k++)
 			mDevice->sendCommand(HDA_CMD_SET_HDMI_CHAN_SLOT(cad, nid_pin,
 				(((hdmich[totalext == 0 ? 0 : 1][totalchn - 1] >> (k * 4)) & 0xf) << 4) | k), cad);
 
 		if (HDA_PARAM_PIN_CAP_HDMI(widget_pin->pin.cap) &&
-		    HDA_PARAM_PIN_CAP_HBR(widget_pin->pin.cap)) {
+			HDA_PARAM_PIN_CAP_HBR(widget_pin->pin.cap)) {
 			widget_pin->pin.ctrl &= ~HDA_CMD_SET_PIN_WIDGET_CTRL_VREF_ENABLE_MASK;
 			if ((channel->format & AFMT_AC3) && (totalchn == 8))
 				widget_pin->pin.ctrl |= 0x03;
 			mDevice->sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, nid_pin, widget_pin->pin.ctrl), cad);
 		}
 
-		if (AudioInfopacketBufferSize == 0xFFFFU) {
-			AudioInfopacketBufferSize = static_cast<UInt16>(mDevice->sendCommand(HDA_CMD_GET_HDMI_DIP_SIZE(cad, nid_pin, 0x00), cad)) + 1U;
-			IOLog("VoodooHDA HDMI: nid_pin=%d AudioInfopacketBufferSize=%u\n", nid_pin, AudioInfopacketBufferSize);
-		}
+		UInt16 AudioInfopacketBufferSize = static_cast<UInt16>(
+			mDevice->sendCommand(HDA_CMD_GET_HDMI_DIP_SIZE(cad, nid_pin, 0x00), cad)) + 1U;
+		if (AudioInfopacketBufferSize < 10U) continue;
 
-		if (AudioInfopacketBufferSize < 10U) {
-			IOLog("VoodooHDA HDMI: nid_pin=%d infoframe buffer too small (%u), skipping\n",
-			      nid_pin, AudioInfopacketBufferSize);
-			continue;
-		}
-
+		// Очистка буфера InfoFrame
 		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
 		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_XMIT(cad, nid_pin, 0x00), cad);
 		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
 		for (int k = 0; k < static_cast<int>(AudioInfopacketBufferSize); k++)
 			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
 
-		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
-		bool isDP_conn = widget_pin->eld != NULL && widget_pin->eld_len >= 6 && ((widget_pin->eld[5] >> 2) & 0x3) == 1;
-		IOLog("VoodooHDA HDMI: nid_pin=%d infoframe: eld_len=%d conn_type=%s ca=0x%02x totalchn=%d\n",
-		      nid_pin, widget_pin->eld_len, isDP_conn ? "DP" : "HDMI",
-		      hdmica[totalext == 0 ? 0 : 1][totalchn - 1], totalchn);
-#if DP_AUDIO
-		if (isDP_conn) {
-			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x84), cad);
-			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x1b), cad);
-			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x44), cad);
-			mDevice->logMsg("DP Audio infoframe\n");
-		} else {
-#endif
-			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x84), cad);
-			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x01), cad);
-			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x0a), cad);
-			mDevice->logMsg("HDMI Audio infoframe\n");
+		// Определяем тип подключения из ELD
+		bool isDP_conn = widget_pin->eld && widget_pin->eld_len >= 6 &&
+			((widget_pin->eld[5] >> 2) & 0x3) == 1;
 
-			csum = 0;
-			csum -= 0x84 + 0x01 + 0x0a + (totalchn - 1) + hdmica[totalext == 0 ? 0 : 1][totalchn - 1];
-			mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, csum), cad);
-#if DP_AUDIO
+		// ===== Единый расчёт PB0 и Checksum =====
+		UInt8 sf = 0;
+		switch (channel->speed) {
+			case 32000: sf = 1; break; 
+			case 44100: sf = 2; break; 
+			case 48000: sf = 3; break;
+			case 88200: sf = 4; break; 
+			case 96000: sf = 5; break;
+			case 176400: sf = 6; break; 
+			case 192000: sf = 7; break;
+			default: sf = 3; break;
 		}
-#endif
-		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, totalchn - 1), cad);
+		UInt8 ss = 0;
+		if (channel->format & AFMT_S16_LE) ss = 1;
+		else if (channel->format & AFMT_S32_LE) {
+			switch (channel->bit32) {
+			case 2: ss = 2; break; 
+			case 3: 
+			case 4: 
+			default: ss = 3; break;
+			}
+		}
+		UInt8 ct = (channel->format & AFMT_AC3) ? 1 : 0;
+		UInt8 cc = (totalchn > 0) ? (totalchn - 1) : 0;
+		UInt8 pb0 = ((sf & 0x3) << 6) | ((ss & 0x3) << 4) | ((ct & 0x1) << 3) | (cc & 0x7);
+
+		// Заголовочные байты: DP vs HDMI
+		UInt8 byte1 = 0x84;
+		UInt8 byte2 = isDP_conn ? 0x1b : 0x01;
+		UInt8 byte3 = isDP_conn ? 0x44 : 0x0a;
+		UInt8 ca = hdmica[totalext == 0 ? 0 : 1][totalchn - 1];
+
+		// Checksum = -(сумма всех байтов пакета) & 0xFF
+		UInt8 csum = -(byte1 + byte2 + byte3 + pb0 + ca);
+
+		// Отправка InfoFrame (строго по порядку: заголовок → csum → payload)
+		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
+		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_XMIT(cad, nid_pin, 0x00), cad);
+		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
+		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, byte1), cad);
+		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, byte2), cad);
+		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, byte3), cad);
+		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, csum), cad);  // ← csum после заголовка
+		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, pb0), cad);   // ← pb0, НЕ totalchn-1
 		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
 		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
-		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, hdmica[totalext == 0 ? 0 : 1][totalchn - 1]), cad);
+		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, ca), cad);
 		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
 		mDevice->sendCommand(HDA_CMD_SET_HDMI_DIP_XMIT(cad, nid_pin, 0xc0), cad);
 	}
