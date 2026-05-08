@@ -598,9 +598,10 @@ void VoodooGFXHDAController::startStreamRegisters(Channel *channel)
 		ctl |= channel->stripectl << HDAC_SDCTL2_STRIPE_SHIFT;
 		mDevice->writeData8(channel->off + HDAC_SDCTL2, ctl);
 	}
-
+	// 🔧 Формируем SDCTL0: IOCE + DEIE + RUN. FEIE ЯВНО ОТКЛЮЧЁН.
 	ctl = mDevice->readData8(channel->off + HDAC_SDCTL0);
-	ctl |= HDAC_SDCTL_IOCE | HDAC_SDCTL_FEIE | HDAC_SDCTL_DEIE | HDAC_SDCTL_RUN;
+	ctl &= ~(HDAC_SDCTL_IOCE | HDAC_SDCTL_FEIE | HDAC_SDCTL_DEIE | HDAC_SDCTL_RUN);
+	ctl |= HDAC_SDCTL_IOCE | HDAC_SDCTL_DEIE | HDAC_SDCTL_RUN;
 	mDevice->writeData8(channel->off + HDAC_SDCTL0, ctl);
 }
 
