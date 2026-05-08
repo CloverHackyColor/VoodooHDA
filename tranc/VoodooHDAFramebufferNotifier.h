@@ -69,6 +69,7 @@ public:
 
 	/* Notify GPU that HDMI audio streaming started/stopped */
 	void notifyStreamingState(int cad, nid_t pinNid, bool streaming);
+	void diagnosticDumpGPUState(const char *reason, int cad, nid_t pinNid);
 
 private:
 	bool init(VoodooHDADevice *device);
@@ -106,8 +107,6 @@ private:
 	void dumpAZState();
 	bool enableGPUAudioEngine(int endpoint, int digIndex, bool isDP,
 	                          uint8_t speakerAlloc, int numChannels);
-	bool isAnyChannelStreaming() const;
-
 public:
 	void initGPUAudioIfNeeded();
 private:

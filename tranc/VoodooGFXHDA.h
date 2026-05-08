@@ -53,6 +53,8 @@ public:
 	void handleStreamInterrupt(Channel *channel, UInt32 status, AbsoluteTime *timeStamp);
 	void updateTiming(Channel *channel, bool active, bool primeNow);
 	UInt32 getLinkPosition(Channel *channel, bool *valid = NULL);
+    void advanceDigitalPosition(Channel *channel);
+	UInt32 getClippedPosition(Channel *channel, bool *active = NULL);
 	void setupStream(Channel *channel, nid_t dac, AudioAssoc *assoc, int totalchn, int totalext);
 	VoodooHDADevice *getDevice() const;
 

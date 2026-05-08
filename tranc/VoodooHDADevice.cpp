@@ -3827,7 +3827,7 @@ void VoodooHDADevice::setDebugLevel(UInt8 level)
 
 bool VoodooHDADevice::getDiagnosticTelemetry(UInt8 tabNum, VoodooHDADiagTelemetry *telemetry)
 {
-#if 1 //!VOODOO_HDA_DEBUG_BUILD
+#if 0 //!VOODOO_HDA_DEBUG_BUILD
 	(void)tabNum;
 	(void)telemetry;
 	return false;
@@ -3892,7 +3892,7 @@ bool VoodooHDADevice::getDiagnosticTelemetry(UInt8 tabNum, VoodooHDADiagTelemetr
 
 	if (mGFXController && mGFXController->ownsChannel(channel)) {
 		linkPosition = mGFXController->getLinkPosition(channel, &linkValid);
-//		clippedPosition = mGFXController->getClippedPosition(channel, &streamActive);
+		clippedPosition = mGFXController->getClippedPosition(channel, &streamActive);
 	} else {
 		linkPosition = static_cast<UInt32>(channelGetPosition(channel));
 		linkValid = true;

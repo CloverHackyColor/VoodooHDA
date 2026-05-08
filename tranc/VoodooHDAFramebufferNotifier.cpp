@@ -12,7 +12,16 @@ OSDefineMetaClassAndStructors(VoodooHDAFramebufferNotifier, OSObject)
 #undef super
 #define super OSObject
 
-#define FBLOG(fmt, ...) IOLog("VoodooHDA FB: " fmt "\n", ##__VA_ARGS__)
+#if VOODOO_HDA_DEBUG_BUILD
+#define FBLOG_OWNER(owner, fmt, ...) do { \
+	if ((owner) && (owner)->mDevice && (owner)->mDevice->mVerbose >= 1) \
+		IOLog("VoodooHDA FB: " fmt "\n", ##__VA_ARGS__); \
+} while (0)
+#define FBLOG(fmt, ...) FBLOG_OWNER(this, fmt, ##__VA_ARGS__)
+#else
+#define FBLOG_OWNER(owner, fmt, ...) do {} while (0)
+#define FBLOG(fmt, ...) do {} while (0)
+#endif
 
 /* ---------- lifecycle ---------- */
 
@@ -208,8 +217,8 @@ bool VoodooHDAFramebufferNotifier::gfxMatchedHandler(
 	VoodooHDAFramebufferNotifier *self = (VoodooHDAFramebufferNotifier *)target;
 	if (!newService) return true;
 
-	FBLOG("gfxMatchedHandler: service=%p class=%s",
-	      newService, newService->getMetaClass()->getClassName());
+	FBLOG_OWNER(self, "gfxMatchedHandler: service=%p class=%s",
+		    newService, newService->getMetaClass()->getClassName());
 
 	if (!self->isSameGPU(newService)) return true;
 
@@ -245,7 +254,7 @@ bool VoodooHDAFramebufferNotifier::displayMatchedHandler(
 	IOLockLock(self->mLock);
 	FBConnectionState *conn = self->findConnection(fb);
 	if (conn && !conn->edidValid) {
-		FBLOG("displayMatched: IODisplay for pin=%d, reading EDID", conn->mappedPinNid);
+		FBLOG_OWNER(self, "displayMatched: IODisplay for pin=%d, reading EDID", conn->mappedPinNid);
 
 		if (conn->edidData) {
 			IOFree(conn->edidData, conn->edidLen);
@@ -255,7 +264,7 @@ bool VoodooHDAFramebufferNotifier::displayMatchedHandler(
 		conn->edidData = (uint8_t *)IOMalloc(conn->edidLen);
 		if (conn->edidData) {
 			memcpy(conn->edidData, edidProp->getBytesNoCopy(), conn->edidLen);
-			FBLOG("displayMatched: pin=%d got %d bytes EDID", conn->mappedPinNid, conn->edidLen);
+			FBLOG_OWNER(self, "displayMatched: pin=%d got %d bytes EDID", conn->mappedPinNid, conn->edidLen);
 
 			if (self->parseEDIDAudio(conn)) {
 				self->buildELDFromEDID(conn);
@@ -272,8 +281,8 @@ bool VoodooHDAFramebufferNotifier::displayMatchedHandler(
 				self->injectELDIntoWidget(conn);
 				self->injectELDIntoAllPinsWithPresence(conn);
 
-				FBLOG("displayMatched: pin=%d spkalloc=0x%02x nsads=%d pipe enabled",
-				      conn->mappedPinNid, conn->speakerAllocation, conn->numSADs);
+				FBLOG_OWNER(self, "displayMatched: pin=%d spkalloc=0x%02x nsads=%d pipe enabled",
+					    conn->mappedPinNid, conn->speakerAllocation, conn->numSADs);
 
 				/* Try to enable GPU audio engine via direct MMIO */
 				self->initGPUAudioIfNeeded();
@@ -382,11 +391,44 @@ IOReturn VoodooHDAFramebufferNotifier::interestHandler(
 	if (!self || !conn) return kIOReturnSuccess;
 
 	/*
-	 * kIOMessageServicePropertyChange fires when IOFramebuffer properties change
-	 * (including IODisplayEDID). This is our trigger to re-read EDID.
-	 */
-	if (messageType == kIOMessageServicePropertyChange) {
-		FBLOG("interestHandler: PropertyChange fb=%p pin=%d", provider, conn->mappedPinNid);
+	 * Mirror AppleGFXHDADriver::message dispatch (decompile:0x18662) and
+	 * AppleGFXHDAEngineOutputDP::handleEdidStateTransition (0x39d84).
+	 * Apple distinguishes:
+	 *   kIOMessageServicePropertyChange  — re-read EDID/ELD
+	 *   kIOMessageDeviceWillPowerOff      — sink/display about to sleep
+	 *   kIOMessageDeviceHasPoweredOn      — sink/display awake
+	 *   kIOMessageServiceIsSuspended      — display engine suspended
+	 *   kIOMessageServiceIsResumed        — display engine resumed
+	 *   kIOMessageServiceIsTerminated     — connector torn down
+	 *   0xe03f8003 (EdidInvalid)          — explicit sink-disconnect
+	 *   0xe03f8004 (EdidValid)            — explicit sink-connect
+	 *   0xe03f800a / 0xe03f800b           — connector state changed,
+	 *                                       re-evaluate routing
+	 *   0xe03f8011                        — consumed by upstream, no-op
+	 *   0xe03f8012                        — multistream connector
+	 *                                       reroute, treated as
+	 *                                       Edid-invalidate-then-revalidate
+	 * The 0xe03f80xx codes are private kIOFB messages from
+	 * IOGraphicsFamily; their numeric values are stable across
+	 * macOS releases (verified against KDK 26.3 AppleGFXHDA disasm
+	 * at addresses listed above). */
+#define VHDA_FB_MSG_EDID_INVALID    0xe03f8003U
+#define VHDA_FB_MSG_EDID_VALID      0xe03f8004U
+#define VHDA_FB_MSG_CONN_CHANGE_A   0xe03f800aU
+#define VHDA_FB_MSG_CONN_CHANGE_B   0xe03f800bU
+#define VHDA_FB_MSG_CONSUMED        0xe03f8011U
+#define VHDA_FB_MSG_MST_REROUTE     0xe03f8012U
+
+	switch (messageType) {
+
+	case kIOMessageServicePropertyChange:
+		/* Apple does this on every Edid event; we converge on a
+		 * single handler that reads EDID, parses, builds ELD, and
+		 * injects.  Equivalent to handleEdidStateTransition_EdidValid
+		 * if EDID is now valid; if EDID is gone, readEDID returns
+		 * false and we leave ELD cleared by the next stream setup. */
+		FBLOG_OWNER(self, "interestHandler: PropertyChange fb=%p pin=%d",
+		            provider, conn->mappedPinNid);
 		IOLockLock(self->mLock);
 		if (self->readEDID(conn) && self->parseEDIDAudio(conn)) {
 			self->buildELDFromEDID(conn);
@@ -394,12 +436,115 @@ IOReturn VoodooHDAFramebufferNotifier::interestHandler(
 			conn->displayOnline = true;
 			self->enableAudioPipe(conn);
 			self->injectELDIntoWidget(conn);
-			FBLOG("interestHandler: EDID updated, spkalloc=0x%02x nsads=%d",
-			      conn->speakerAllocation, conn->numSADs);
+			FBLOG_OWNER(self, "interestHandler: EDID updated, spkalloc=0x%02x nsads=%d",
+			            conn->speakerAllocation, conn->numSADs);
 		}
 		IOLockUnlock(self->mLock);
-	} else if (messageType == kIOMessageServiceIsTerminated) {
-		FBLOG("interestHandler: service terminated fb=%p pin=%d", provider, conn->mappedPinNid);
+		break;
+
+	case VHDA_FB_MSG_EDID_VALID: {
+		/* Apple's handleEdidStateTransition_EdidValid (decompile:0x3a0ba) */
+		FBLOG_OWNER(self, "interestHandler: EdidValid fb=%p pin=%d",
+		            provider, conn->mappedPinNid);
+		IOLockLock(self->mLock);
+		if (self->readEDID(conn) && self->parseEDIDAudio(conn)) {
+			self->buildELDFromEDID(conn);
+			conn->edidValid = true;
+			conn->displayOnline = true;
+			self->enableAudioPipe(conn);
+			self->injectELDIntoWidget(conn);
+		}
+		IOLockUnlock(self->mLock);
+		break;
+	}
+
+	case VHDA_FB_MSG_EDID_INVALID:
+	case VHDA_FB_MSG_MST_REROUTE: {
+		/* Apple's handleEdidStateTransition_EdidInvalid (decompile:
+		 * 0x39f48) clears ELD and disables the audio pipe.  MST
+		 * reroute is treated as invalidate then revalidate. */
+		FBLOG_OWNER(self, "interestHandler: EdidInvalid/MST fb=%p pin=%d msg=0x%x",
+		            provider, conn->mappedPinNid, messageType);
+		IOLockLock(self->mLock);
+		conn->edidValid = false;
+		conn->displayOnline = false;
+		self->clearWidgetELD(conn);
+		self->disableAudioPipe(conn);
+		IOLockUnlock(self->mLock);
+		break;
+	}
+
+	case VHDA_FB_MSG_CONN_CHANGE_A:
+	case VHDA_FB_MSG_CONN_CHANGE_B:
+		/* Apple's vtable+0x1a0 path — re-evaluate path-set without
+		 * tearing down ELD.  We just kick a re-read in case EDID
+		 * changed. */
+		FBLOG_OWNER(self, "interestHandler: ConnChange fb=%p pin=%d msg=0x%x",
+		            provider, conn->mappedPinNid, messageType);
+		IOLockLock(self->mLock);
+		if (self->readEDID(conn) && self->parseEDIDAudio(conn)) {
+			self->buildELDFromEDID(conn);
+			self->injectELDIntoWidget(conn);
+		}
+		IOLockUnlock(self->mLock);
+		break;
+
+	case VHDA_FB_MSG_CONSUMED:
+		/* Apple explicitly drops this message in the message handler
+		 * (decompile:0x187cc shows fall-through to LAB_0001896f w/
+		 * arg2=0).  Mirror by returning success without action. */
+		FBLOG_OWNER(self, "interestHandler: ConsumedUpstream fb=%p pin=%d",
+		            provider, conn->mappedPinNid);
+		break;
+
+	case kIOMessageDeviceWillPowerOff:
+		/* Display about to sleep.  Apple's path-set powerState goes
+		 * to 0; we just disable the audio pipe so the GPU can power-
+		 * gate.  Stream stays "running" from coreaudiod's view; on
+		 * resume the audio pipe is re-enabled by the next stream
+		 * setup or by kIOMessageDeviceHasPoweredOn below. */
+		FBLOG_OWNER(self, "interestHandler: DeviceWillPowerOff fb=%p pin=%d",
+		            provider, conn->mappedPinNid);
+		IOLockLock(self->mLock);
+		self->disableAudioPipe(conn);
+		IOLockUnlock(self->mLock);
+		break;
+
+	case kIOMessageDeviceHasPoweredOn:
+		FBLOG_OWNER(self, "interestHandler: DeviceHasPoweredOn fb=%p pin=%d",
+		            provider, conn->mappedPinNid);
+		IOLockLock(self->mLock);
+		self->enableAudioPipe(conn);
+		if (conn->edidValid)
+			self->injectELDIntoWidget(conn);
+		IOLockUnlock(self->mLock);
+		break;
+
+	case kIOMessageServiceIsSuspended:
+		FBLOG_OWNER(self, "interestHandler: ServiceIsSuspended fb=%p pin=%d",
+		            provider, conn->mappedPinNid);
+		break;
+
+	case kIOMessageServiceIsResumed:
+		FBLOG_OWNER(self, "interestHandler: ServiceIsResumed fb=%p pin=%d",
+		            provider, conn->mappedPinNid);
+		IOLockLock(self->mLock);
+		self->enableAudioPipe(conn);
+		IOLockUnlock(self->mLock);
+		break;
+
+	case kIOMessageServiceIsTerminated:
+		FBLOG_OWNER(self, "interestHandler: service terminated fb=%p pin=%d",
+		            provider, conn->mappedPinNid);
+		/* handleFramebufferTerminated will tear down the slot. */
+		break;
+
+	default:
+		/* Unknown / family-private — log at verbose only */
+		if (self->mDevice && self->mDevice->mVerbose >= 2)
+			IOLog("VoodooHDA FB: interestHandler unhandled msg=0x%x fb=%p pin=%d\n",
+			      (unsigned)messageType, provider, conn->mappedPinNid);
+		break;
 	}
 
 	return kIOReturnSuccess;
@@ -748,26 +893,9 @@ void VoodooHDAFramebufferNotifier::injectELDIntoAllPinsWithPresence(FBConnection
 	}
 }
 
-// В реализации:
-bool VoodooHDAFramebufferNotifier::isAnyChannelStreaming() const
-{
-	if (!mDevice || !mDevice->mChannels) return false;
-	for (int i = 0; i < mDevice->mNumChannels; i++) {
-		if (mDevice->mChannels[i].flags & HDAC_CHN_RUNNING)
-			return true;
-	}
-	return false;
-}
-
 void VoodooHDAFramebufferNotifier::injectELDIntoPinIfReady(int cad, nid_t pinNid)
 {
 	IOLockLock(mLock);
-
-	// 🔧 Короткая проверка (лок уже взят, доступ безопасен)
-	if (isAnyChannelStreaming()) {
-		IOLockUnlock(mLock);
-		return;
-	}
 
 	/* Find any connection with valid EDID-based ELD */
 	FBConnectionState *src = NULL;
@@ -881,6 +1009,9 @@ bool VoodooHDAFramebufferNotifier::getFramebufferELD(
 
 void VoodooHDAFramebufferNotifier::ensureAudioPipeEnabled(int cad, nid_t pinNid)
 {
+	UInt16 diagFlags = mDevice ? mDevice->diagnosticFlagsForPin(cad, pinNid) : 0;
+	bool skipAudioPipe = (diagFlags & kVoodooHDADiagSkipAudioPipe) != 0;
+
 	IOLockLock(mLock);
 	for (int i = 0; i < mNumConnections; i++) {
 		FBConnectionState *conn = &mConnections[i];
@@ -891,14 +1022,21 @@ void VoodooHDAFramebufferNotifier::ensureAudioPipeEnabled(int cad, nid_t pinNid)
 				if (readEDID(conn) && parseEDIDAudio(conn)) {
 					buildELDFromEDID(conn);
 					conn->edidValid = true;
-					enableAudioPipe(conn);
+					if (!skipAudioPipe)
+						enableAudioPipe(conn);
+					else
+						FBLOG("ensureAudioPipeEnabled: pin=%d skipping framebuffer audio-pipe enable due to diagnostic flag",
+						      pinNid);
 					injectELDIntoWidget(conn);
 				}
-			} else if (!conn->audioPipeEnabled) {
+			} else if (!conn->audioPipeEnabled && !skipAudioPipe) {
 				/* EDID is valid but pipe was disabled (e.g., by power-gating logic
 				 * that incorrectly reads ATI presence=0 as disconnected).
 				 * Re-enable it now that audio is about to stream. */
 				enableAudioPipe(conn);
+			} else if (skipAudioPipe) {
+				FBLOG("ensureAudioPipeEnabled: pin=%d leaving framebuffer audio pipe disabled due to diagnostic flag",
+				      pinNid);
 			}
 			break;
 		}
@@ -1070,6 +1208,15 @@ static const AZRegOffsets kVega10Regs = {
 	.dccgDto1Module = DW2B(0x00C0 + 0x00AF),
 };
 
+static const char *azRegTableName(const AZRegOffsets *regs)
+{
+	if (regs == &kPolarisRegs)
+		return "Polaris DCE11";
+	if (regs == &kVega10Regs)
+		return "Vega DCE12";
+	return "Unknown";
+}
+
 /* ---------- GPU MMIO mapping ---------- */
 
 bool VoodooHDAFramebufferNotifier::mapGPUMMIO()
@@ -1115,17 +1262,19 @@ bool VoodooHDAFramebufferNotifier::mapGPUMMIO()
 	      gpuDev, gpuDev->configRead16(kIOPCIConfigVendorID), gpuDeviceId);
 
 	/* Select register offset table based on GPU generation.
-	 * Polaris (DCE 11.x): 67xx device IDs (Ellesmere/Baffin/Lexa)
-	 * Vega 10 (DCE 12.0): 687x/686x device IDs */
+	 * Polaris 30 (RX 590, 6fxx) shares the same AZ/AFMT layout as the rest
+	 * of Polaris in the local reference headers; do not let it fall through
+	 * into the Vega table by accident. */
 	if ((gpuDeviceId & 0xFF00) == 0x6700 || /* Polaris 10/11/12 */
 	    (gpuDeviceId & 0xFF00) == 0x6600 || /* Polaris 12/Lexa */
+	    (gpuDeviceId & 0xFF00) == 0x6F00 || /* Polaris 30 */
 	    (gpuDeviceId & 0xFF00) == 0x6900)   /* Tonga/Fiji */
 		mRegs = &kPolarisRegs;
 	else
 		mRegs = &kVega10Regs;  /* Vega and newer — best guess */
 
-	FBLOG("mapGPUMMIO: using %s register offsets",
-	      mRegs == &kPolarisRegs ? "Polaris DCE11" : "Vega DCE12");
+	FBLOG("mapGPUMMIO: using %s register offsets for GPU device=%04x",
+	      azRegTableName(reinterpret_cast<const AZRegOffsets *>(mRegs)), gpuDeviceId);
 
 	/* Find the MMIO BAR (typically BAR5, ~256KB-512KB).
 	 * BAR0/1 = VRAM (huge), BAR2/3 = doorbell, BAR5 = MMIO registers */
@@ -1402,5 +1551,19 @@ void VoodooHDAFramebufferNotifier::initGPUAudioIfNeeded()
 	 * Audio is enabled by correct HDA verbs (ATI paired multichannel),
 	 * not by GPU MMIO writes.  This dump is for debugging only. */
 	FBLOG("initGPUAudio: === GPU AZ STATE (diagnostic) ===");
+	dumpAZState();
+}
+
+void VoodooHDAFramebufferNotifier::diagnosticDumpGPUState(const char *reason, int cad, nid_t pinNid)
+{
+	if (!mapGPUMMIO()) {
+		FBLOG("diagnosticDumpGPUState: reason=%s cad=%d pin=%d map failed",
+		      reason ? reason : "unknown", cad, pinNid);
+		return;
+	}
+
+	FBLOG("diagnosticDumpGPUState: reason=%s cad=%d pin=%d regTable=%s",
+	      reason ? reason : "unknown", cad, pinNid,
+	      azRegTableName(reinterpret_cast<const AZRegOffsets *>(mRegs)));
 	dumpAZState();
 }
