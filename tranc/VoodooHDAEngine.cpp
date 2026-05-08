@@ -1431,9 +1431,7 @@ IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 //      mChannel->slack = 0;
 //    }
 
-			mSampleSize = mChannel->pcmDevice ?
-				(mChannel->pcmDevice->playChanId >= 0 ?
-					mChannel->pcmDevice->playChanCount * (mChannel->format & AFMT_S32_LE ? 4 : 2) : 4) : 4;
+			mSampleSize = channels * (newFormat->fBitWidth / 8);
 
 
         mNumSampleFrames = mBufferSize / mSampleSize;
