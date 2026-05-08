@@ -753,8 +753,7 @@ bool VoodooHDAFramebufferNotifier::isAnyChannelStreaming() const
 {
 	if (!mDevice || !mDevice->mChannels) return false;
 	for (int i = 0; i < mDevice->mNumChannels; i++) {
-		if (mDevice->mChannels[i] &&
-			(mDevice->mChannels[i]->flags & HDAC_CHN_RUNNING))
+		if (mDevice->mChannels[i].flags & HDAC_CHN_RUNNING)
 			return true;
 	}
 	return false;
