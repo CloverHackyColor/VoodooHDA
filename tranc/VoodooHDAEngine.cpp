@@ -1118,14 +1118,23 @@ IOReturn VoodooHDAEngine::performAudioEngineStart()
     mDevice->channelStart(mChannel);
     if (mDigitalStream)
         mDigitalStream->resetClipPosition(0);
+    else
+      resetClipPosition(mStream, 0); // 🔧 Сброс для аналога при микшировании
   
-  // 🔧 Полное обнуление DMA-буфера перед стартом (убирает "икание" от старых данных)
-  if (mChannel && mChannel->buffer)
-    bzero(reinterpret_cast<void *>(mChannel->buffer->virtAddr), mChannel->buffer->size);
+//  // 🔧 Полное обнуление DMA-буфера перед стартом (убирает "икание" от старых данных)
+//  if (mChannel && mChannel->buffer)
+//    bzero(reinterpret_cast<void *>(mChannel->buffer->virtAddr), mChannel->buffer->size);
 
 
     // Polaris DCE 11.2: фиксированная задержка стабильнее опроса SDLPIB
-    IODelay(1500);
+//    IODelay(1500);
+  // меняем опять на адаптивный
+  // Polaris HDMI: ждём, пока SDLPIB выйдет из 0 (физический старт DMA)
+  int timeout = 200;
+  while (timeout-- > 0) {
+    if (mDevice->readData32(mChannel->off + HDAC_SDLPIB) != 0) break;
+    IODelay(10);
+  }
 
     // Пересчёт смещений по текущей частоте (критично после сна/смены трека)
     const IOAudioSampleRate *rate = getSampleRate();
