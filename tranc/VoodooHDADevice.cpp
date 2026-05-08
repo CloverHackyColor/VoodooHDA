@@ -1516,7 +1516,7 @@ IOReturn VoodooHDADevice::handleAction(OSObject *owner, void *arg0, void *arg1, 
 	}
 
 	if ((action & 0xFF) == kVoodooHDAActionSetDebug) {
-#if !VOODOO_HDA_DEBUG_BUILD
+#if 1 //!VOODOO_HDA_DEBUG_BUILD
 		*outSize = 0;
 		*outData = NULL;
 		return kIOReturnUnsupported;

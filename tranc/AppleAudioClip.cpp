@@ -3756,17 +3756,17 @@ IOReturn VoodooHDAEngine::clipOutputSamples(const void *mixBuf, void *sampleBuf,
 	UInt32 numSamples  = numSampleFrames  * streamFormat->fNumChannels;
 	Float32 *floatMixBuf = ((Float32*)mixBuf) + firstSample;
 	bool appleDigitalClipPath = usesAppleGfxClipPath();
-	bool diagnosticMixTone = diagnosticUsesMixTone();
-	bool diagnosticDirectTone = diagnosticUsesDirectTone();
-	bool diagnosticFreeze = diagnosticFreezesBuffer();
+//	bool diagnosticMixTone = diagnosticUsesMixTone();
+//	bool diagnosticDirectTone = diagnosticUsesDirectTone();
+//	bool diagnosticFreeze = diagnosticFreezesBuffer();
 	bool bypassProcessing = diagnosticBypassesProcessing();
 	bool SSE2 = mChannel->vectorize;
 	UInt32 noiseMask = (~0U) << mChannel->noiseLevel;
-	if (mChannel) {
-		mChannel->diagnosticClipCalls++;
-		mChannel->diagnosticLastFirstFrame = firstSampleFrame;
-		mChannel->diagnosticLastNumFrames = numSampleFrames;
-	}
+//	if (mChannel) {
+//		mChannel->diagnosticClipCalls++;
+//		mChannel->diagnosticLastFirstFrame = firstSampleFrame;
+//		mChannel->diagnosticLastNumFrames = numSampleFrames;
+//	}
 
 	// Stereo widening (base > 0) or narrowing (base < 0)
 	bool Stereo = mChannel->useStereo;
@@ -3789,30 +3789,30 @@ IOReturn VoodooHDAEngine::clipOutputSamples(const void *mixBuf, void *sampleBuf,
 	}
 	emptyStream = false;
 
-	if (diagnosticFreeze && mChannel->diagnosticBufferPrimed) {
-		if (appleDigitalClipPath && mDigitalStream)
-			mDigitalStream->noteClippedPosition(firstSampleFrame + numSampleFrames);
-		return kIOReturnSuccess;
-	}
+//	if (diagnosticFreeze && mChannel->diagnosticBufferPrimed) {
+//		if (appleDigitalClipPath && mDigitalStream)
+//			mDigitalStream->noteClippedPosition(firstSampleFrame + numSampleFrames);
+//		return kIOReturnSuccess;
+//	}
+//
+//	if (diagnosticMixTone) {
+//		fillDiagnosticMixBuffer(floatMixBuf, numSamples, streamFormat->fNumChannels);
+//		if (mChannel)
+//			mChannel->diagnosticMixToneFills++;
+//	}
 
-	if (diagnosticMixTone) {
-		fillDiagnosticMixBuffer(floatMixBuf, numSamples, streamFormat->fNumChannels);
-		if (mChannel)
-			mChannel->diagnosticMixToneFills++;
-	}
-
-	if (diagnosticDirectTone) {
-		IOReturn result = fillDiagnosticSampleBuffer(sampleBuf, firstSampleFrame, numSampleFrames, streamFormat);
-		if (result == kIOReturnSuccess) {
-			if (mChannel)
-				mChannel->diagnosticDirectToneFills++;
-			if (diagnosticFreeze)
-				mChannel->diagnosticBufferPrimed = true;
-			if (appleDigitalClipPath && mDigitalStream)
-				mDigitalStream->noteClippedPosition(firstSampleFrame + numSampleFrames);
-			return kIOReturnSuccess;
-		}
-	}
+//	if (diagnosticDirectTone) {
+//		IOReturn result = fillDiagnosticSampleBuffer(sampleBuf, firstSampleFrame, numSampleFrames, streamFormat);
+//		if (result == kIOReturnSuccess) {
+//			if (mChannel)
+//				mChannel->diagnosticDirectToneFills++;
+//			if (diagnosticFreeze)
+//				mChannel->diagnosticBufferPrimed = true;
+//			if (appleDigitalClipPath && mDigitalStream)
+//				mDigitalStream->noteClippedPosition(firstSampleFrame + numSampleFrames);
+//			return kIOReturnSuccess;
+//		}
+//	}
 
 	if ((streamFormat->fSampleFormat == kIOAudioStreamSampleFormatLinearPCM) && streamFormat->fIsMixable) {
 		if (!appleDigitalClipPath && !bypassProcessing && Boost) {
@@ -3909,8 +3909,8 @@ IOReturn VoodooHDAEngine::clipOutputSamples(const void *mixBuf, void *sampleBuf,
 		memcpy((UInt8*)sampleBuf + offset, (UInt8*)mixBuf, size);
 	}
 
-	if (diagnosticFreeze)
-		mChannel->diagnosticBufferPrimed = true;
+//	if (diagnosticFreeze)
+//		mChannel->diagnosticBufferPrimed = true;
 
 	if (appleDigitalClipPath && mDigitalStream)
 		mDigitalStream->noteClippedPosition(firstSampleFrame + numSampleFrames);
@@ -3920,8 +3920,8 @@ IOReturn VoodooHDAEngine::clipOutputSamples(const void *mixBuf, void *sampleBuf,
 	 * (so format/endianness/bit-depth match what the engine actually emits)
 	 * and BEFORE the tap (so the tap captures the synthesized signal that
 	 * the codec is about to read). */
-	if (diagnosticUsesChord())
-		fillDiagnosticChordBuffer(sampleBuf, firstSampleFrame, numSampleFrames, streamFormat);
+//	if (diagnosticUsesChord())
+//		fillDiagnosticChordBuffer(sampleBuf, firstSampleFrame, numSampleFrames, streamFormat);
 
 	/* Diag-mode PCM tap: copy what we just wrote into the DMA buffer to the
 	 * shared ring. Only one engine taps at a time (mDiagTapChannel); cost

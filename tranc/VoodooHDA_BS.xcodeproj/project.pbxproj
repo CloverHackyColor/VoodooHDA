@@ -275,7 +275,6 @@
 				OTHER_CFLAGS = (
 					"-fno-stack-protector",
 					"-DMULTICHANNEL",
-					"-DDP_AUDIO",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.voodoo.driver.${PRODUCT_NAME:identifier}";
 				PRODUCT_NAME = VoodooHDA;
