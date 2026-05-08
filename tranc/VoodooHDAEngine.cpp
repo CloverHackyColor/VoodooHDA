@@ -1097,8 +1097,9 @@ IOAudioStreamDirection VoodooHDAEngine::getEngineDirection()
 		BUG("invalid direction");
 	}
 	
-	if (mStream)
+	if (mStream) {
 		ASSERT(mStream->getDirection() == direction);
+	}
 
 	return direction;
 }
@@ -1414,7 +1415,7 @@ IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 		}
 
 			ASSERT(mBufferSize);
-		  mSampleSize = channels * (newFormat->fBitWidth / 8);
+		  //mSampleSize = channels * (newFormat->fBitWidth / 8);
         // AMD HDMI/DP требует 32-битного DMA-контейнера даже для 16-битного звука.
         // Принудительно выравниваем семплы в 4 байта для цифровых потоков.
         //UInt32 dmaWidth = mDigitalStream ? 32 : newFormat->fBitWidth;
@@ -1430,21 +1431,28 @@ IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 //      mChannel->slack = 0;
 //    }
 
+			mSampleSize = mChannel->pcmDevice ?
+				(mChannel->pcmDevice->playChanId >= 0 ?
+					mChannel->pcmDevice->playChanCount * (mChannel->format & AFMT_S32_LE ? 4 : 2) : 4) : 4;
+
+
         mNumSampleFrames = mBufferSize / mSampleSize;
         
-        mChannel->slack = static_cast<UInt16>(mBufferSize - mNumSampleFrames * mSampleSize);
+        //mChannel->slack = static_cast<UInt16>(mBufferSize - mNumSampleFrames * mSampleSize);
         // 🔧 Polaris/AMD HDMI требует точного выравнивания блоков.
         // slack ломает расчёт длины последнего дескриптора → периодический хрип.
-//        if (mDigitalStream) {
-//            mChannel->slack = 0;
-//        } else {
-//            mChannel->slack = static_cast<UInt16>(mBufferSize - mNumSampleFrames * mSampleSize);
-//        }
+        if (mDigitalStream) {
+            mChannel->slack = 0;
+        } else {
+            mChannel->slack = static_cast<UInt16>(mBufferSize - mNumSampleFrames * mSampleSize);
+        }
         
         
         setNumSampleFramesPerBuffer(mNumSampleFrames);
         if (mDigitalStream)
             mDigitalStream->resetPositionState();
+				else
+					resetClipPosition(mStream, 0);
 
 		logMsg("VoodooHDA::buffer size: %ld, channels: %d, bit depth: %d, # samp. frames: %ld\n", (long int)mBufferSize,
 				channels, newFormat->fBitDepth, (long int)mNumSampleFrames);
