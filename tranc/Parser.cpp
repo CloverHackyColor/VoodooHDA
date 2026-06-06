@@ -3252,7 +3252,7 @@ void VoodooHDADevice::pinDump()
 						HDA_PARAM_PIN_CAP_EAPD_CAP(pinCap) ? "EAPD" : "",
 						HDA_PARAM_PIN_CAP_VREF_CTRL(pinCap) ? "VREF" : "");
 				if (HDA_PARAM_PIN_CAP_IMP_SENSE_CAP(pinCap) || HDA_PARAM_PIN_CAP_PRESENCE_DETECT_CAP(pinCap)) {
-					UInt32 delay, result;
+					UInt32 delay, result = 0;
 					if (HDA_PARAM_PIN_CAP_TRIGGER_REQD(pinCap)) {
 						delay = 0;
 						sendCommand(HDA_CMD_SET_PIN_SENSE(cad, widget->nid, 0), cad);
@@ -3720,12 +3720,12 @@ UInt32 VoodooHDADevice::widgetPinGetConfig(Widget *widget)
 
 UInt32 VoodooHDADevice::widgetPinGetCaps(Widget *widget)
 {
-	UInt32 caps, orig, id;
+  UInt32 caps, orig; //, id;
 	nid_t cad, nid;
 
 	cad = widget->funcGroup->codec->cad;
 	nid = widget->nid;
-	id = CODEC_ID(widget->funcGroup->codec);
+//	id = CODEC_ID(widget->funcGroup->codec);
 
 	caps = sendCommand(HDA_CMD_GET_PARAMETER(cad, nid, HDA_PARAM_PIN_CAP), cad);
 	orig = caps;
@@ -4042,7 +4042,7 @@ void VoodooHDADevice::audioCtlAmpGetInternal(nid_t cad, nid_t nid, int index, in
 											 int *right, int dir)
 {
 	UInt16 v = 0;
-	UInt32 cmd = 0;
+	//UInt32 cmd = 0;
 	UInt32 res = 0xFF;
 	
 	//Если dir = 0 - output
@@ -4053,7 +4053,8 @@ void VoodooHDADevice::audioCtlAmpGetInternal(nid_t cad, nid_t nid, int index, in
 	if(lmute != 0 || left != 0) {
 		//Читаем настройки левого канала
 		v = ((1 - dir) << 15) | (1 << 13) | index; 
-		cmd = HDA_CMD_GET_AMP_GAIN_MUTE(cad, nid, v);
+		//cmd =
+        HDA_CMD_GET_AMP_GAIN_MUTE(cad, nid, v);
 		//logMsg("GetAmp for 0x%x nid - 0x%x left\n", nid, cmd);
 		res = sendCommand(HDA_CMD_GET_AMP_GAIN_MUTE(cad, nid, v), cad);
 		if(lmute != 0)
@@ -4065,7 +4066,8 @@ void VoodooHDADevice::audioCtlAmpGetInternal(nid_t cad, nid_t nid, int index, in
 	if(rmute != 0 || right != 0) {
 		//Читаем настройки правого канала
 		v = ((1 - dir) << 15) | index; 
-		cmd = HDA_CMD_GET_AMP_GAIN_MUTE(cad, nid, v);
+		//cmd =
+       HDA_CMD_GET_AMP_GAIN_MUTE(cad, nid, v);
 		//logMsg("GetAmp for 0x%x nid - 0x%x right\n", nid, cmd);
 		res = sendCommand(HDA_CMD_GET_AMP_GAIN_MUTE(cad, nid, v), cad);
 		if(rmute != 0)
