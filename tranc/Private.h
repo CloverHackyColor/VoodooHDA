@@ -43,10 +43,7 @@
 
 #define HDA_BDL_MIN				2
 #define HDA_BDL_MAX				256
-/* 16 blocks of 16 KB → interrupt every ~85ms at 48kHz/2ch/16bit.
- * Smaller periods reduce FIFO underrun risk on modern Intel PCH (Alder/Raptor Lake)
- * compared to the old HDA_BDL_MIN=2 (128KB blocks, interrupt every ~1.37s). */
-#define HDA_BDL_DEFAULT			16
+#define HDA_BDL_DEFAULT			HDA_BDL_MIN
 
 #define HDA_BLK_MIN				HDAC_DMA_ALIGNMENT
 #define HDA_BLK_ALIGN			(~(HDA_BLK_MIN - 1))
@@ -307,17 +304,6 @@ typedef struct _Channel {
 	bool useStereo;
     UInt8 noiseLevel;	
 	UInt8 StereoBase;
-	UInt16 diagnosticFlags;
-	bool diagnosticBufferPrimed;
-	UInt8 diagnosticReserved;
-	UInt32 diagnosticPhase[8];
-	UInt32 diagnosticClipCalls;
-	UInt32 diagnosticMixToneFills;
-	UInt32 diagnosticDirectToneFills;
-	UInt32 diagnosticEraseCalls;
-	UInt32 diagnosticEraseSkips;
-	UInt32 diagnosticLastFirstFrame;
-	UInt32 diagnosticLastNumFrames;
 	
 	UInt16 slack;
 	DmaMemory *bdlMem;
@@ -335,14 +321,6 @@ typedef struct _Codec {
 	UInt16 deviceId;
 	UInt8 revisionId;
 	UInt8 steppingId;
-	/*
-	 * PCI device id of the HDA function on the host (AMD GPUs commonly
-	 * report codec id 0x1002:0xaa01 from the HDA verb across generations,
-	 * while the actual generation is encoded only in the PCI device id of
-	 * the HDA function).  AppleGFXHDA dispatches the family by this value,
-	 * not by the codec id — see appleGfxHdaAmdCodecFamily() below.
-	 */
-	UInt16 hdaPciDeviceId;
 	CommandList *commands;
 	FunctionGroup *funcGroups;
 	int	numFuncGroups;
@@ -351,168 +329,6 @@ typedef struct _Codec {
 /* ATI HDMI codec: vendor ID 0x1002 (all known ATI/AMD HDMI codec IDs) */
 static inline bool isAtiHdmiCodec(Codec *codec) {
 	return codec->vendorId == 0x1002;
-}
-
-/*
- * AppleGFXHDA does not treat all AMD HDMI codecs as one generic family.
- * The decompiled function-group factory routes the same codec id 0x1002:0xaa01
- * to RS710 / RS730 / RS780 / Park / Broadway / Tahiti subclasses based on the
- * **PCI device id of the HDA function on the AMD GPU**, not on the codec id
- * read from the HDA verb.  Modern AMD GPUs (Tahiti, Polaris, Vega...) report
- * the same 0xaa01 from the codec verb but expose distinct PCI device ids on
- * the audio function (0xaaf0/0xaaf8/0xabf8/0xab2x/0xab38), and Apple maps
- * those to the Tahiti family.  See createAppleHDAFunctionGroup at
- * docs/audio_stack_decompiled/AppleGFXHDA_decompiled.c:48312-48400.
- */
-enum AppleGFXHDAAmdCodecFamily {
-	kAppleGFXHDAAmdFamilyUnknown = 0,
-	kAppleGFXHDAAmdFamilyRS710,
-	kAppleGFXHDAAmdFamilyRS730,
-	kAppleGFXHDAAmdFamilyRS780,
-	kAppleGFXHDAAmdFamilyPark,
-	kAppleGFXHDAAmdFamilyBroadway,
-	kAppleGFXHDAAmdFamilyTahiti
-};
-
-/*
- * Apple-1:1 family dispatch.  Argument is the PCI device id of the HDA
- * function on the AMD GPU (Codec::hdaPciDeviceId, lower 16 bits of mDeviceId).
- *
- * Reproduces AppleGFXHDAFunctionGroupFactory::createAppleHDAFunctionGroup
- * at docs/audio_stack_decompiled/AppleGFXHDA_decompiled.c:48356-48400, with
- * the same range checks and bitmaps verbatim:
- *
- *   if (id < 0xaad8) {
- *     if (id < 0xaa88) {
- *       d = id - 0xaa40;
- *       if (d < 0x29) {
- *         if ((0x10300000000ULL >> (d & 0x3f)) & 1 == 0) -> Park
- *         if ((0x1010000ULL      >> (d & 0x3f)) & 1)     -> Broadway
- *         if (d == 0)                                    -> RS710
- *         // else fall through to RS780/RS730 check
- *       }
- *       if (id == 0xaa30) -> RS780
- *       if (id == 0xaa38) -> RS730
- *     } else {
- *       d = id - 0xaa88;
- *       if (d < 0x39) {
- *         if ((0x10101ULL        >> (d & 0x3f)) & 1)     -> Broadway
- *         if (((0x10001000000ULL >> (d & 0x3f)) & 1) || d == 0x38)
- *                                                        -> Tahiti
- *       }
- *     }
- *   } else if (id < 0xaaf8) {
- *     if (id == 0xaad8 || id == 0xaae0 || id == 0xaaf0)  -> Tahiti
- *   } else {
- *     d = id - 0xab20;
- *     if ((d < 0x19 && ((0x1000101UL >> (d & 0x1f)) & 1)) ||
- *          id == 0xaaf8 || id == 0xabf8)                 -> Tahiti
- *   }
- *   -> Unknown
- */
-static inline AppleGFXHDAAmdCodecFamily appleGfxHdaAmdCodecFamily(UInt16 hdaPciDeviceId)
-{
-	UInt32 id = hdaPciDeviceId;
-
-	if (id < 0xaad8U) {
-		if (id < 0xaa88U) {
-			UInt32 d = id - 0xaa40U;
-			if (d < 0x29U) {
-				if (((0x10300000000ULL >> (d & 0x3fU)) & 1U) == 0)
-					return kAppleGFXHDAAmdFamilyPark;
-				if (((0x1010000ULL >> (d & 0x3fU)) & 1U) != 0)
-					return kAppleGFXHDAAmdFamilyBroadway;
-				if (d == 0)
-					return kAppleGFXHDAAmdFamilyRS710;
-				/* fall through to RS780/RS730 check (matches Apple's
-				 * `goto LAB_00040f0d` for d != 0 in the carve-out). */
-			}
-			if (id == 0xaa30U)
-				return kAppleGFXHDAAmdFamilyRS780;
-			if (id == 0xaa38U)
-				return kAppleGFXHDAAmdFamilyRS730;
-			return kAppleGFXHDAAmdFamilyUnknown;
-		}
-		{
-			UInt32 d = id - 0xaa88U;
-			if (d < 0x39U) {
-				if (((0x10101ULL >> (d & 0x3fU)) & 1U) != 0)
-					return kAppleGFXHDAAmdFamilyBroadway;
-				if (((0x10001000000ULL >> (d & 0x3fU)) & 1U) != 0 || d == 0x38U)
-					return kAppleGFXHDAAmdFamilyTahiti;
-			}
-		}
-		return kAppleGFXHDAAmdFamilyUnknown;
-	}
-	if (id < 0xaaf8U) {
-		if (id == 0xaad8U || id == 0xaae0U || id == 0xaaf0U)
-			return kAppleGFXHDAAmdFamilyTahiti;
-		return kAppleGFXHDAAmdFamilyUnknown;
-	}
-	{
-		UInt32 d = id - 0xab20U;
-		if ((d < 0x19U && ((0x1000101UL >> (d & 0x1fU)) & 1U) != 0) ||
-		    id == 0xaaf8U || id == 0xabf8U)
-			return kAppleGFXHDAAmdFamilyTahiti;
-	}
-	return kAppleGFXHDAAmdFamilyUnknown;
-}
-
-static inline const char *appleGfxHdaAmdCodecFamilyName(UInt16 hdaPciDeviceId)
-{
-	switch (appleGfxHdaAmdCodecFamily(hdaPciDeviceId)) {
-		case kAppleGFXHDAAmdFamilyRS710:
-			return "ATI_RS710";
-		case kAppleGFXHDAAmdFamilyRS730:
-			return "ATI_RS730";
-		case kAppleGFXHDAAmdFamilyRS780:
-			return "ATI_RS780";
-		case kAppleGFXHDAAmdFamilyPark:
-			return "ATI_Park";
-		case kAppleGFXHDAAmdFamilyBroadway:
-			return "ATI_Broadway";
-		case kAppleGFXHDAAmdFamilyTahiti:
-			return "ATI_Tahiti";
-		default:
-			return "ATI_Generic";
-	}
-}
-
-static inline UInt32 appleGfxHdaAmdMemoryDescCoeffForCodec(UInt16 hdaPciDeviceId)
-{
-	switch (appleGfxHdaAmdCodecFamily(hdaPciDeviceId)) {
-		case kAppleGFXHDAAmdFamilyPark:
-		case kAppleGFXHDAAmdFamilyTahiti:
-			return 0x3000;
-		default:
-			return 0;
-	}
-}
-
-static inline bool appleGfxHdaAmdSupportsDisableSlots(UInt16 hdaPciDeviceId)
-{
-	switch (appleGfxHdaAmdCodecFamily(hdaPciDeviceId)) {
-		case kAppleGFXHDAAmdFamilyRS710:
-		case kAppleGFXHDAAmdFamilyRS730:
-		case kAppleGFXHDAAmdFamilyRS780:
-		case kAppleGFXHDAAmdFamilyPark:
-			return false;
-		default:
-			return true;
-	}
-}
-
-static inline bool appleGfxHdaAmdUsesCachedELDPresence(UInt16 hdaPciDeviceId)
-{
-	switch (appleGfxHdaAmdCodecFamily(hdaPciDeviceId)) {
-		case kAppleGFXHDAAmdFamilyRS710:
-		case kAppleGFXHDAAmdFamilyRS730:
-		case kAppleGFXHDAAmdFamilyRS780:
-		case kAppleGFXHDAAmdFamilyPark:
-			return true;
-		default:
-			return false;
-	}
 }
 
 /* Rev3+ ATI codecs (0x1002aa01 with revision >= 0x03) support single-channel remap mode */

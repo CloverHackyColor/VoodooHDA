@@ -35,7 +35,6 @@ class IOMemoryDescriptor;
 #include "AppleAudioCommon.h"
 #include "VoodooHDADevice.h"
 #include "VoodooHDAEngine.h"
-#include "VoodooGFXHDA.h"
 #include "PCMBlitterLibDispatch.h"
 
 extern "C" {
@@ -3749,200 +3748,188 @@ IOReturn VoodooHDAEngine::clipOutputSamples(const void *mixBuf, void *sampleBuf,
 											UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat,
 											__unused IOAudioStream *audioStream)
 {
-	if (!streamFormat)
-		return kIOReturnBadArgument;
-
+	if(!streamFormat)
+	{
+        return kIOReturnBadArgument;
+    }
 	UInt32 firstSample = firstSampleFrame * streamFormat->fNumChannels;
-	UInt32 numSamples  = numSampleFrames  * streamFormat->fNumChannels;
+	UInt32 numSamples = numSampleFrames * streamFormat->fNumChannels;
+	int lastSample = firstSample + numSamples;
 	Float32 *floatMixBuf = ((Float32*)mixBuf) + firstSample;
-	bool appleDigitalClipPath = usesAppleGfxClipPath();
-//	bool diagnosticMixTone = diagnosticUsesMixTone();
-//	bool diagnosticDirectTone = diagnosticUsesDirectTone();
-//	bool diagnosticFreeze = diagnosticFreezesBuffer();
-	bool bypassProcessing = diagnosticBypassesProcessing();
-	bool SSE2 = mChannel->vectorize;
+	Float32 *floatMixBuf2 = ((Float32*)mixBuf); // + firstSample;
+	//Float32 *floatMixBufOld; must be global
+	SInt16 *theOutputBufferSInt16;
+	SInt8  *theOutputBufferSInt8;
+	UInt8* theOutputBufferSInt24;
+	SInt32* theOutputBufferSInt32;
 	UInt32 noiseMask = (~0U) << mChannel->noiseLevel;
-//	if (mChannel) {
-//		mChannel->diagnosticClipCalls++;
-//		mChannel->diagnosticLastFirstFrame = firstSampleFrame;
-//		mChannel->diagnosticLastNumFrames = numSampleFrames;
-//	}
+#if !defined(TIGER) && !defined(NO_SSE2)
+	bool SSE2 = mChannel->vectorize;
+  UInt8 *sourceBuf = (UInt8 *) sampleBuf;
+#endif
 
-	// Stereo widening (base > 0) or narrowing (base < 0)
+
 	bool Stereo = mChannel->useStereo;
-	int base = mChannel->StereoBase;
+	int base = mChannel->StereoBase; 
 	if (base) base = mChannel->StereoBase * 2 - 14;
-	if (!appleDigitalClipPath && !bypassProcessing && Stereo && base) {
+	if (Stereo && base) {
 		if (base > 0) {
-			for (UInt32 i = 0; i < numSamples; i += 2) {
-				Float32 L = floatMixBuf[i], R = floatMixBuf[i + 1];
-				floatMixBuf[i]     += (R / 10.0F) * base;
-				floatMixBuf[i + 1] += (L / 10.0F) * base;
+			//Slice: It is interesting but with artefacts so disabled
+			/*
+			for (int i=firstSample; i<lastSample; i+=2) {
+				int j = i - base*2;
+				if (j < 0) {
+					if (!emptyStream) {
+						floatMixBuf2[i] += floatMixBufOld[i+1]/2.0;
+						floatMixBuf2[i+1] += floatMixBufOld[i]/2.0;
+					} else {
+						floatMixBuf2[i] += floatMixBuf2[i+1]/2.0;
+						floatMixBuf2[i+1] += floatMixBuf2[i]/2.0;						
+					}
+
+				} else {
+					floatMixBuf2[i] += floatMixBuf2[j+1]/2.0;
+					floatMixBuf2[i+1] += floatMixBuf2[j]/2.0;
+				}
 			}
-		} else {
-			for (UInt32 i = 0; i < numSamples; i += 2) {
-				Float32 L = floatMixBuf[i], R = floatMixBuf[i + 1];
-				floatMixBuf[i]     -= (R / 10.0F) * base;
-				floatMixBuf[i + 1] -= (L / 10.0F) * base;
-			}
-		}
+			 */
+			//Simple mixer
+			for (int i=firstSample; i<lastSample; i+=2) {
+				Float32 L = floatMixBuf2[i];
+				Float32 R = floatMixBuf2[i+1];
+				floatMixBuf2[i] += (R/10.0F) * base;
+				floatMixBuf2[i+1] += (L/10.0F) * base;
+			}			
+		} else
+			for (int i=0; i<(int)numSamples; i+=2) {
+				Float32 L = floatMixBuf[i];
+				Float32 R = floatMixBuf[i+1];
+				floatMixBuf[i] -= (R/10.0F) * base;
+				floatMixBuf[i+1] -= (L/10.0F) * base;
+			}			
 	}
 	emptyStream = false;
 
-//	if (diagnosticFreeze && mChannel->diagnosticBufferPrimed) {
-//		if (appleDigitalClipPath && mDigitalStream)
-//			mDigitalStream->noteClippedPosition(firstSampleFrame + numSampleFrames);
-//		return kIOReturnSuccess;
-//	}
-//
-//	if (diagnosticMixTone) {
-//		fillDiagnosticMixBuffer(floatMixBuf, numSamples, streamFormat->fNumChannels);
-//		if (mChannel)
-//			mChannel->diagnosticMixToneFills++;
-//	}
-
-//	if (diagnosticDirectTone) {
-//		IOReturn result = fillDiagnosticSampleBuffer(sampleBuf, firstSampleFrame, numSampleFrames, streamFormat);
-//		if (result == kIOReturnSuccess) {
-//			if (mChannel)
-//				mChannel->diagnosticDirectToneFills++;
-//			if (diagnosticFreeze)
-//				mChannel->diagnosticBufferPrimed = true;
-//			if (appleDigitalClipPath && mDigitalStream)
-//				mDigitalStream->noteClippedPosition(firstSampleFrame + numSampleFrames);
-//			return kIOReturnSuccess;
-//		}
-//	}
-
+	// figure out what sort of blit we need to do
 	if ((streamFormat->fSampleFormat == kIOAudioStreamSampleFormatLinearPCM) && streamFormat->fIsMixable) {
-		if (!appleDigitalClipPath && !bypassProcessing && Boost) {
-			for (UInt32 i = 0; i < numSamples; i++)
-				floatMixBuf[i] *= Boost;
-		}
-		// Analog retains the old Voodoo DSP path; HDMI/DP follows AppleGFXHDA and
-		// clips directly from the mix buffer without extra in-place transforms.
-		if (!appleDigitalClipPath && !bypassProcessing &&
-		    mChannel && mChannel->pcmDevice && mChannel->pcmDevice->digital >= 2) {
-			float vol = mChannel->pcmDevice->left[SOUND_MIXER_PCM] / 100.0f;
-			if (vol < 0.999f) {
-				for (UInt32 i = 0; i < numSamples; i++)
-					floatMixBuf[i] *= vol;
-			}
-		}
+		// it's mixable linear PCM, which means we will be calling a blitter, which works in samples
+		// not frames
+    if (Boost) {
+      for (int i=firstSample; i<lastSample; i++) {
+        floatMixBuf2[i] *= Boost;
+      }
+    }
+//    floatMixBufOld = floatMixBuf2 + numSamples - base * 2;
 
+		
 		if (streamFormat->fNumericRepresentation == kIOAudioStreamNumericRepresentationSignedInt) {
-			bool nativeEndianInts = (streamFormat->fByteOrder == kIOAudioStreamByteOrderLittleEndian);
-			if (streamFormat->fBitDepth < streamFormat->fBitWidth)
+			// it's some kind of signed integer, which we handle as some kind of even byte length
+			bool nativeEndianInts;
+			nativeEndianInts = (streamFormat->fByteOrder == kIOAudioStreamByteOrderLittleEndian);
+			
+			if (streamFormat->fBitDepth < streamFormat->fBitWidth) {
 				noiseMask <<= (streamFormat->fBitWidth - streamFormat->fBitDepth);
-			if (bypassProcessing)
-				noiseMask = ~0U;
-
+			}
 			switch (streamFormat->fBitWidth) {
-			case 8: {
-				SInt8 *outBuf = ((SInt8*)sampleBuf) + firstSample;
-				ClipFloat32ToSInt8_4(floatMixBuf, outBuf, numSamples);
-				if (!appleDigitalClipPath && !bypassProcessing && (noiseMask & 0xFFU) != 0xFFU)
-					for (UInt32 i = 0; i < numSamples; i++)
-						outBuf[i] &= (SInt8)noiseMask;
-				break;
-			}
-			case 16: {
-				SInt16 *outBuf = ((SInt16*)sampleBuf) + firstSample;
-				if (nativeEndianInts) {
-					if (SSE2)
-						Float32ToNativeInt16(floatMixBuf, outBuf, numSamples);
+				case 8:
+					theOutputBufferSInt8 = ((SInt8*)sampleBuf) + firstSample;				
+						ClipFloat32ToSInt8_4(floatMixBuf, theOutputBufferSInt8, numSamples);
+					if ((noiseMask & 0xFFU) != 0xFFU)
+						for (int i=0; i<(int)numSamples; i++) {
+							theOutputBufferSInt8[i] &= static_cast<SInt8>(noiseMask);
+						}
+					break;
+					
+				case 16:
+					theOutputBufferSInt16 = ((SInt16*)sampleBuf) + firstSample;
+					if (nativeEndianInts) {
+#if !defined(TIGER) && !defined(NO_SSE2)
+						if (SSE2) {
+							Float32ToNativeInt16(floatMixBuf, theOutputBufferSInt16, numSamples);
+						} else
+#endif							
+						{
+							ClipFloat32ToSInt16LE_4(floatMixBuf, theOutputBufferSInt16, numSamples);
+						}
+						if ((noiseMask & 0xFFFFU) != 0xFFFFU)
+							for (int i=0; i<(int)numSamples; i++) {
+								theOutputBufferSInt16[i] &= static_cast<SInt16>(noiseMask);
+							}
+					}
+#if !defined(TIGER) && !defined(NO_SSE2)
 					else
-						ClipFloat32ToSInt16LE_4(floatMixBuf, outBuf, numSamples);
-					if (!appleDigitalClipPath && !bypassProcessing && (noiseMask & 0xFFFFU) != 0xFFFFU)
-						for (UInt32 i = 0; i < numSamples; i++)
-							outBuf[i] &= (SInt16)noiseMask;
-				} else
-					Float32ToSwapInt16(floatMixBuf, outBuf, numSamples);
-				break;
-			}
-			case 20:
-			case 24: {
-				UInt8 *outBuf = ((UInt8*)sampleBuf) + (firstSample * 3);
-				if (nativeEndianInts) {
-					if (SSE2)
-						Float32ToNativeInt24(floatMixBuf, outBuf, numSamples);
+						Float32ToSwapInt16(floatMixBuf, theOutputBufferSInt16, numSamples);
+#endif					
+					break;
+					
+				case 20:
+				case 24:
+					
+					theOutputBufferSInt24 = ((UInt8*)sampleBuf) + (firstSample * 3);
+					if (nativeEndianInts) {
+#if !defined(TIGER) && !defined(NO_SSE2)
+						if (SSE2) {
+							Float32ToNativeInt24(floatMixBuf, theOutputBufferSInt24, numSamples);
+						} else 
+#endif							
+						{
+							ClipFloat32ToSInt24LE_8(floatMixBuf, (SInt32*)theOutputBufferSInt24, numSamples);		
+						}
+					}
+#if !defined(TIGER) && !defined(NO_SSE2)
 					else
-						ClipFloat32ToSInt24LE_8(floatMixBuf, (SInt32*)outBuf, numSamples);
-				} else
-					Float32ToSwapInt24(floatMixBuf, outBuf, numSamples);
-				break;
-			}
-			case 32: {
-				SInt32 *outBuf = ((SInt32*)sampleBuf) + firstSample;
-				if (nativeEndianInts) {
-					if (SSE2)
-						Float32ToNativeInt32(floatMixBuf, outBuf, numSamples);
+						Float32ToSwapInt24(floatMixBuf, theOutputBufferSInt24, numSamples);
+#endif
+					break;
+					
+				case 32:
+					theOutputBufferSInt32 = ((SInt32*)sampleBuf) + firstSample;
+					if (nativeEndianInts) {
+#if !defined(TIGER) && !defined(NO_SSE2)
+						if (SSE2) {
+							Float32ToNativeInt32(floatMixBuf, theOutputBufferSInt32, numSamples);
+						} else
+#endif						
+						{					
+							ClipFloat32ToSInt32LE_4(floatMixBuf, theOutputBufferSInt32, numSamples);
+						}
+						if (noiseMask != ~0U)
+							for (int i=0; i<(int)numSamples; i++) {
+								theOutputBufferSInt32[i] &= static_cast<SInt32>(noiseMask);
+							}
+					}
+#if !defined(TIGER) && !defined(NO_SSE2)
 					else
-						ClipFloat32ToSInt32LE_4(floatMixBuf, outBuf, numSamples);
-					if (!bypassProcessing &&
-					    (noiseMask != ~0U) &&
-					    (!appleDigitalClipPath || streamFormat->fBitDepth < streamFormat->fBitWidth))
-						for (UInt32 i = 0; i < numSamples; i++)
-							outBuf[i] &= (SInt32)noiseMask;
-				} else
-					Float32ToSwapInt32(floatMixBuf,
-						(SInt32*)((UInt8*)sampleBuf + 4 * firstSample), numSamples);
-				break;
-			}
-			default:
-				IOLog("clipOutputSamples: can't handle signed integers with a bit width of %d",
-					streamFormat->fBitWidth);
-				break;
+						Float32ToSwapInt32(floatMixBuf, (SInt32 *) &sourceBuf[4 * firstSample],
+										   numSamples);
+#endif					
+					break;
+					
+				default:
+					IOLog("clipOutputSamples: can't handle signed integers with a bit width of %d",
+							 streamFormat->fBitWidth);
+					break;
+					
 			}
 		} else if (streamFormat->fNumericRepresentation == kIOAudioStreamNumericRepresentationIEEE754Float) {
+			// it is some kind of floating point format
 			if ((streamFormat->fBitWidth == 32) && (streamFormat->fBitDepth == 32) &&
 				(streamFormat->fByteOrder == kIOAudioStreamByteOrderLittleEndian)) {
-				memcpy(&((Float32*)sampleBuf)[firstSample], floatMixBuf,
-					numSamples * sizeof(Float32));
+				// it's Float32, so we are just going to copy the data
+				memcpy(&((Float32 *) sampleBuf)[firstSample], &floatMixBuf2[firstSample],
+					   numSamples * sizeof (Float32));
 			} else
 				IOLog("clipOutputSamples: can't handle floats with a bit width of %d, bit depth of %d, "
-					"and/or the given byte order", streamFormat->fBitWidth, streamFormat->fBitDepth);
+						 "and/or the given byte order", streamFormat->fBitWidth, streamFormat->fBitDepth);
 		}
 	} else {
+		// it's not linear PCM or it's not mixable, so just copy the data into the target buffer
 		UInt32 offset = firstSampleFrame * (streamFormat->fBitWidth / 8) * streamFormat->fNumChannels;
-		UInt32 size   = numSampleFrames  * (streamFormat->fBitWidth / 8) * streamFormat->fNumChannels;
-		memcpy((UInt8*)sampleBuf + offset, (UInt8*)mixBuf, size);
+		UInt32 size = numSampleFrames * (streamFormat->fBitWidth / 8) * streamFormat->fNumChannels;
+//        memcpy(&((SInt8 *) sampleBuf)[offset], &((SInt8 *) mixBuf)[offset], size);
+        memcpy((UInt8 *)sampleBuf + offset, (UInt8 *)mixBuf, size);
 	}
-
-//	if (diagnosticFreeze)
-//		mChannel->diagnosticBufferPrimed = true;
-
-	if (appleDigitalClipPath && mDigitalStream)
-		mDigitalStream->noteClippedPosition(firstSampleFrame + numSampleFrames);
-
-	/* Diag-mode chord injection: replace the just-clipped DMA bytes with a
-	 * sum of pure sines at 1/2/4/8/16 kHz. Runs AFTER the regular clip path
-	 * (so format/endianness/bit-depth match what the engine actually emits)
-	 * and BEFORE the tap (so the tap captures the synthesized signal that
-	 * the codec is about to read). */
-//	if (diagnosticUsesChord())
-//		fillDiagnosticChordBuffer(sampleBuf, firstSampleFrame, numSampleFrames, streamFormat);
-
-	/* Diag-mode PCM tap: copy what we just wrote into the DMA buffer to the
-	 * shared ring. Only one engine taps at a time (mDiagTapChannel); cost
-	 * when disabled is one volatile read + branch. Captures the bytes that
-	 * the HDA controller is about to read via DMA, so a clean dump points
-	 * to a HW-side problem and a glitchy dump points to a CPU-side problem.
-	 */
-	if (mDevice && mDevice->mDiagTapChannel >= 0 && mChannel && mDevice->mChannels) {
-		SInt32 chIdx = static_cast<SInt32>(mChannel - mDevice->mChannels);
-		if (chIdx >= 0 && chIdx < mDevice->mNumChannels && chIdx == mDevice->mDiagTapChannel) {
-			UInt32 frameBytes = (streamFormat->fBitWidth / 8) * streamFormat->fNumChannels;
-			UInt32 byteOffset = firstSampleFrame * frameBytes;
-			mDevice->diagTapWriteSamples(static_cast<UInt32>(chIdx),
-			                              static_cast<const UInt8 *>(sampleBuf) + byteOffset,
-			                              numSampleFrames, frameBytes,
-			                              mChannel->speed,
-			                              streamFormat->fNumChannels,
-			                              streamFormat->fBitWidth);
-		}
-	}
-
+	
 	return kIOReturnSuccess;
 }
 

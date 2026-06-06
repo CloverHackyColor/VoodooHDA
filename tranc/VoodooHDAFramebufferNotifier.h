@@ -58,8 +58,6 @@ public:
 
 	/* Query framebuffer ELD for a given pin */
 	bool getFramebufferELD(int cad, nid_t pinNid, uint8_t **outELD, int *outLen);
-	/* Fallback: returns ELD from any connection with valid EDID (for ATI pin mismatch) */
-	bool getAnyFramebufferELD(uint8_t **outELD, int *outLen);
 
 	/* Ensure audio pipe is active for a pin (called at stream start) */
 	void ensureAudioPipeEnabled(int cad, nid_t pinNid);
@@ -69,7 +67,6 @@ public:
 
 	/* Notify GPU that HDMI audio streaming started/stopped */
 	void notifyStreamingState(int cad, nid_t pinNid, bool streaming);
-	void diagnosticDumpGPUState(const char *reason, int cad, nid_t pinNid);
 
 private:
 	bool init(VoodooHDADevice *device);
@@ -138,7 +135,6 @@ private:
 	void injectELDIntoAllPinsWithPresence(FBConnectionState *conn);
 public:
 	void injectELDIntoPinIfReady(int cad, nid_t pinNid);
-	void disableAudioPipeForPin(int cad, nid_t pinNid);
 private:
 	void clearWidgetELD(FBConnectionState *conn);
 
