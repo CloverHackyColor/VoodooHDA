@@ -509,92 +509,6 @@ void VoodooHDAFramebufferNotifier::initGPUAudioIfNeeded()
 }
 
 /* ---------- EDID CEA audio parsing ---------- */
-#if 0
-bool VoodooHDAFramebufferNotifier::parseEDIDAudio(FBConnectionState *conn)
-{
-  if (!conn->edidData || conn->edidLen < 128) {
-    FBLOG("parseEDIDAudio: pin=%d invalid EDID data (len=%d)", conn->mappedPinNid, conn->edidLen);
-    return false;
-  }
-  
-  conn->speakerAllocation = 0;
-  conn->numSADs = 0;
-  bzero(conn->sads, sizeof(conn->sads));
-  
-  int numExtensions = conn->edidData[126];
-  
-  // Если EDID ровно 128 байт или нет расширений CEA, используем безопасный стерео-профиль.
-  // Это предотвращает выход за границы массива и тихие сбои в старых версиях.
-  if (numExtensions == 0 || conn->edidLen < 256) {
-    conn->speakerAllocation = 0x01;
-    conn->sads[0] = 0x09; /* LPCM, 2ch */
-    conn->sads[1] = 0x07; /* 32/44.1/48 kHz */
-    conn->sads[2] = 0x05; /* 16/24-bit */
-    conn->numSADs = 1;
-    FBLOG("parseEDIDAudio: pin=%d using SAFE DEFAULT stereo LPCM (no CEA or short EDID)", conn->mappedPinNid);
-    return true;
-  }
-  
-  uint8_t *cea = &conn->edidData[128];
-  if (cea[0] != 0x02) {
-    FBLOG("parseEDIDAudio: pin=%d CEA tag=0x%02x (expected 0x02), falling back to default", conn->mappedPinNid, cea[0]);
-    // Не возвращаем false! Мы используем дефолт, чтобы звук всё равно работал.
-    conn->speakerAllocation = 0x01;
-    conn->sads[0] = 0x09;
-    conn->sads[1] = 0x07;
-    conn->sads[2] = 0x01;
-    conn->numSADs = 1;
-    return true;
-  }
-  
-  int dtdOffset = cea[2];
-  bool basicAudio = (cea[3] & 0x40) != 0;
-  FBLOG("parseEDIDAudio: pin=%d CEA rev=%d dtdOffset=%d basicAudio=%d", conn->mappedPinNid, cea[1], dtdOffset, basicAudio);
-  
-  if (!basicAudio) {
-    FBLOG("parseEDIDAudio: pin=%d no basic audio support, falling back to default", conn->mappedPinNid);
-    conn->speakerAllocation = 0x01;
-    conn->sads[0] = 0x09;
-    conn->sads[1] = 0x07;
-    conn->sads[2] = 0x01;
-    conn->numSADs = 1;
-    return true;
-  }
-  
-  int pos = 4;
-  while (pos < dtdOffset && pos < 127) {
-    int tag = (cea[pos] >> 5) & 0x07;
-    int blockLen = cea[pos] & 0x1f;
-    pos++;
-    if (pos + blockLen > dtdOffset) break;
-    
-    if (tag == 1) {
-      int nSADs = blockLen / 3;
-      for (int i = 0; i < nSADs && conn->numSADs < VHDA_FB_MAX_SADS; i++) {
-        int off = conn->numSADs * 3;
-        conn->sads[off + 0] = cea[pos + i * 3 + 0];
-        conn->sads[off + 1] = cea[pos + i * 3 + 1];
-        conn->sads[off + 2] = cea[pos + i * 3 + 2];
-        int fmt = (conn->sads[off + 0] >> 3) & 0x0f;
-        int nch = (conn->sads[off + 0] & 0x07) + 1;
-        FBLOG("parseEDIDAudio: pin=%d SAD[%d]: fmt=%d ch=%d rates=0x%02x bits=0x%02x",
-              conn->mappedPinNid, conn->numSADs, fmt, nch, conn->sads[off + 1], conn->sads[off + 2]);
-        conn->numSADs++;
-      }
-    } else if (tag == 3) {
-      FBLOG("parseEDIDAudio: pin=%d Speaker Allocation: 0x%02x", conn->mappedPinNid, cea[pos]);
-    }
-    pos += blockLen;
-  }
-  
-  if (conn->numSADs > 0 && conn->speakerAllocation == 0) {
-    conn->speakerAllocation = 0x01;
-  }
-  
-  FBLOG("parseEDIDAudio: pin=%d result: spkalloc=0x%02x nsads=%d", conn->mappedPinNid, conn->speakerAllocation, conn->numSADs);
-  return (conn->numSADs > 0);
-}
-#else
 bool VoodooHDAFramebufferNotifier::parseEDIDAudio(FBConnectionState *conn)
 {
   if (!conn->edidData || conn->edidLen < 128) {
@@ -674,41 +588,9 @@ bool VoodooHDAFramebufferNotifier::parseEDIDAudio(FBConnectionState *conn)
         conn->mappedPinNid, conn->speakerAllocation, conn->numSADs);
   return (conn->numSADs > 0);
 }
-#endif
+
 
 /* ---------- ELD construction ---------- */
-#if 0
-void VoodooHDAFramebufferNotifier::buildELDFromEDID(FBConnectionState *conn)
-{
-	if (conn->eld) {
-		IOFree(conn->eld, conn->eldLen);
-		conn->eld = NULL;
-		conn->eldLen = 0;
-	}
-
-	int mnl = 0;
-	int baselineLen = 4 + mnl + conn->numSADs * 3;
-	int totalLen = 4 + baselineLen;
-
-	conn->eld = (uint8_t *)IOMalloc(totalLen);
-	if (!conn->eld) return;
-	conn->eldLen = totalLen;
-	bzero(conn->eld, totalLen);
-
-	conn->eld[0] = 0x02 << 3; /* ELD version 2 */
-	conn->eld[2] = baselineLen / 4;
-	conn->eld[4] = (conn->numSADs << 4) | mnl;
-	conn->eld[5] = 0x00; /* HDMI */
-	conn->eld[6] = 0;    /* audio sync delay */
-	conn->eld[7] = conn->speakerAllocation;
-
-	for (int i = 0; i < conn->numSADs * 3; i++)
-		conn->eld[8 + i] = conn->sads[i];
-
-	FBLOG("buildELD: pin=%d eldLen=%d spkalloc=0x%02x nsads=%d",
-	      conn->mappedPinNid, totalLen, conn->speakerAllocation, conn->numSADs);
-}
-#else
 void VoodooHDAFramebufferNotifier::buildELDFromEDID(FBConnectionState *conn)
 {
   if (conn->eld) {
@@ -752,8 +634,6 @@ void VoodooHDAFramebufferNotifier::buildELDFromEDID(FBConnectionState *conn)
   FBLOG("buildELD: eld[0]=0x%02x eld[2]=0x%02x eld[4]=0x%02x eld[5]=0x%02x eld[7]=0x%02x",
         conn->eld[0], conn->eld[2], conn->eld[4], conn->eld[5], conn->eld[7]);
 }
-#endif
-
 
 /* ---------- audio pipe control ---------- */
 
@@ -858,73 +738,7 @@ void VoodooHDAFramebufferNotifier::injectELDIntoWidget(FBConnectionState *conn)
 		return;
 	}
 }
-#if 0
-void VoodooHDAFramebufferNotifier::injectELDIntoAllPinsWithPresence(FBConnectionState *conn)
-{
-	if (!mDevice || !conn->eld || conn->eldLen == 0 || mATIPinCad < 0)
-		return;
 
-	Codec *codec = mDevice->mCodecs[mATIPinCad];
-	if (!codec) return;
-  
-  // Get the best speaker allocation from this connection
-  uint8_t bestSpkalloc = (conn->eldLen > 7) ? conn->eld[7] : 0;
-  
-  // Also check if there are any connections with better speaker allocation
-  IOLockLock(mLock);
-  for (int i = 0; i < mNumConnections; i++) {
-    FBConnectionState *c = &mConnections[i];
-    if (c->edidValid && c->eld && c->eldLen > 0) {
-      uint8_t spkalloc = (c->eldLen > 7) ? c->eld[7] : 0;
-      if (spkalloc > bestSpkalloc) {
-        bestSpkalloc = spkalloc;
-        conn = c;  // Use the connection with better spkalloc
-      }
-    }
-  }
-  IOLockUnlock(mLock);
-  
-  FBLOG("injectELDIntoAllPinsWithPresence: using spkalloc=0x%02x eld_len=%d",
-        bestSpkalloc, conn->eldLen);
-
-	for (int fg = 0; fg < codec->numFuncGroups; fg++) {
-		FunctionGroup *funcGroup = &codec->funcGroups[fg];
-		if (funcGroup->nodeType != HDA_PARAM_FCT_GRP_TYPE_NODE_TYPE_AUDIO)
-			continue;
-
-		for (int i = 0; i < mATIPinCount; i++) {
-			nid_t nid = mATIPinNids[i];
-			if (nid == conn->mappedPinNid) continue; /* already injected by injectELDIntoWidget */
-
-			UInt32 pinSense = mDevice->sendCommand(
-				HDA_CMD_GET_PIN_SENSE(mATIPinCad, nid), mATIPinCad);
-			if (!(pinSense & (1U << 31))) continue; /* no presence */
-
-			Widget *w = mDevice->widgetGet(funcGroup, nid);
-			if (!w) continue;
-
-      // Only update if new ELD has better speaker allocation
-      uint8_t currentSpkalloc = (w->eld && w->eld_len > 7) ? w->eld[7] : 0;
-      
-      if (currentSpkalloc < bestSpkalloc) {
-        if (w->eld) {
-          VoodooHDADevice::freeMem(w->eld);
-          w->eld = NULL;
-          w->eld_len = 0;
-        }
-        w->eld = (uint8_t *)VoodooHDADevice::allocMem(conn->eldLen);
-        if (w->eld) {
-          memcpy(w->eld, conn->eld, conn->eldLen);
-          w->eld_len = conn->eldLen;
-          FBLOG("injectELD(presence): nid=%d spkalloc=0x%02x (was 0x%02x)",
-                nid, bestSpkalloc, currentSpkalloc);
-        }
-      }
-		}
-		return;
-	}
-}
-#else
 void VoodooHDAFramebufferNotifier::injectELDIntoAllPinsWithPresence(FBConnectionState *conn)
 {
   if (!mDevice || !conn->eld || conn->eldLen == 0 || mATIPinCad < 0)
@@ -966,7 +780,6 @@ void VoodooHDAFramebufferNotifier::injectELDIntoAllPinsWithPresence(FBConnection
     return;
   }
 }
-#endif
 
 void VoodooHDAFramebufferNotifier::injectELDIntoPinIfReady(int cad, nid_t pinNid)
 {
