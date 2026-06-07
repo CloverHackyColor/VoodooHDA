@@ -384,6 +384,9 @@ public:
 	void unlockPrefPanelMemoryBuf();
 	
   void hdaa_eld_handler(Widget *widget);
+  void buildELDFromTVEdid(Widget *widget);
+  void createMinimalELD(Widget *widget);
+  
 	void catPinName(Widget *widget); //UInt32 config, char *buf, size_t size);
 	
 	void changeSliderValue(UInt8 tabNum, UInt8 sliderNum, UInt8 newValue);

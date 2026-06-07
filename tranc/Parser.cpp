@@ -4891,8 +4891,9 @@ void VoodooHDADevice::switchInit(FunctionGroup *funcGroup)
 		/* HDMI/DP pins: call ELD handler, skip HP redirect logic */
 		if (HDA_PARAM_PIN_CAP_DP(widget->pin.cap) ||
 			HDA_PARAM_PIN_CAP_HDMI(widget->pin.cap)) {
-			IOLog("VoodooHDA DBG: switchInit calling hdaa_eld_handler for HDMI/DP nid=%d sense=%d\n", j, res);
-			hdaa_eld_handler(widget);
+			//			hdaa_eld_handler(widget);
+      widget->needELDUpdate = true;
+      IOLog("VoodooHDA DBG: switchInit deferred ELD init for nid=%d (will be updated by framebuffer)\n", j);
 			continue;
 		}
 
@@ -4920,172 +4921,230 @@ void VoodooHDADevice::switchInit(FunctionGroup *funcGroup)
 	}*/
 }
 
+// алгоритм от Deepseek
 void VoodooHDADevice::hdaa_eld_handler(Widget *widget)
 {
-  uint32_t res;
-  int cad = widget->funcGroup->codec->cad;
+ // uint32_t res;
+  nid_t cad = widget->funcGroup->codec->cad;
   nid_t nid = widget->nid;
-  if (!widget || (widget->enable == 0))
-    return;
-  if ((widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX))
-    return;
-  if (HDA_PARAM_PIN_CAP_PRESENCE_DETECT_CAP(widget->pin.cap) == 0 ||
-      (HDA_CONFIG_DEFAULTCONF_MISC(widget->pin.config) & 1) != 0)
-    return;
+  bool isDP = HDA_PARAM_PIN_CAP_DP(widget->pin.cap) != 0;
+  bool isHDMI = HDA_PARAM_PIN_CAP_HDMI(widget->pin.cap) != 0;
+  
+  logMsg("HDMI/DP detect: nid=%d pinCap=0x%08x isDP=%d isHDMI=%d\n",
+         nid, widget->pin.cap, isDP, isHDMI);
+  
+  // ===== ИСПРАВЛЕНИЕ: Если уже есть хороший ELD (длиннее 11 байт), не перезаписываем =====
 
-  /* Check framebuffer-sourced ELD first (ATI codecs on macOS) */
-  if (mFBNotifier) {
-    uint8_t *fbELD = NULL;
-    int fbELDLen = 0;
-    if (mFBNotifier->getFramebufferELD(cad, nid, &fbELD, &fbELDLen) && fbELDLen > 0) {
-      if (widget->eld) { freeMem(widget->eld); widget->eld = NULL; widget->eld_len = 0; }
-      widget->eld = (uint8_t *)allocMem(fbELDLen);
-      if (widget->eld) {
-        memcpy(widget->eld, fbELD, fbELDLen);
-        widget->eld_len = fbELDLen;
-        IOLog("VoodooHDA HDMI: nid=%d using FRAMEBUFFER ELD (%d bytes, spkalloc=0x%02x)\n",
-              nid, fbELDLen, (fbELDLen > 7) ? widget->eld[7] : 0);
+  if (widget->eld && widget->eld_len > 0) {
+    uint8_t currentSpkalloc = (widget->eld_len > 7) ? widget->eld[7] : 0;
+    // ELD считается хорошим, если spkalloc указывает на больше чем FL/FR
+    if (currentSpkalloc != 0x01 && currentSpkalloc != 0x00) {
+      //hasGoodELD = true;
+      logMsg("HDMI nid=%d: keeping existing GOOD ELD (len=%d, spkalloc=0x%02x)\n",
+             nid, widget->eld_len, currentSpkalloc);
+      return;
+    }
+  }
+  
+  // ================================================
+  // ПРАВИЛЬНАЯ ЛОГИКА:
+  // 1. Для HDMI: читаем ELD напрямую из телевизора через HDA-команды
+  // 2. Для DP: используем framebuffer ELD (от GPU)
+  // ================================================
+  
+  if (isHDMI && !isDP) {
+    // Для AMD GPU (vendor=1002) СНАЧАЛА пытаемся получить ELD от framebuffer
+    bool eldFromFramebuffer = false;
+    if (widget->funcGroup->codec->vendorId == ATI_VENDORID && mFBNotifier) {
+      uint8_t *fbELD = NULL;
+      int fbELDLen = 0;
+      if (mFBNotifier->getFramebufferELD(cad, nid, &fbELD, &fbELDLen) && fbELDLen > 0) {
+        if (widget->eld) freeMem(widget->eld);
+        widget->eld = (uint8_t*)allocMem(fbELDLen);
+        if (widget->eld) {
+          memcpy(widget->eld, fbELD, fbELDLen);
+          widget->eld_len = fbELDLen;
+          logMsg("HDMI nid=%d: using FRAMEBUFFER ELD (%d bytes, spkalloc=0x%02x)\n",
+                 nid, fbELDLen, fbELDLen > 7 ? widget->eld[7] : 0);
+          eldFromFramebuffer = true;
+        }
+      }
+    }
+    
+    if (!eldFromFramebuffer) {
+      // HDMI: читаем напрямую из EDID телевизора
+      logMsg("HDMI nid=%d: reading ELD directly from TV via HDA commands\n", nid);
+      
+      // Читаем размер DIP (Audio Infoframe)
+      uint32_t dipSize = sendCommand(HDA_CMD_GET_HDMI_DIP_SIZE(cad, nid, 0x08), cad);
+      int eldLen = (dipSize != HDA_INVALID) ? (dipSize & 0xff) : 0;
+      
+      if (eldLen > 0 && eldLen <= 256) {
+        // Выделяем память под ELD
+        if (widget->eld) freeMem(widget->eld);
+        widget->eld = (uint8_t*)allocMem(eldLen);
+        widget->eld_len = eldLen;
+        
+        // Читаем EDID блоками
+        for (int i = 0; i < eldLen; i++) {
+          uint32_t data = sendCommand(HDA_CMD_GET_HDMI_ELDD(cad, nid, i), cad);
+          widget->eld[i] = data & 0xff;
+        }
+        
+        // Для HDMI: Устанавливаем тип соединения в ELD как HDMI
+        if (widget->eld_len > 5) {
+          widget->eld[5] = 0x00;  // HDMI connection type
+        }
+        
+        logMsg("HDMI nid=%d: direct ELD read OK, %d bytes\n", nid, eldLen);
+        return;
+      } else {
+        logMsg("HDMI nid=%d: no direct ELD, building from EDID\n", nid);
+        // Строим ELD из EDID (если есть доступ к EDID)
+        buildELDFromTVEdid(widget);
         return;
       }
     }
   }
-
-  res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, nid), cad);
-  bool atiCodec = isAtiHdmiCodec(widget->funcGroup->codec);
-  bool presence = (res & HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT_MASK) != 0;
-  bool eldValid = (res & HDA_CMD_GET_PIN_SENSE_ELD_VALID) != 0;
-  bool isDP = HDA_PARAM_PIN_CAP_DP(widget->pin.cap) != 0;
-  bool isHDMI = HDA_PARAM_PIN_CAP_HDMI(widget->pin.cap) != 0;
-
-  IOLog("VoodooHDA HDMI: ELD handler nid=%d ati=%d DP=%d HDMI=%d pinSense=0x%08x presence=%d ELD_VALID=%d pinCap=0x%08x pinCtrl=0x%02x\n",
-        nid, atiCodec, isDP, isHDMI, (unsigned)res, presence, eldValid,
-        (unsigned)widget->pin.cap, (unsigned)widget->pin.ctrl);
-
-  if (!atiCodec) {
-    if ((widget->eld != 0) == (eldValid))
-      return;
-  }
-
-  /* Free old ELD */
-  if (widget->eld != NULL) {
-    widget->eld_len = 0;
-    freeMem(widget->eld);
-    widget->eld = NULL;
-  }
-
-  if (!atiCodec && !eldValid)
-    return;
-
-  /*
-   * Strategy for ATI codecs on macOS:
-   *   1. Try standard HDA ELD verbs first — Apple GPU drivers may
-   *      program the ELD via standard path even on ATI HDA codecs.
-   *   2. If standard verbs fail or return empty, try ATI-specific verbs.
-   *   This handles both native macOS GPU driver and Hackintosh scenarios.
-   */
-
-  /* === Attempt 1: Standard HDA ELD verbs === */
-  uint32_t dipSize = sendCommand(HDA_CMD_GET_HDMI_DIP_SIZE(cad, nid, 0x08), cad);
-  int stdEldLen = (dipSize != HDA_INVALID) ? (dipSize & 0xff) : 0;
-
-  IOLog("VoodooHDA HDMI: nid=%d standard DIP_SIZE(0x08) -> 0x%08x (eldLen=%d)\n",
-        nid, (unsigned)dipSize, stdEldLen);
-
-  if (stdEldLen > 0) {
-    widget->eld_len = stdEldLen;
-    widget->eld = (uint8_t*)allocMem(stdEldLen);
-    if (widget->eld) {
-      int validBytes = 0;
-      for (int i = 0; i < stdEldLen; i++) {
-        res = sendCommand(HDA_CMD_GET_HDMI_ELDD(cad, nid, i), cad);
-        if (res & 0x80000000) {
-          widget->eld[i] = res & 0xff;
-          if (widget->eld[i] != 0) validBytes++;
+  
+  if (isDP) {
+    bool skipFramebufferELD = false;
+    // DisplayPort: используем framebuffer ELD от GPU
+    if (mFBNotifier && !skipFramebufferELD) {
+      uint8_t *fbELD = NULL;
+      int fbELDLen = 0;
+      if (mFBNotifier->getFramebufferELD(cad, nid, &fbELD, &fbELDLen) &&
+          fbELDLen > 0) {
+        if (widget->eld) freeMem(widget->eld);
+        widget->eld = (uint8_t*)allocMem(fbELDLen);
+        if (widget->eld) {
+          memcpy(widget->eld, fbELD, fbELDLen);
+          widget->eld_len = fbELDLen;
+          // Для DP: устанавливаем тип соединения
+          if (widget->eld_len > 5) widget->eld[5] = 0x04;
+          logMsg("DP nid=%d using FRAMEBUFFER ELD\n", nid);
+          return;
         }
       }
-      IOLog("VoodooHDA HDMI: nid=%d standard ELD read: %d bytes, %d non-zero\n",
-            nid, stdEldLen, validBytes);
-
-      if (validBytes > 0) {
-        /* Standard ELD has data — use it */
-        IOLog("VoodooHDA HDMI: nid=%d using STANDARD ELD path (version=0x%02x spkalloc=0x%02x)\n",
-              nid, (stdEldLen > 0) ? widget->eld[0] >> 3 : 0,
-              (stdEldLen > 7) ? widget->eld[7] : 0);
-        logMsg("HDMI ELD (standard) nid=%d: %d bytes\n", nid, stdEldLen);
-        for (int i = 0; i < stdEldLen; i++)
-          logMsg("  eld[%d]=0x%02x\n", i, widget->eld[i]);
-        return; /* success with standard verbs */
-      }
-
-      /* Standard ELD was all zeros — fall through to ATI path */
-      IOLog("VoodooHDA HDMI: nid=%d standard ELD all zeros, trying ATI verbs\n", nid);
-      freeMem(widget->eld);
-      widget->eld = NULL;
-      widget->eld_len = 0;
     }
   }
-
-  if (!atiCodec) {
-    IOLog("VoodooHDA HDMI: nid=%d not ATI codec, no fallback available\n", nid);
-    return;
-  }
-
-  /* === Attempt 2: ATI-specific ELD emulation === */
-  IOLog("VoodooHDA HDMI: nid=%d trying ATI ELD emulation verbs\n", nid);
-
-  uint32_t spkalloc = sendCommand(ATI_CMD_12BIT(cad, nid, ATI_VERB_GET_SPEAKER_ALLOCATION, 0), cad);
-  uint32_t avdelay = sendCommand(ATI_CMD_12BIT(cad, nid, ATI_VERB_GET_AUDIO_VIDEO_DELAY, 0), cad);
-
-  IOLog("VoodooHDA HDMI: nid=%d ATI SPEAKER_ALLOC=0x%08x AV_DELAY=0x%08x\n",
-        nid, (unsigned)spkalloc, (unsigned)avdelay);
-
-  if (spkalloc == HDA_INVALID) spkalloc = 0;
-  if (avdelay == HDA_INVALID) avdelay = 0;
-
-  /* Read audio descriptors (SADs) */
-  uint8_t sads[15 * 3];
-  int nsads = 0;
-  for (int i = 0; i < 15; i++) {
-    sendCommand(ATI_CMD_12BIT(cad, nid, ATI_VERB_SET_AUDIO_DESCRIPTOR, i), cad);
-    uint32_t desc = sendCommand(ATI_CMD_12BIT(cad, nid, ATI_VERB_GET_AUDIO_DESCRIPTOR, 0), cad);
-    if (i < 3) /* log first few */
-      IOLog("VoodooHDA HDMI: nid=%d ATI SAD[%d]=0x%08x\n", nid, i, (unsigned)desc);
-    if (desc == HDA_INVALID) continue;
-    uint8_t sad0 = desc & 0xff;
-    if (sad0 == 0) break;
-    sads[nsads * 3 + 0] = sad0;
-    sads[nsads * 3 + 1] = (desc >> 8) & 0xff;
-    sads[nsads * 3 + 2] = (desc >> 16) & 0xff;
-    nsads++;
-  }
-
-  bool atiDataEmpty = (spkalloc == 0) && (nsads == 0);
-  IOLog("VoodooHDA HDMI: nid=%d ATI ELD result: spkalloc=0x%02x nsads=%d %s\n",
-        nid, spkalloc & 0xff, nsads, atiDataEmpty ? "EMPTY (GPU not ready?)" : "OK");
-
-  /* Build minimal ELD */
-  int mnl = 0;
-  int baseline_len = 4 + mnl + nsads * 3;
-  int total_len = 4 + baseline_len;
-  widget->eld_len = total_len;
-  widget->eld = (uint8_t*)allocMem(total_len);
-  if (widget->eld == NULL) {
-    widget->eld_len = 0;
-    return;
-  }
-  bzero(widget->eld, total_len);
-  widget->eld[0] = 0x02;
-  widget->eld[2] = baseline_len / 4;
-  widget->eld[4] = (nsads << 4) | mnl;
-  widget->eld[5] = isDP ? 0x04 : 0x00; /* conn_type: DP=1, HDMI=0 */
-  widget->eld[6] = avdelay & 0xff;
-  widget->eld[7] = spkalloc & 0xff;
-  for (int i = 0; i < nsads * 3; i++)
-    widget->eld[8 + i] = sads[i];
-
-  logMsg("HDMI ELD (ATI emulated) nid=%d: spkalloc=0x%02x nsads=%d\n",
-         nid, spkalloc & 0xff, nsads);
+  
+  // Fallback: если ничего не сработало, создаем минимальный ELD
+  createMinimalELD(widget);
 }
+
+void VoodooHDADevice::buildELDFromTVEdid(Widget *widget)
+{
+  // Получаем EDID через стандартные HDA-команды
+  uint8_t edid[256];
+  int edid_len = 0;
+  int cad = widget->funcGroup->codec->cad;
+  nid_t nid = widget->nid;
+  
+  // Читаем EDID блоками по 16 байт
+  for (int i = 0; i < 16; i++) {
+    uint32_t data = sendCommand(HDA_CMD_GET_HDMI_ELDD(cad, nid, i), cad);
+    if (data == HDA_INVALID) break;
+    for (int j = 0; j < 4; j++) {
+      if (edid_len < 256) {
+        edid[edid_len++] = (data >> (j*8)) & 0xff;
+      }
+    }
+  }
+  
+  if (edid_len < 128) {
+    // Минимальный безопасный ELD
+    createMinimalELD(widget);
+    return;
+  }
+  
+  // Парсим EDID, извлекаем аудио-возможности
+  int speaker_allocation = 0x01;  // Фронтальная стерео пара
+  int num_sads = 0;
+  uint8_t sads[45];  // максимум 15 SAD * 3 байта
+  
+  // Парсинг CEA-861 блока в EDID
+  if (edid[126] > 0 && edid_len >= 128 + edid[126] * 128) {
+    uint8_t *cea = &edid[128];
+    if (cea[0] == 0x02) {  // CEA-861 extension tag
+      int dtd_offset = cea[2];
+      bool basic_audio = (cea[3] & 0x40) != 0;
+      
+      if (basic_audio) {
+        // Парсим аудио-блоки
+        int pos = 4;
+        while (pos < dtd_offset && pos < 127) {
+          int tag = (cea[pos] >> 5) & 0x07;
+          int block_len = cea[pos] & 0x1f;
+          pos++;
+          
+          if (tag == 1) {  // Audio Data Block
+            int n_sads = block_len / 3;
+            for (int i = 0; i < n_sads && num_sads < 15; i++) {
+              sads[num_sads*3 + 0] = cea[pos + i*3 + 0];
+              sads[num_sads*3 + 1] = cea[pos + i*3 + 1];
+              sads[num_sads*3 + 2] = cea[pos + i*3 + 2];
+              num_sads++;
+            }
+          } else if (tag == 4) {  // Speaker Allocation
+            speaker_allocation = cea[pos];
+          }
+          pos += block_len;
+        }
+      }
+    }
+  }
+  
+  // Строим ELD
+  int mnl = 0;  // Monitor Name Length
+  int baseline_len = 4 + mnl + num_sads * 3;
+  int total_len = 4 + baseline_len;
+  
+  widget->eld = (uint8_t*)allocMem(total_len);
+  if (!widget->eld) return;
+  widget->eld_len = total_len;
+  bzero(widget->eld, total_len);
+  
+  // Заполняем ELD
+  widget->eld[0] = 0x02 << 3;  // версия 2
+  widget->eld[2] = baseline_len / 4;
+  widget->eld[4] = (num_sads << 4) | mnl;
+  widget->eld[5] = 0x00;  // HDMI connection type (НЕ DP!)
+  widget->eld[6] = 0;     // audio sync delay
+  widget->eld[7] = speaker_allocation;
+  
+  for (int i = 0; i < num_sads * 3; i++) {
+    widget->eld[8 + i] = sads[i];
+  }
+  
+  logMsg("HDMI nid=%d: built ELD from EDID: %d bytes, %d SADs, spkalloc=0x%02x\n",
+         nid, total_len, num_sads, speaker_allocation);
+}
+
+void VoodooHDADevice::createMinimalELD(Widget *widget)
+{
+  // Минимальный рабочий ELD для HDMI (2-канальный LPCM)
+  widget->eld_len = 11;  // ELD v2 с одним SAD
+  widget->eld = (uint8_t*)allocMem(11);
+  if (!widget->eld) return;
+
+  nid_t nid = widget->nid;
+  
+  bzero(widget->eld, 11);
+  widget->eld[0] = 0x02 << 3;  // version 2
+  widget->eld[2] = 11 / 4;     // ELD size in DWORDs
+  widget->eld[4] = 0x10;       // 1 SAD (0x1 << 4)
+  widget->eld[5] = 0x00;       // HDMI connection
+  widget->eld[7] = 0x01;       // FL/FR speaker allocation
+  
+  // SAD: LPCM, 2 channels, 48kHz, 16/24-bit
+  widget->eld[8] = 0x09;   // coding=LPCM, channels=2
+  widget->eld[9] = 0x07;   // rates=32/44.1/48 kHz
+  widget->eld[10] = 0x05;  // 16-bit + 24-bit support
+  
+  logMsg("HDMI nid=%d: created minimal ELD\n", nid);
+}
+
 
 //Slice
 /*
