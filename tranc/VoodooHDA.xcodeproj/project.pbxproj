@@ -14,6 +14,7 @@
 		CE5D398B0EF4784000140715 /* Parser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE5D398A0EF4784000140715 /* Parser.cpp */; };
 		CE6725A40EF078B100FAFBED /* VoodooHDADevice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE6725A00EF078B100FAFBED /* VoodooHDADevice.cpp */; };
 		CE6725A60EF078B100FAFBED /* VoodooHDAEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE6725A20EF078B100FAFBED /* VoodooHDAEngine.cpp */; };
+		AA0000000000000000000003 /* VoodooHDAFramebufferNotifier.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000001 /* VoodooHDAFramebufferNotifier.cpp */; };
 		CE709B500EFF2AA400EE77FF /* VoodooHDAUserClient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE709B4E0EFF2AA400EE77FF /* VoodooHDAUserClient.cpp */; };
 		CE9337FE0EF226E000776BCD /* Tables.c in Sources */ = {isa = PBXBuildFile; fileRef = CE9337FC0EF226E000776BCD /* Tables.c */; };
 		E5A3BD951E7095C100F91F3D /* PCMBlitterLibX86.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEF7C0A70EF74C2700A14C68 /* PCMBlitterLibX86.cpp */; settings = {COMPILER_FLAGS = "-fvisibility=hidden"; }; };
@@ -38,6 +39,8 @@
 		CE6725A00EF078B100FAFBED /* VoodooHDADevice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VoodooHDADevice.cpp; sourceTree = "<group>"; };
 		CE6725A10EF078B100FAFBED /* VoodooHDADevice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VoodooHDADevice.h; sourceTree = "<group>"; };
 		CE6725A20EF078B100FAFBED /* VoodooHDAEngine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VoodooHDAEngine.cpp; sourceTree = "<group>"; };
+		AA0000000000000000000001 /* VoodooHDAFramebufferNotifier.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VoodooHDAFramebufferNotifier.cpp; sourceTree = "<group>"; };
+		AA0000000000000000000002 /* VoodooHDAFramebufferNotifier.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VoodooHDAFramebufferNotifier.h; sourceTree = "<group>"; };
 		CE6725A30EF078B100FAFBED /* VoodooHDAEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VoodooHDAEngine.h; sourceTree = "<group>"; };
 		CE6725A80EF078BB00FAFBED /* License.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = License.h; sourceTree = "<group>"; };
 		CE6725D60EF0880E00FAFBED /* Common.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Common.h; sourceTree = "<group>"; };
@@ -120,6 +123,8 @@
 				CE6725A00EF078B100FAFBED /* VoodooHDADevice.cpp */,
 				CE6725A10EF078B100FAFBED /* VoodooHDADevice.h */,
 				CE6725A20EF078B100FAFBED /* VoodooHDAEngine.cpp */,
+				AA0000000000000000000001 /* VoodooHDAFramebufferNotifier.cpp */,
+				AA0000000000000000000002 /* VoodooHDAFramebufferNotifier.h */,
 				CE6725A30EF078B100FAFBED /* VoodooHDAEngine.h */,
 				CE709B4E0EFF2AA400EE77FF /* VoodooHDAUserClient.cpp */,
 				CE709B4F0EFF2AA400EE77FF /* VoodooHDAUserClient.h */,
@@ -229,6 +234,7 @@
 				120156031244377E00611BC7 /* AppleAudioClip.cpp in Sources */,
 				12F24FCC12860D9600B294D6 /* PCMBlitterLib.cpp in Sources */,
 				E5A3BD951E7095C100F91F3D /* PCMBlitterLibX86.cpp in Sources */,
+				AA0000000000000000000003 /* VoodooHDAFramebufferNotifier.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -241,7 +247,7 @@
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_ENTITLEMENTS = "";
 				CODE_SIGN_IDENTITY = "-";
-				CURRENT_PROJECT_VERSION = 3.1.0;
+				CURRENT_PROJECT_VERSION = 3.5.1;
 				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 10.9;
@@ -292,7 +298,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3.1.0;
+				CURRENT_PROJECT_VERSION = 3.5.1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEPLOYMENT_POSTPROCESSING = YES;
 				DYLIB_COMPATIBILITY_VERSION = "$(CURRENT_PROJECT_VERSION)";

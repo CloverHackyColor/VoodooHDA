@@ -69,6 +69,7 @@ typedef struct _sliderTab{
 }sliderTab;
 
 class VoodooHDAEngine;
+class VoodooHDAFramebufferNotifier;
 
 class IOPCIDevice;
 class IOFilterInterruptEventSource;
@@ -188,15 +189,15 @@ public:
 	void writeData16(UInt32 offset, UInt16 value);
 	void writeData32(UInt32 offset, UInt32 value);
 
-	virtual bool init(OSDictionary *dictionary = 0);
-	virtual IOService *probe(IOService *provider, SInt32 *score);
-	virtual bool initHardware(IOService *provider);
+	virtual bool init(OSDictionary *dictionary = 0) override;
+	virtual IOService *probe(IOService *provider, SInt32 *score) override;
+	virtual bool initHardware(IOService *provider) override;
 	virtual bool createAudioEngine(Channel *channel);
-	virtual void stop(IOService *provider);
-	virtual void free();
+	virtual void stop(IOService *provider) override;
+	virtual void free() override;
 
 	virtual IOReturn performPowerStateChange(IOAudioDevicePowerState oldPowerState,
-			IOAudioDevicePowerState newPowerState, UInt32 *microsecondsUntilComplete);
+			IOAudioDevicePowerState newPowerState, UInt32 *microsecondsUntilComplete) override;
 	bool suspend();
 	bool resume();
 
@@ -260,7 +261,7 @@ public:
 	void probeFunction(Codec *codec, nid_t nid);
 
 	int unsolqFlush();
-	void handleUnsolicited(Codec *codec, UInt32 tag);
+	void handleUnsolicited(Codec *codec, UInt32 tag, UInt32 resp);
 	void micSwitchHandlerEnableWidget(FunctionGroup *funcGroup, nid_t widget, int connNum, bool Enabled);
 	void SwitchHandlerRename(FunctionGroup *funcGroup, int assocsNum, nid_t nid, UInt32 res);
 	void micSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 res);
@@ -383,6 +384,9 @@ public:
 	void unlockPrefPanelMemoryBuf();
 	
   void hdaa_eld_handler(Widget *widget);
+  void buildELDFromTVEdid(Widget *widget);
+  void createMinimalELD(Widget *widget);
+  
 	void catPinName(Widget *widget); //UInt32 config, char *buf, size_t size);
 	
 	void changeSliderValue(UInt8 tabNum, UInt8 sliderNum, UInt8 newValue);
@@ -424,6 +428,22 @@ public:
 	/*********************/
 	void initMixerDefaultValues(void);
 	void disablePCIeNoSnoop(UInt16 vendorId);
+
+	/* Framebuffer notifier for AMD HDMI audio */
+	VoodooHDAFramebufferNotifier *mFBNotifier;
+
+	/* Dynamic HDMI engine management */
+	struct HDMIEngineSlot {
+		VoodooHDAEngine *engine;
+		Channel *channel;
+		nid_t pinNid;
+		int cad;
+		bool activated;
+	};
+	HDMIEngineSlot mHDMIEngines[16];
+	int mNumHDMIEngines;
+	nid_t getHDMIPinForChannel(Channel *channel);
+	void updateHDMIEnginePresence();
 };
 
 #endif

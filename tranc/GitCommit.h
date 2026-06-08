@@ -1,0 +1,1 @@
+#define VOODOO_HDA_GIT_COMMIT "f9b994d"

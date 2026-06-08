@@ -2,6 +2,7 @@
 
 #include "VoodooHDAEngine.h"
 #include "VoodooHDADevice.h"
+#include "VoodooHDAFramebufferNotifier.h"
 #include "Common.h"
 #include "Verbs.h"
 #include "OssCompat.h"
@@ -24,8 +25,8 @@ OSDefineMetaClassAndStructors(VoodooHDAEngine, IOAudioEngine)
 
 #define SAMPLE_CHANNELS		2	// forced stereo quirk is always enabled
 
-#define SAMPLE_OFFSET		64	// note: these values definitely need to be tweaked
-#define SAMPLE_LATENCY		32
+#define SAMPLE_OFFSET		256	// note: these values definitely need to be tweaked
+#define SAMPLE_LATENCY	128
 
 //extern const char * const gDeviceTypes[], * const gConnTypes[];
 
@@ -192,8 +193,24 @@ const char *VoodooHDAEngine::getPortName()
 		goto done;
 
 	//Slice - advanced PinName
-
-	mPortName = &widget->name[5]; 
+	{
+		const char *pinName = &widget->name[5];
+		/* Use codec name (e.g. "Realtek ALC897", "Intel Raptor Lake HDMI")
+		 * instead of controller name — the controller name is the same for
+		 * all codecs on the same HDA bus, which is misleading when Realtek
+		 * analog outputs show as "Intel: Headphones". */
+		const char *codecName = NULL;
+		if (mChannel->funcGroup && mChannel->funcGroup->codec)
+			codecName = VoodooHDADevice::findCodecName(mChannel->funcGroup->codec);
+		if (!codecName)
+			codecName = mDevice->mControllerName;
+		if (codecName) {
+			snprintf(mPortNameBuf, sizeof(mPortNameBuf), "%s: %s", codecName, pinName);
+			mPortName = mPortNameBuf;
+		} else {
+			mPortName = pinName;
+		}
+	}
 	mPortType = pinConfigToSelection(widget->pin.config);
 done:
 	mDevice->unlock(__FUNCTION__);
@@ -387,6 +404,7 @@ __attribute__((visibility("hidden")))
 bool VoodooHDAEngine::createAudioStream()
 {
 	bool result = false;
+	bool isDigital;
 	IOAudioStreamDirection direction;
 	IOAudioSampleRate minSampleRate, maxSampleRate;
 	UInt8 *sampleBuffer;
@@ -411,28 +429,36 @@ bool VoodooHDAEngine::createAudioStream()
 		goto done;
 	}
 
-//	logMsg("sample rates: ");
-//	for (UInt32 n = 0; (n < 16) && mChannel->pcmRates[n]; n++)
-//		logMsg("%ld ", mChannel->pcmRates[n]);
-//	logMsg("(min: %ld, max: %ld)\n", mChannel->caps.minSpeed, mChannel->caps.maxSpeed);
-
-//	ASSERT(mChannel->caps.minSpeed);
-//	ASSERT(mChannel->caps.maxSpeed);
-//	ASSERT(mChannel->caps.minSpeed <= mChannel->caps.maxSpeed);
-
 	minSampleRate.whole = mChannel->caps.minSpeed;
 	minSampleRate.fraction = 0;
 	maxSampleRate.whole = mChannel->caps.maxSpeed;
 	maxSampleRate.fraction = 0;
 	channels = mChannel->caps.channels;
-	logMsg("(min: %ld, max: %ld) channels=%d\n", (long int)mChannel->caps.minSpeed, (long int)mChannel->caps.maxSpeed, (int)channels);
+
+	/*
+	 * HDMI/DP monitors typically support only 2-channel stereo.
+	 * ATI codecs report 8 channels per association but sending 8ch
+	 * to a 2ch sink produces noise.  Cap to 2 for digital outputs.
+	 * (AV receivers with 5.1/7.1 can be supported later via ELD.)
+	 */
+	isDigital = (mChannel->funcGroup->audio.assocs[mChannel->assocNum].digital != 0);
+	if (isDigital && channels > 2)
+		channels = 2;
+
+	logMsg("(min: %ld, max: %ld) channels=%d%s\n", (long int)mChannel->caps.minSpeed, (long int)mChannel->caps.maxSpeed, (int)channels, isDigital ? " (digital, capped to 2)" : "");
 	sampleBuffer = (UInt8 *) mChannel->buffer->virtAddr;
-	mBufferSize = HDA_BUFSZ_MAX; // hardcoded in pcmAttach()
-    if (!createAudioStream(direction, sampleBuffer, mBufferSize, mChannel->pcmRates,
-                           mChannel->supPcmSizeRates, mChannel->supStreamFormats, channels)) {
-		errorMsg("error: createAudioStream failed channels=%d\n", (int)channels);
-		goto done;
-	}
+  if (isDigital) {
+    mBufferSize = 32768; // 32 КБ = 8192 фрейма (идеально для 48kHz стерео)
+    logMsg("VoodooHDA: Forced digital buffer size to 32768 bytes\n");
+  } else {
+    mBufferSize = 65536; // 64 КБ для аналоговых выходов
+  }
+  
+  if (!createAudioStream(direction, sampleBuffer, mBufferSize, mChannel->pcmRates,
+                         mChannel->supPcmSizeRates, mChannel->supStreamFormats, channels)) {
+    errorMsg("error: createAudioStream failed channels=%d\n", (int)channels);
+    goto done;
+  }
 	publishChannelLayout(direction, channels);
 	result = true;
 done:
@@ -531,6 +557,16 @@ bool VoodooHDAEngine::createAudioStream(IOAudioStreamDirection direction, void *
 		format.fBitWidth = 32;
             formatEx.fBytesPerPacket = format.fNumChannels * (format.fBitWidth / 8);
             mStream->addAvailableFormat(&format, &formatEx, &sampleRate, &sampleRate);
+	} else if (isDigital) {
+		/* HDMI/DP codecs are pass-through: the HDA PCM cap register may
+		 * report only 16-bit, but the HDMI link carries 24-bit fine.
+		 * AppleGFXHDA uses 24-bit on the same hardware. */
+		IOAudioStreamFormat fmt24 = format;
+		IOAudioStreamFormatExtension fmtEx24 = formatEx;
+		fmt24.fBitDepth = 24;
+		fmt24.fBitWidth = 32;
+		fmtEx24.fBytesPerPacket = fmt24.fNumChannels * (fmt24.fBitWidth / 8);
+		mStream->addAvailableFormat(&fmt24, &fmtEx24, &sampleRate, &sampleRate);
 	} else if (HDA_PARAM_SUPP_PCM_SIZE_RATE_20BIT(supPcmSizeRates)) {
 		format.fBitDepth = 20;
 		format.fBitWidth = 32;
@@ -723,33 +759,33 @@ IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 											  const IOAudioStreamFormat *newFormat,
 											  const IOAudioSampleRate *newSampleRate)
 {
-	IOReturn result = kIOReturnError;
-	int setResult;
-	UInt32 ossFormat;
+  IOReturn result = kIOReturnError;
+  int setResult;
+  UInt32 ossFormat;
+  
+  // ASSERT(audioStream == mStream);
+  
+  logMsg("VoodooHDAEngine[%p]::peformFormatChange(%p, %p, %p)\n", this, audioStream, newFormat,
+         newSampleRate);
+  
+  if (!newSampleRate)
+    newSampleRate = getSampleRate();
+  if (!newFormat && !newSampleRate) {
+    errorMsg("warning: performFormatChange(%p) called with no effect\n", audioStream);
+    return kIOReturnSuccess;
+  }
+  
+  if (newFormat) {
+    int channels = newFormat->fNumChannels;
+    
+    if(!channels) {
+      channels = 2;
+    }
+    
+    ossFormat = AFMT_STEREO;
 
-	// ASSERT(audioStream == mStream);
-
-	logMsg("VoodooHDAEngine[%p]::peformFormatChange(%p, %p, %p)\n", this, audioStream, newFormat,
-			newSampleRate);
-
-	if (!newSampleRate)
-		newSampleRate = getSampleRate();
-	if (!newFormat && !newSampleRate) {
-		errorMsg("warning: performFormatChange(%p) called with no effect\n", audioStream);
-		return kIOReturnSuccess;
-	}
-
-	if (newFormat) {
-	int channels = newFormat->fNumChannels;
-
-        if(!channels) {
-            channels = 2;
-        }
-
-			ossFormat = AFMT_STEREO;
-
-        if (newFormat->fSampleFormat == kIOAudioStreamSampleFormat1937AC3) {
-            ossFormat = AFMT_AC3;
+    if (newFormat->fSampleFormat == kIOAudioStreamSampleFormat1937AC3) {
+      ossFormat = AFMT_AC3;
 		} else if (channels == 4) {
 			ossFormat = SND_FORMAT(0, 4, 0);
 		} else if (channels == 6) {
@@ -762,7 +798,7 @@ IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 		ASSERT(newFormat->fAlignment == kIOAudioStreamAlignmentLowByte);
 		ASSERT(newFormat->fByteOrder == kIOAudioStreamByteOrderLittleEndian);
 
-        if(ossFormat != AFMT_AC3) {
+    if(ossFormat != AFMT_AC3) {
 		switch (newFormat->fBitDepth) {
 			case 16:
 				ASSERT(newFormat->fBitWidth == 16);
@@ -773,7 +809,7 @@ IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 				ossFormat |= AFMT_S32_LE;
 				mChannel->bit32 = 2;
 				break;
-            case 24:
+     case 24:
 				ASSERT(newFormat->fBitWidth == 32);
 				ossFormat |= AFMT_S32_LE;
 				mChannel->bit32 = 3;
@@ -784,15 +820,15 @@ IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 				mChannel->bit32 = 4;
 				break;
 			default:
-				BUG("unsupported bit depth");
+        errorMsg("unsupported bit depth %d\n", newFormat->fBitDepth);
 //				goto done;
 		}
         }
 		//IOLog("ossFormat=%08x\n", (unsigned int)ossFormat);
 		
 		setResult = mDevice->channelSetFormat(mChannel, ossFormat);
-		logMsg("channelSetFormat(0x%08lx) for channel %d returned %d\n", static_cast<long unsigned int>(ossFormat), getEngineId(),
-				setResult);
+		logMsg("channelSetFormat(0x%08lx) for channel %d returned %d\n",
+           static_cast<long unsigned int>(ossFormat), getEngineId(), setResult);
 		if (setResult != 0) {
 			errorMsg("error: couldn't set format 0x%lx (%d-bit depth)\n", (long unsigned int)ossFormat, newFormat->fBitDepth);
 			goto done;
@@ -800,8 +836,36 @@ IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 
 		ASSERT(mBufferSize);
 		mSampleSize = channels * (newFormat->fBitWidth / 8);
-		mNumSampleFrames = mBufferSize / mSampleSize;
-		mChannel->slack = static_cast<UInt16>(mBufferSize - mNumSampleFrames * mSampleSize);
+    bool isDigitalStream = mChannel->pcmDevice->digital >= 2;
+    
+    if (isDigitalStream) {
+      nid_t pin = mDevice->getHDMIPinForChannel(mChannel);
+      if (pin != (nid_t)-1 && mDevice->mFBNotifier) {
+        // Принудительно обновляем ELD перед настройкой потока
+        mDevice->mFBNotifier->ensureAudioPipeEnabled(mChannel->funcGroup->codec->cad, pin);
+      }
+      
+      // ДЛЯ HDMI: Фиксируем 8192 фрейма.
+      // 8192 фрейма * 4 байта (16-bit stereo) = 32768 байт (32 КБ).
+      // Это дает ~170 мс общего времени буфера, что с запасом перекрывает
+      // любые задержки планировщика macOS и предотвращает зацикливание старых данных.
+      mNumSampleFrames = 16384;
+      UInt32 slack = 128;  // 2048 фреймов запаса
+      mBufferSize = (mNumSampleFrames + slack)  * mSampleSize; 
+      mChannel->slack = slack;
+      logMsg("VoodooHDA: Forced digital buffer to %u frames, size %lu bytes slack %lu\n",
+            mNumSampleFrames, (unsigned long)mBufferSize, (unsigned long)slack);
+    } else {
+      // Для аналоговых каналов оставляем стандартную логику
+      mNumSampleFrames = mBufferSize / mSampleSize;
+      mChannel->slack = static_cast<UInt16>(mBufferSize - (mNumSampleFrames * mSampleSize));
+    }
+    
+    
+    logMsg("VoodooHDA DEBUG: mBufferSize=%lu, mSampleSize=%u, mNumSampleFrames=%lu, slack=%u\n",
+          (unsigned long)mBufferSize, mSampleSize, (unsigned long)mNumSampleFrames, mChannel->slack);
+
+    
 		setNumSampleFramesPerBuffer(mNumSampleFrames);
 
 		logMsg("buffer size: %ld, channels: %d, bit depth: %d, # samp. frames: %ld\n", (long int)mBufferSize,
@@ -1112,4 +1176,23 @@ OSString *VoodooHDAEngine::getLocalUniqueID()
 	char str[64] = "";
 	snprintf(str, sizeof str, "%s:%lx", ioName->getCStringNoCopy(), (long unsigned int)index);
 	return OSString::withCString(str);
+}
+
+void VoodooHDAEngine::forceResetHDMIState() {
+  // Сбросить ELD
+/*  memset(eld, 0, sizeof(eld));
+  eld_len = 0;
+  
+  // Сбросить ATI регистры
+  writeATIReg(ATI_DIP_XMIT, 0);
+  writeATIReg(ATI_MC01, 0);
+  writeATIReg(ATI_MC23, 0);
+  writeATIReg(ATI_MC45, 0);
+  writeATIReg(ATI_MC67, 0);
+  
+  // Сбросить буфер DMA
+  mWritePointer = 0;
+  mReadPointer = 0;
+  */
+  IOLog("HDMI state force reset\n");
 }

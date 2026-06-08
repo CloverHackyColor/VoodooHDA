@@ -34,6 +34,7 @@ public:
 	bool emptyStream;
 
 	const char *mPortName;
+	char mPortNameBuf[64];
 	UInt32 mPortType;
 
 	IOAudioSelectorControl *mSelControl;
@@ -64,6 +65,8 @@ public:
 	bool createAudioStream();
 
 	bool createAudioControls();
+  
+  void forceResetHDMIState();
 	
 	static IOReturn volumeChangeHandler(IOService *target, IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue);
 	static IOReturn muteChangeHandler(IOService *target, IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);

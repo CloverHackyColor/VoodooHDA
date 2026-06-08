@@ -49,8 +49,9 @@
 #define HDA_BLK_ALIGN			(~(HDA_BLK_MIN - 1))
 
 #define HDA_BUFSZ_MIN			4096
-	//#define HDA_BUFSZ_MAX			65536
-#define HDA_BUFSZ_MAX			262144
+#define HDA_BUFSZ_MAX			65536
+ //#define HDA_BUFSZ_MAX			262144
+//#define HDA_BUFSZ_MAX      32768
 #define HDA_BUFSZ_DEFAULT		HDA_BUFSZ_MAX
 
 #define HDA_GPIO_MAX    8
@@ -195,6 +196,7 @@ typedef struct _Widget {
 		UInt32 cap;
 		UInt32 ctrl;
 	} pin; /* wclass */
+  bool needELDUpdate;  // Нужно ли обновить ELD после получения EDID
 } Widget;
 
 typedef struct _AudioControl {
@@ -325,5 +327,16 @@ typedef struct _Codec {
 	FunctionGroup *funcGroups;
 	int	numFuncGroups;
 } Codec;
+
+/* ATI HDMI codec: vendor ID 0x1002 (all known ATI/AMD HDMI codec IDs) */
+static inline bool isAtiHdmiCodec(Codec *codec) {
+	return codec->vendorId == 0x1002;
+}
+
+/* Rev3+ ATI codecs (0x1002aa01 with revision >= 0x03) support single-channel remap mode */
+static inline bool isAtiHdmiRev3(Codec *codec) {
+	return (CODEC_ID(codec) == 0x1002aa01) &&
+	       (codec->revisionId >= 0x03);
+}
 
 #endif
