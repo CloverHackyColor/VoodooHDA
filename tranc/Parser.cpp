@@ -3732,6 +3732,20 @@ void VoodooHDADevice::widgetPinParse(Widget *widget)
 
 	config = widgetPinGetConfig(widget);
 	widget->pin.config = config;
+  
+  
+  // =========================================================================
+  // РАННЕЕ ОТКЛЮЧЕНИЕ "МЁРТВЫХ" ПИНОВ (AppleALC dummy pins)
+  // Если Connectivity = None (например, конфиг 0x411111f0),
+  // мы отключаем виджет НЕМЕДЛЕННО. Это предотвращает его участие
+  // в audioCtlParse и audioAssociationParse, исключая конфликты маршрутизации.
+  // =========================================================================
+  if ((config & HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_MASK) == HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_NONE) {
+    widget->enable = 0;
+    dumpMsg("Early disable: nid %d is a dummy pin (config=0x%08lx)\n",
+            nid, (long unsigned int)config);
+  }
+  // =========================================================================
 
 	pincap = widgetPinGetCaps(widget);
 	widget->pin.cap = pincap;

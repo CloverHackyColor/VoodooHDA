@@ -849,7 +849,7 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
       audioEngine->mEnableMuteFix = mEnableMuteFix;
     }
 
-    //  audioEngine->mDisableInputMonitor = mDisableInputMonitor;
+    //audioEngine->mDisableInputMonitor = mDisableInputMonitor;
     audioEngine->Boost = Boost;
 
     /*
