@@ -2775,6 +2775,48 @@ void VoodooHDADevice::channelStart(Channel *channel, const bool shouldLock)
 {
 	if (shouldLock)
 		LOCK();
+  
+  // 🔧 FIX: Restore pin control and unmute for analog playback channels.
+  // This ensures that if the pin was muted/disabled by hpSwitchHandler (e.g., headphones plugged in),
+  // manually selecting this output in macOS will re-enable it.
+  if (channel->direction == PCMDIR_PLAY && !(channel->pcmDevice && channel->pcmDevice->digital >= 2)) {
+    FunctionGroup *funcGroup = channel->funcGroup;
+    AudioAssoc *assoc = &funcGroup->audio.assocs[channel->assocNum];
+    nid_t cad = funcGroup->codec->cad;
+    
+    for (int seq = 0; seq < 16; seq++) {
+      nid_t pinNid = assoc->pins[seq];
+      if (pinNid <= 0) continue;
+      
+      Widget *pinWidget = widgetGet(funcGroup, pinNid);
+      if (!pinWidget || pinWidget->enable == 0) continue;
+      
+      // 1. Restore OUT_ENABLE and HPHN_ENABLE
+      UInt32 pincap = pinWidget->pin.cap;
+      UInt32 ctrl = pinWidget->pin.ctrl;
+      if (HDA_PARAM_PIN_CAP_OUTPUT_CAP(pincap)) {
+        ctrl |= HDA_CMD_SET_PIN_WIDGET_CTRL_OUT_ENABLE;
+      }
+      if (HDA_PARAM_PIN_CAP_HEADPHONE_CAP(pincap) &&
+          ((pinWidget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK) == HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT)) {
+        ctrl |= HDA_CMD_SET_PIN_WIDGET_CTRL_HPHN_ENABLE;
+      }
+      
+      if (ctrl != pinWidget->pin.ctrl) {
+        pinWidget->pin.ctrl = ctrl;
+        sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, pinNid, ctrl), cad);
+      }
+      
+      // 2. Unmute the output amp for this pin
+      AudioControl *ctl = audioCtlAmpGet(funcGroup, pinNid, HDA_CTL_OUT, -1, 1);
+      if (ctl) {
+        int z = ctl->offset;
+        if (z > ctl->step) z = ctl->step;
+        audioCtlAmpSetInternal(cad, pinNid, ctl->index, 0, 0, z, z, 0);
+      }
+    }
+  }
+
 
 	if (channel->pcmDevice && channel->pcmDevice->digital >= 2) {
 		nid_t pin = getHDMIPinForChannel(channel);
