@@ -27,15 +27,15 @@
 			<key>AllowMSI</key>
 			<true/>
 			<key>Boost</key>
-			<integer>0</integer>
+			<integer>1</integer>
 			<key>CFBundleIdentifier</key>
 			<string>org.voodoo.driver.VoodooHDA</string>
 			<key>DisableInputMonitor</key>
 			<true/>
 			<key>IOClass</key>
 			<string>VoodooHDADevice</string>
-			<key>IOPCIClassMatch</key>
-			<string>0x04000000&amp;0xfffc0000</string>
+			<key>IONameMatch</key>
+			<string>HDAS</string>
 			<key>IOProviderClass</key>
 			<string>IOPCIDevice</string>
 			<key>IOUserClientClass</key>
@@ -84,7 +84,7 @@
 			<key>VoodooHDAEnableVolumeChangeFix</key>
 			<false/>
 			<key>VoodooHDAVerboseLevel</key>
-			<integer>0</integer>
+			<integer>3</integer>
 		</dict>
 		<key>VoodooHDA-HDMI</key>
 		<dict>
@@ -99,7 +99,9 @@
 			<key>IOClass</key>
 			<string>VoodooHDADevice</string>
 			<key>IOPCIClassMatch</key>
-			<string>0x04030000&amp;0xffff0000</string>
+			<string>0x04000000&amp;0xfffc0000</string>
+			<key>IOPCIMatch</key>
+			<string>0xAA001002&amp;0xfe00ffff</string>
 			<key>IOProbeScore</key>
 			<integer>100000</integer>
 			<key>IOProviderClass</key>
@@ -150,7 +152,7 @@
 			<key>VoodooHDAEnableVolumeChangeFix</key>
 			<false/>
 			<key>VoodooHDAVerboseLevel</key>
-			<integer>0</integer>
+			<integer>3</integer>
 		</dict>
 	</dict>
 	<key>OSBundleLibraries</key>
@@ -170,11 +172,5 @@
 		<key>com.apple.kpi.unsupported</key>
 		<string>9.0.0</string>
 	</dict>
-	<key>VoodooHDAAMDHDMIDynamicMatch</key>
-	<true/>
-	<key>VoodooHDAEnableAMDFramebufferNotifier</key>
-	<true/>
-	<key>VoodooHDAEnableAMDHDMI</key>
-	<true/>
 </dict>
 </plist>
