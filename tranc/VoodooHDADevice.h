@@ -70,6 +70,7 @@ typedef struct _sliderTab{
 
 class VoodooHDAEngine;
 class VoodooHDAFramebufferNotifier;
+class VoodooGFXHDAController;
 
 class IOPCIDevice;
 class IOFilterInterruptEventSource;
@@ -171,6 +172,10 @@ public:
     // VertexBZ: flags to enable/disable Mic and Mute fixes (loaded from plist)
 	bool mEnableHalfMicVolumeFix;
 	bool mEnableMuteFix;
+	bool mEnableAnalogPathRestore;
+	bool mEnableAnalogAutoUnmute;
+	bool mEnableAnalogEAPDRestore;
+	bool mEnableAnalogDirectMaster;
 
 	// Zenith432
 	UInt16 mMixerDefaults[SOUND_MIXER_NRDEVICES];
@@ -247,12 +252,12 @@ public:
 	void startCorb();
 	void startRirb();
 
-	int rirbFlush();
-	int handleStreamInterrupt(Channel *channel);
-	VoodooHDAEngine *lookupEngine(int channelId);
-	void handleChannelInterrupt(int channelId);
+		int rirbFlush();
+		int handleStreamInterrupt(Channel *channel);
+		LIBKERN_RETURNS_NOT_RETAINED VoodooHDAEngine *lookupEngine(int channelId);
+		void handleChannelInterrupt(int channelId);
 
-	UInt32 sendCommand(UInt32 verb, nid_t cad);
+		UInt32 sendCommand(UInt32 verb, nid_t cad);
 	void sendCommands(CommandList *commands, nid_t cad);
 
 	static const char *findCodecName(Codec *codec);
@@ -346,6 +351,8 @@ public:
 
 	int audioCtlOssMixerInit(PcmDevice *pcmDevice);
 	int audioCtlOssMixerSet(PcmDevice *pcmDevice, UInt32 dev, UInt32 left, UInt32 right);
+	bool audioCtlApplyAnalogMasterVolume(PcmDevice *pcmDevice, UInt32 left, UInt32 right);
+	bool shouldRouteMasterVolumeToPCM(PcmDevice *pcmDevice);
 	int ilerp(int a, int b, float t);	// cue8chalk
 	UInt32 audioCtlOssMixerSetRecSrc(PcmDevice *pcmDevice, UInt32 src);
 	int audioCtlOssMixerGet(PcmDevice *pcmDevice, UInt32 dev, UInt32* left, UInt32* right);
@@ -356,11 +363,13 @@ public:
 	int channelSetFormat(Channel *channel, UInt32 format);
 	int channelSetSpeed(Channel *channel, UInt32 reqSpeed);
 	void channelStop(Channel *channel, bool shouldLock = true);
+	void restoreAnalogPlaybackPath(Channel *channel, const bool shouldLock = true);
 	void channelStart(Channel *channel, bool shouldLock = true);
 	int channelGetPosition(Channel *channel);
 
 	void streamSetup(Channel *channel);
-	void streamHDMIorDPExtraSetup(Channel *channel, nid_t, AudioAssoc*, int, int);
+	void programHDMIMirrorChannel(Channel *source, Channel *target, bool enable);
+	void mirrorHDMIStreamToCandidatePins(Channel *source, bool enable);
 	void streamStop(Channel *channel);
 	void streamStart(Channel *channel);
 	void streamReset(Channel *channel);
@@ -377,6 +386,7 @@ public:
 	UInt8 nSliderTabsCount;
 	
 	ChannelInfo *mPrefPanelMemoryBuf;
+	VoodooHDADiagTelemetry mDiagTelemetry;
 	bool mPrefPanelMemoryBufEnabled;
 	size_t mPrefPanelMemoryBufSize;
 	IOLock *mPrefPanelMemoryBufLock;
@@ -384,13 +394,13 @@ public:
 	void unlockPrefPanelMemoryBuf();
 	
   void hdaa_eld_handler(Widget *widget);
-  void buildELDFromTVEdid(Widget *widget);
-  void createMinimalELD(Widget *widget);
-  
 	void catPinName(Widget *widget); //UInt32 config, char *buf, size_t size);
 	
 	void changeSliderValue(UInt8 tabNum, UInt8 sliderNum, UInt8 newValue);
 	void setMath(UInt8 tabNum, UInt8 sliderNum, UInt8 newValue);
+	void setDiagnosticFlags(UInt8 tabNum, UInt16 flags);
+	void setDebugLevel(UInt8 level);
+	bool getDiagnosticTelemetry(UInt8 tabNum, VoodooHDADiagTelemetry *telemetry);
 	
 	//Создаем разделяемую область памяти, откуда будет брать информацию PrefPanel
 	void createPrefPanelMemoryBuf(FunctionGroup *funcGroup);
@@ -431,6 +441,7 @@ public:
 
 	/* Framebuffer notifier for AMD HDMI audio */
 	VoodooHDAFramebufferNotifier *mFBNotifier;
+	VoodooGFXHDAController *mGFXController;
 
 	/* Dynamic HDMI engine management */
 	struct HDMIEngineSlot {
@@ -439,10 +450,13 @@ public:
 		nid_t pinNid;
 		int cad;
 		bool activated;
+		bool mirrorCandidate;
+		bool mirroredActive;
 	};
 	HDMIEngineSlot mHDMIEngines[16];
 	int mNumHDMIEngines;
 	nid_t getHDMIPinForChannel(Channel *channel);
+	UInt16 diagnosticFlagsForPin(int cad, nid_t pinNid) const;
 	void updateHDMIEnginePresence();
 };
 

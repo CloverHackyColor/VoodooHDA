@@ -505,13 +505,10 @@ void Float32ToNativeInt24_X86(const Float32 *src, UInt8 *dst, unsigned int numTo
 			F32TOLE32(0)
 			u.v = Pack32ToLE24(vi0, mask);
 			((UInt32 *)dst)[0] = u.i[0];
-			((UInt32 *)dst)[1] = u.i[1];
-			((UInt32 *)dst)[2] = u.i[2];
-			
-			src += 4;
-			dst += 12;	// bytes
-			count -= 4;
-		}
+				((UInt32 *)dst)[1] = u.i[1];
+				((UInt32 *)dst)[2] = u.i[2];
+				count -= 4;
+			}
 
 		if (count > 0) {
 			// unaligned cleanup -- just do one unaligned vector at the end

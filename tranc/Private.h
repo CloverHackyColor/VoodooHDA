@@ -43,15 +43,18 @@
 
 #define HDA_BDL_MIN				2
 #define HDA_BDL_MAX				256
-#define HDA_BDL_DEFAULT			HDA_BDL_MIN
+/* 16 blocks of 16 KB → interrupt every ~85ms at 48kHz/2ch/16bit.
+ * Smaller periods reduce FIFO underrun risk on modern Intel PCH (Alder/Raptor Lake)
+ * compared to the old HDA_BDL_MIN=2 (128KB blocks, interrupt every ~1.37s). */
+#define HDA_BDL_DEFAULT			16
 
 #define HDA_BLK_MIN				HDAC_DMA_ALIGNMENT
 #define HDA_BLK_ALIGN			(~(HDA_BLK_MIN - 1))
 
 #define HDA_BUFSZ_MIN			4096
-#define HDA_BUFSZ_MAX			65536
- //#define HDA_BUFSZ_MAX			262144
-//#define HDA_BUFSZ_MAX      32768
+	//#define HDA_BUFSZ_MAX			65536
+#define HDA_BUFSZ_MAX			262144
+#define HDA_BUFSZ_ANALOG_LOW_LATENCY	131072
 #define HDA_BUFSZ_DEFAULT		HDA_BUFSZ_MAX
 
 #define HDA_GPIO_MAX    8
@@ -196,7 +199,6 @@ typedef struct _Widget {
 		UInt32 cap;
 		UInt32 ctrl;
 	} pin; /* wclass */
-  bool needELDUpdate;  // Нужно ли обновить ELD после получения EDID
 } Widget;
 
 typedef struct _AudioControl {
@@ -306,6 +308,17 @@ typedef struct _Channel {
 	bool useStereo;
     UInt8 noiseLevel;	
 	UInt8 StereoBase;
+	UInt16 diagnosticFlags;
+	bool diagnosticBufferPrimed;
+	UInt8 diagnosticReserved;
+	UInt32 diagnosticPhase[2];
+	UInt32 diagnosticClipCalls;
+	UInt32 diagnosticMixToneFills;
+	UInt32 diagnosticDirectToneFills;
+	UInt32 diagnosticEraseCalls;
+	UInt32 diagnosticEraseSkips;
+	UInt32 diagnosticLastFirstFrame;
+	UInt32 diagnosticLastNumFrames;
 	
 	UInt16 slack;
 	DmaMemory *bdlMem;
@@ -333,7 +346,118 @@ static inline bool isAtiHdmiCodec(Codec *codec) {
 	return codec->vendorId == 0x1002;
 }
 
-/* Rev3+ ATI codecs (0x1002aa01 with revision >= 0x03) support single-channel remap mode */
+/*
+ * AppleGFXHDA does not treat all AMD HDMI codecs as one generic family.
+ * The decompiled function-group/widget factory routes several codec IDs
+ * through distinct ATI families, with aad8/aae0/aaf0/aaf8/ab2x/ab38/abf8
+ * all landing on the Tahiti-era vendor path.  This build keeps one safe
+ * HDMI publishing policy for Polaris RX4xx/RX5xx, Navi/RDNA1 RX5xxx and
+ * Navi/RDNA2 RX6xxx while still preserving the codec-family split for verbs.
+ */
+enum AppleGFXHDAAmdCodecFamily {
+	kAppleGFXHDAAmdFamilyUnknown = 0,
+	kAppleGFXHDAAmdFamilyRS710,
+	kAppleGFXHDAAmdFamilyRS730,
+	kAppleGFXHDAAmdFamilyRS780,
+	kAppleGFXHDAAmdFamilyPark,
+	kAppleGFXHDAAmdFamilyBroadway,
+	kAppleGFXHDAAmdFamilyTahiti
+};
+
+static inline AppleGFXHDAAmdCodecFamily appleGfxHdaAmdCodecFamily(UInt16 deviceId)
+{
+	switch (deviceId) {
+		case 0xaa30:
+			return kAppleGFXHDAAmdFamilyRS780;
+		case 0xaa38:
+			return kAppleGFXHDAAmdFamilyRS730;
+		case 0xaa40:
+			return kAppleGFXHDAAmdFamilyRS710;
+		case 0xaa00:
+		case 0xaa01:
+		case 0xaa08:
+		case 0xaa10:
+		case 0xaa18:
+		case 0xaa20:
+		case 0xaa28:
+		case 0xaa48:
+			return kAppleGFXHDAAmdFamilyPark;
+		case 0xaa88:
+		case 0xaa90:
+		case 0xaa98:
+			return kAppleGFXHDAAmdFamilyBroadway;
+		case 0xaad8:
+		case 0xaae0:
+		case 0xaaf0:
+		case 0xaaf8:
+		case 0xab20:
+		case 0xab28:
+		case 0xab38:
+		case 0xabf8:
+			return kAppleGFXHDAAmdFamilyTahiti;
+		default:
+			return kAppleGFXHDAAmdFamilyUnknown;
+	}
+}
+
+static inline const char *appleGfxHdaAmdCodecFamilyName(UInt16 deviceId)
+{
+	switch (appleGfxHdaAmdCodecFamily(deviceId)) {
+		case kAppleGFXHDAAmdFamilyRS710:
+			return "ATI_RS710";
+		case kAppleGFXHDAAmdFamilyRS730:
+			return "ATI_RS730";
+		case kAppleGFXHDAAmdFamilyRS780:
+			return "ATI_RS780";
+		case kAppleGFXHDAAmdFamilyPark:
+			return "ATI_Park";
+		case kAppleGFXHDAAmdFamilyBroadway:
+			return "ATI_Broadway";
+		case kAppleGFXHDAAmdFamilyTahiti:
+			return "ATI_Tahiti";
+		default:
+			return "ATI_Generic";
+	}
+}
+
+static inline UInt32 appleGfxHdaAmdMemoryDescCoeffForCodec(UInt16 deviceId)
+{
+	switch (appleGfxHdaAmdCodecFamily(deviceId)) {
+		case kAppleGFXHDAAmdFamilyPark:
+		case kAppleGFXHDAAmdFamilyTahiti:
+			return 0x3000;
+		default:
+			return 0;
+	}
+}
+
+static inline bool appleGfxHdaAmdSupportsDisableSlots(UInt16 deviceId)
+{
+	switch (appleGfxHdaAmdCodecFamily(deviceId)) {
+		case kAppleGFXHDAAmdFamilyRS710:
+		case kAppleGFXHDAAmdFamilyRS730:
+		case kAppleGFXHDAAmdFamilyRS780:
+		case kAppleGFXHDAAmdFamilyPark:
+			return false;
+		default:
+			return true;
+	}
+}
+
+static inline bool appleGfxHdaAmdUsesCachedELDPresence(UInt16 deviceId)
+{
+	switch (appleGfxHdaAmdCodecFamily(deviceId)) {
+		case kAppleGFXHDAAmdFamilyRS710:
+		case kAppleGFXHDAAmdFamilyRS730:
+		case kAppleGFXHDAAmdFamilyRS780:
+		case kAppleGFXHDAAmdFamilyPark:
+			return true;
+		default:
+			return false;
+	}
+}
+
+/* Rev3+ ATI codecs (0x1002aa01 with revision >= 0x03) support explicit AMD multichannel remap mode. */
 static inline bool isAtiHdmiRev3(Codec *codec) {
 	return (CODEC_ID(codec) == 0x1002aa01) &&
 	       (codec->revisionId >= 0x03);

@@ -2,13 +2,14 @@
 
 #include "VoodooHDAEngine.h"
 #include "VoodooHDADevice.h"
-#include "VoodooHDAFramebufferNotifier.h"
+#include "VoodooGFXHDA.h"
 #include "Common.h"
 #include "Verbs.h"
 #include "OssCompat.h"
 #include "Tables.h"
 
 #include <libkern/version.h>
+#include <libkern/OSAtomic.h>
 #include <IOKit/audio/IOAudioDefines.h>
 #include <IOKit/audio/IOAudioPort.h>
 #include <IOKit/audio/IOAudioSelectorControl.h>
@@ -25,8 +26,24 @@ OSDefineMetaClassAndStructors(VoodooHDAEngine, IOAudioEngine)
 
 #define SAMPLE_CHANNELS		2	// forced stereo quirk is always enabled
 
-#define SAMPLE_OFFSET		256	// note: these values definitely need to be tweaked
-#define SAMPLE_LATENCY	128
+/* Sample offset / latency: mirroring Apple's AppleGFXHDAEngine::recalculateEnginesSampleOffset()
+ * which calls getOutputSafetyOffset(sampleRate) on every format change.
+ *
+ * Formula (from AppleGFXHDADriver decompile):
+ *   offset = roundup(sampleRate * safetyCoeff_μs / 1_000_000) + base_frames
+ *
+ * setSampleOffset() (deprecated) does NOT call setOutputSampleOffset() internally —
+ * confirmed from IOAudioFamily decompile: setSampleOffset writes field+0x104 /
+ * setProperty while setOutputSampleOffset calls vtable+0xb78 which updates the
+ * output IOAudioStream object.  We call them explicitly and recalculate on each
+ * performFormatChange() as Apple does.
+ *
+ * Analog coefficients produce the legacy values at 48 kHz (≈64 / 32 frames). */
+#define ANALOG_SAFETY_US	1333	// → 64 frames at 48 kHz
+#define ANALOG_LATENCY_US	 667	// → 32 frames at 48 kHz
+#define HDMI_SAFETY_US		5000	// → 240 + 64 = 304 frames at 48 kHz (~5 ms + FIFO base)
+#define HDMI_LATENCY_US		2000	// → 96 frames at 48 kHz (~2 ms)
+#define HDMI_FIFO_BASE		  64	// base frames: covers controller FIFO minimum
 
 //extern const char * const gDeviceTypes[], * const gConnTypes[];
 
@@ -56,12 +73,222 @@ void VoodooHDAEngine::messageHandler(UInt32 type, const char *format, ...)
 
 bool    VoodooHDAEngine::driverDesiresHiResSampleIntervals(void) { return false;}
 
+bool VoodooHDAEngine::diagnosticsEnabled() const
+{
+#if !VOODOO_HDA_DEBUG_BUILD
+	return false;
+#else
+	return mChannel &&
+	       mChannel->direction == PCMDIR_PLAY &&
+	       ((mChannel->diagnosticFlags & kVoodooHDADiagEnable) != 0);
+#endif
+}
+
+UInt16 VoodooHDAEngine::diagnosticFlags() const
+{
+#if !VOODOO_HDA_DEBUG_BUILD
+	return 0;
+#else
+	return mChannel ? mChannel->diagnosticFlags : 0;
+#endif
+}
+
+bool VoodooHDAEngine::diagnosticUsesMixTone() const
+{
+	UInt16 flags = diagnosticFlags();
+	return diagnosticsEnabled() &&
+	       ((flags & kVoodooHDADiagInjectMixTone) != 0) &&
+	       ((flags & kVoodooHDADiagInjectDirectTone) == 0);
+}
+
+bool VoodooHDAEngine::diagnosticUsesDirectTone() const
+{
+	return diagnosticsEnabled() &&
+	       ((diagnosticFlags() & kVoodooHDADiagInjectDirectTone) != 0);
+}
+
+bool VoodooHDAEngine::diagnosticSkipsErase() const
+{
+	UInt16 flags = diagnosticFlags();
+	return diagnosticsEnabled() &&
+	       (((flags & kVoodooHDADiagSkipErase) != 0) ||
+	        ((flags & kVoodooHDADiagFreezeBuffer) != 0));
+}
+
+bool VoodooHDAEngine::diagnosticBypassesProcessing() const
+{
+	return diagnosticsEnabled() &&
+	       ((diagnosticFlags() & kVoodooHDADiagBypassProcessing) != 0);
+}
+
+bool VoodooHDAEngine::diagnosticFreezesBuffer() const
+{
+	return diagnosticsEnabled() &&
+	       ((diagnosticFlags() & kVoodooHDADiagFreezeBuffer) != 0);
+}
+
+bool VoodooHDAEngine::diagnosticPrimesBufferOnStart() const
+{
+	return diagnosticsEnabled() &&
+	       ((diagnosticFlags() & kVoodooHDADiagPrimeBufferOnStart) != 0);
+}
+
+void VoodooHDAEngine::resetDiagnosticState()
+{
+	if (!mChannel)
+		return;
+
+	mChannel->diagnosticPhase[0] = 0;
+	mChannel->diagnosticPhase[1] = 0;
+	mChannel->diagnosticBufferPrimed = false;
+	mChannel->diagnosticClipCalls = 0;
+	mChannel->diagnosticMixToneFills = 0;
+	mChannel->diagnosticDirectToneFills = 0;
+	mChannel->diagnosticEraseCalls = 0;
+	mChannel->diagnosticEraseSkips = 0;
+	mChannel->diagnosticLastFirstFrame = 0;
+	mChannel->diagnosticLastNumFrames = 0;
+}
+
+float VoodooHDAEngine::nextDiagnosticSample(UInt32 channelIndex)
+{
+	static const UInt32 freqs[2] = { 440U, 660U };
+	UInt32 sampleRate;
+	UInt32 phaseIndex;
+	UInt64 step;
+	UInt32 phase;
+	UInt32 ramp;
+	SInt32 triangle;
+
+	if (!mChannel)
+		return 0.0f;
+
+	sampleRate = (getSampleRate() && getSampleRate()->whole) ? getSampleRate()->whole : 48000U;
+	phaseIndex = channelIndex & 1U;
+	step = ((static_cast<UInt64>(freqs[phaseIndex]) << 32) / sampleRate);
+	if (step == 0)
+		step = 1;
+
+	mChannel->diagnosticPhase[phaseIndex] += static_cast<UInt32>(step);
+	phase = mChannel->diagnosticPhase[phaseIndex];
+	ramp = phase >> 16;
+	triangle = (ramp < 32768U) ? static_cast<SInt32>(ramp)
+	                           : static_cast<SInt32>(65535U - ramp);
+
+	return (((static_cast<float>(triangle) / 16383.5f) - 1.0f) * 0.35f);
+}
+
+void VoodooHDAEngine::fillDiagnosticMixBuffer(float *floatMixBuf, UInt32 numSamples, UInt32 numChannels)
+{
+	if (!floatMixBuf || !numChannels)
+		return;
+
+	for (UInt32 i = 0; i < numSamples; i += numChannels) {
+		for (UInt32 ch = 0; ch < numChannels; ch++)
+			floatMixBuf[i + ch] = nextDiagnosticSample(ch);
+	}
+}
+
+IOReturn VoodooHDAEngine::fillDiagnosticSampleBuffer(void *sampleBuf, UInt32 firstSampleFrame,
+		UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat)
+{
+	UInt32 channels;
+	UInt32 bitWidth;
+	UInt32 bitDepth;
+	UInt32 firstSample;
+	UInt32 numSamples;
+	UInt32 padBits;
+
+	if (!sampleBuf || !streamFormat)
+		return kIOReturnBadArgument;
+
+	channels = streamFormat->fNumChannels;
+	if (!channels)
+		return kIOReturnBadArgument;
+
+	bitWidth = streamFormat->fBitWidth;
+	bitDepth = streamFormat->fBitDepth ? streamFormat->fBitDepth : bitWidth;
+	firstSample = firstSampleFrame * channels;
+	numSamples = numSampleFrames * channels;
+	padBits = (bitWidth > bitDepth) ? (bitWidth - bitDepth) : 0;
+
+	if (streamFormat->fSampleFormat == kIOAudioStreamSampleFormatLinearPCM &&
+	    streamFormat->fNumericRepresentation == kIOAudioStreamNumericRepresentationSignedInt) {
+		switch (bitWidth) {
+			case 8: {
+				SInt8 *outBuf = reinterpret_cast<SInt8 *>(sampleBuf) + firstSample;
+				for (UInt32 i = 0; i < numSamples; i++)
+					outBuf[i] = static_cast<SInt8>(nextDiagnosticSample(i) * 127.0f);
+				return kIOReturnSuccess;
+			}
+			case 16: {
+				SInt16 *outBuf = reinterpret_cast<SInt16 *>(sampleBuf) + firstSample;
+				for (UInt32 i = 0; i < numSamples; i++)
+					outBuf[i] = static_cast<SInt16>(nextDiagnosticSample(i) * 32767.0f);
+				return kIOReturnSuccess;
+			}
+			case 32: {
+				SInt32 *outBuf = reinterpret_cast<SInt32 *>(sampleBuf) + firstSample;
+				const UInt32 maxValue = (bitDepth >= 31) ? 0x7fffffffU : ((1U << (bitDepth - 1)) - 1U);
+				for (UInt32 i = 0; i < numSamples; i++) {
+					SInt32 sample = static_cast<SInt32>(nextDiagnosticSample(i) * static_cast<float>(maxValue));
+					if (padBits)
+						sample *= static_cast<SInt32>(1U << padBits);
+					outBuf[i] = sample;
+				}
+				return kIOReturnSuccess;
+			}
+			default:
+				break;
+		}
+	} else if (streamFormat->fSampleFormat == kIOAudioStreamSampleFormatLinearPCM &&
+	           streamFormat->fNumericRepresentation == kIOAudioStreamNumericRepresentationIEEE754Float &&
+	           bitWidth == 32 && bitDepth == 32) {
+		float *outBuf = reinterpret_cast<float *>(sampleBuf) + firstSample;
+		for (UInt32 i = 0; i < numSamples; i++)
+			outBuf[i] = nextDiagnosticSample(i);
+		return kIOReturnSuccess;
+	}
+
+	return kIOReturnUnsupported;
+}
+
+void VoodooHDAEngine::primeDiagnosticBuffer()
+{
+	const IOAudioStreamFormat *streamFormat;
+
+	if (!diagnosticsEnabled() || !mStream || !mChannel || !mChannel->buffer || !mNumSampleFrames)
+		return;
+
+	streamFormat = mStream->getFormat();
+	if (!streamFormat)
+		return;
+
+	if (fillDiagnosticSampleBuffer(reinterpret_cast<void *>(mChannel->buffer->virtAddr), 0,
+	                               mNumSampleFrames, streamFormat) == kIOReturnSuccess) {
+		mChannel->diagnosticBufferPrimed = true;
+		mChannel->diagnosticDirectToneFills++;
+		mChannel->diagnosticLastFirstFrame = 0;
+		mChannel->diagnosticLastNumFrames = mNumSampleFrames;
+		if (mDigitalStream)
+			mDigitalStream->noteClippedPosition(mNumSampleFrames);
+	}
+}
+
 /******************************************************************************************/
 /******************************************************************************************/
 
 bool VoodooHDAEngine::initWithChannel(Channel *channel)
 {
 	bool result = false;
+	mFreeStarted = 0;
+	mStream = NULL;
+	mSelControl = NULL;
+	mVolumeControlLeft = NULL;
+	mVolumeControlRight = NULL;
+	mDigitalStream = NULL;
+	mDevice = NULL;
+	mChannel = NULL;
 
 //	logMsg("VoodooHDAEngine[%p]::init\n", this);
 
@@ -69,6 +296,14 @@ bool VoodooHDAEngine::initWithChannel(Channel *channel)
 		goto done;
 
 	mChannel = channel;
+	oldOutVolumeLeft = 100;
+	oldOutVolumeRight = 100;
+	oldInputGain = 100;
+	if (mChannel->pcmDevice) {
+		oldOutVolumeLeft = mChannel->pcmDevice->left[SOUND_MIXER_VOLUME];
+		oldOutVolumeRight = mChannel->pcmDevice->right[SOUND_MIXER_VOLUME];
+		oldInputGain = mChannel->pcmDevice->left[SOUND_MIXER_MIC];
+	}
 
 	result = true;
 done:
@@ -79,11 +314,43 @@ void VoodooHDAEngine::free()
 {
 //	logMsg("VoodooHDAEngine[%p]::free\n", this);
 
-	RELEASE(mStream);
+	/*
+	 * IOAudioFamily/coreaudiod may still be tearing down user clients when a live
+	 * unload/removal is attempted. Make teardown single-pass, detach callbacks
+	 * before deleting private HDMI helpers, and avoid touching pointers after they
+	 * are handed to IOAudioEngine::free().
+	 */
+	/*
+	 * The panic logs from live uninstall/removal show coreaudiod entering
+	 * VoodooHDAEngine::free() while IOAudioFamily still owns Mach/user-client
+	 * teardown state.  Keep this path strictly idempotent and avoid calling back
+	 * into VoodooHDADevice/channelStop() here: those paths may already be in
+	 * Device::free(), or the PCI/channel objects may be partially torn down.
+	 */
+	if (!OSCompareAndSwap(0, 1, &mFreeStarted))
+		return;
 
-	RELEASE(mSelControl);
+	/*
+	 * Do not dereference mDigitalStream here.  The KP logs show the crash inside
+	 * VoodooHDAEngine::free() while coreaudiod/IOAudioFamily are tearing down
+	 * Mach ports.  At that point the HDMI helper, controller, or channel may have
+	 * already been detached by VoodooHDADevice::free(), so even a harmless-looking
+	 * deactivate()/detach() can become a use-after-free.
+	 *
+	 * Device/controller teardown is responsible for detaching stream tables.
+	 * Engine::free() must only mark itself dead and then let IOAudioEngine release
+	 * its own objects.  This intentionally prefers a tiny inert helper leak during
+	 * unsafe live unload over a kernel panic.
+	 */
 
+	/* Prevent any later method on this object from touching hardware state. */
+	mDigitalStream = NULL;
 	mDevice = NULL;
+	mChannel = NULL;
+	mStream = NULL;
+	mSelControl = NULL;
+	mVolumeControlLeft = NULL;
+	mVolumeControlRight = NULL;
 
 	super::free();
 }
@@ -146,6 +413,22 @@ const char *VoodooHDAEngine::getPortName()
 
 	if (mPortName)
 		return mPortName;
+
+	if (!mDevice || !mChannel || !mChannel->funcGroup || !mChannel->pcmDevice) {
+		mPortName = "Not connected";
+		mPortType = kIOAudioSelectorControlSelectionValueNone;
+		return mPortName;
+	}
+
+	/* Generic name for every HDMI/DP engine managed by VoodooHDA.
+	 * This is intentionally independent from GPU family or codec table names,
+	 * so Sound Settings does not show misleading labels such as ATI R6xx/VEGA/RX6xxx.
+	 */
+	if (mChannel && mChannel->pcmDevice && mChannel->pcmDevice->digital >= 2) {
+		mPortName = "VoodooHDA HDMI/DP Audio";
+		mPortType = kIOAudioSelectorControlSelectionValueExternalSpeaker;
+		return mPortName;
+	}
 
 	mDevice->lock(__FUNCTION__);
 
@@ -354,6 +637,7 @@ int VoodooHDAEngine::getActiveOssDev()
 bool VoodooHDAEngine::initHardware(IOService *provider)
 {
 	bool result = false;
+	bool digitalStreamRegistered = false;
 
 	logMsg("VoodooHDAEngine[%p]::initHardware\n", this);
 
@@ -363,16 +647,35 @@ bool VoodooHDAEngine::initHardware(IOService *provider)
 	}
 	mDevice = OSDynamicCast(VoodooHDADevice, provider);
 	ASSERT(mDevice);
+	if (!mDevice || !mChannel || !mChannel->funcGroup || !mChannel->pcmDevice) {
+		errorMsg("error: incomplete audio engine init state\n");
+		goto done;
+	}
 
 	mVerbose = mDevice->mVerbose;
+	if (mChannel && mChannel->pcmDevice &&
+	    getEngineDirection() == kIOAudioStreamDirectionOutput &&
+	    (mEnableVolumeChangeFix || mDevice->shouldRouteMasterVolumeToPCM(mChannel->pcmDevice))) {
+		oldOutVolumeLeft = mChannel->pcmDevice->left[SOUND_MIXER_PCM];
+		oldOutVolumeRight = mChannel->pcmDevice->right[SOUND_MIXER_PCM];
+	}
 	getPortName();
+	if (mChannel->pcmDevice && mChannel->pcmDevice->digital >= 2 &&
+	    getEngineDirection() == kIOAudioStreamDirectionOutput && mDevice->mGFXController) {
+		mDigitalStream = new VoodooGFXHDAStream;
+		if (!mDigitalStream || !mDigitalStream->init(mDevice->mGFXController, this, mChannel)) {
+			errorMsg("error: couldn't initialize VoodooGFXHDAStream\n");
+			goto done;
+		}
+		mDevice->mGFXController->registerStream(mChannel, mDigitalStream);
+		digitalStreamRegistered = true;
+	}
 
 	logMsg("setDesc portName = %s\n", mPortName);
 	setDescription(mPortName);
 
-	setSampleOffset(SAMPLE_OFFSET);
-	setInputSampleOffset(SAMPLE_OFFSET);
-	setSampleLatency(SAMPLE_LATENCY);
+	/* Initial offsets at 48 kHz default; recalculated on every performFormatChange(). */
+	recalculateSampleOffsets(48000);
 	if (version_major > 10)			/* newer than SnowLeopard */
  	  setClockIsStable(true);
 	else
@@ -391,11 +694,20 @@ bool VoodooHDAEngine::initHardware(IOService *provider)
 	mChannel->noiseLevel = mDevice->noiseLevel;
 	mChannel->useStereo  = mDevice->useStereo;
 	mChannel->StereoBase = mDevice->StereoBase;
+	resetDiagnosticState();
 	
 	result = true;
 done:
-	if (!result)
+	if (!result) {
+		if (mDigitalStream) {
+			if (digitalStreamRegistered && mDevice && mDevice->mGFXController && mChannel)
+				mDevice->mGFXController->unregisterStream(mChannel, mDigitalStream);
+			mDigitalStream->detach();
+			delete mDigitalStream;
+			mDigitalStream = NULL;
+		}
 		stop(provider);
+	}
 
 	return result;
 }
@@ -411,6 +723,11 @@ bool VoodooHDAEngine::createAudioStream()
 	UInt32 channels;
 
 	ASSERT(!mStream);
+	if (!mChannel || !mChannel->funcGroup || !mChannel->pcmDevice ||
+	    !mChannel->buffer || !mChannel->buffer->virtAddr) {
+		errorMsg("error: incomplete channel state for createAudioStream\n");
+		goto done;
+	}
 
 //	logMsg("VoodooHDAEngine[%p]::createAudioStream\n", this);
 
@@ -428,6 +745,15 @@ bool VoodooHDAEngine::createAudioStream()
 		errorMsg("error: channel doesn't support PCM stream format\n");
 		goto done;
 	}
+
+//	logMsg("sample rates: ");
+//	for (UInt32 n = 0; (n < 16) && mChannel->pcmRates[n]; n++)
+//		logMsg("%ld ", mChannel->pcmRates[n]);
+//	logMsg("(min: %ld, max: %ld)\n", mChannel->caps.minSpeed, mChannel->caps.maxSpeed);
+
+//	ASSERT(mChannel->caps.minSpeed);
+//	ASSERT(mChannel->caps.maxSpeed);
+//	ASSERT(mChannel->caps.minSpeed <= mChannel->caps.maxSpeed);
 
 	minSampleRate.whole = mChannel->caps.minSpeed;
 	minSampleRate.fraction = 0;
@@ -447,18 +773,12 @@ bool VoodooHDAEngine::createAudioStream()
 
 	logMsg("(min: %ld, max: %ld) channels=%d%s\n", (long int)mChannel->caps.minSpeed, (long int)mChannel->caps.maxSpeed, (int)channels, isDigital ? " (digital, capped to 2)" : "");
 	sampleBuffer = (UInt8 *) mChannel->buffer->virtAddr;
-  if (isDigital) {
-    mBufferSize = 32768; // 32 КБ = 8192 фрейма (идеально для 48kHz стерео)
-    logMsg("VoodooHDA: Forced digital buffer size to 32768 bytes\n");
-  } else {
-    mBufferSize = 65536; // 64 КБ для аналоговых выходов
-  }
-  
-  if (!createAudioStream(direction, sampleBuffer, mBufferSize, mChannel->pcmRates,
-                         mChannel->supPcmSizeRates, mChannel->supStreamFormats, channels)) {
-    errorMsg("error: createAudioStream failed channels=%d\n", (int)channels);
-    goto done;
-  }
+	mBufferSize = mChannel->buffer ? static_cast<UInt32>(mChannel->buffer->size) : HDA_BUFSZ_DEFAULT;
+	if (!createAudioStream(direction, sampleBuffer, mBufferSize, mChannel->pcmRates,
+                           mChannel->supPcmSizeRates, mChannel->supStreamFormats, channels)) {
+		errorMsg("error: createAudioStream failed channels=%d\n", (int)channels);
+		goto done;
+	}
 	publishChannelLayout(direction, channels);
 	result = true;
 done:
@@ -499,11 +819,19 @@ bool VoodooHDAEngine::createAudioStream(IOAudioStreamDirection direction, void *
     };
     
 	ASSERT(!mStream);
+	if (!sampleBuffer || !sampleBufferSize || !pcmRates) {
+		errorMsg("error: invalid audio stream buffer/rates\n");
+		goto done;
+	}
 
 //	logMsg("VoodooHDAEngine[%p]::createAudioStream(%d, %p, %ld)\n", this, direction, sampleBuffer,
 //			sampleBufferSize);
 
 	mStream = new IOAudioStream;
+	if (!mStream) {
+		errorMsg("error: couldn't allocate IOAudioStream\n");
+		goto done;
+	}
 	if (!mStream->initWithAudioEngine(this, direction, 1)) {
 		errorMsg("error: IOAudioStream::initWithAudioEngine failed\n");
 		goto done;
@@ -610,7 +938,13 @@ bool VoodooHDAEngine::createAudioStream(IOAudioStreamDirection direction, void *
 
 	result = true;
 done:
-	RELEASE(mStream);
+	if (result) {
+		/* addAudioStream() retains the stream. Drop our create reference but keep
+		 * mStream as a weak pointer for callbacks such as resetClipPosition(). */
+		mStream->release();
+	} else {
+		RELEASE(mStream);
+	}
 
 	return result;
 }
@@ -702,40 +1036,113 @@ error:
 __attribute__((visibility("hidden")))
 IOAudioStreamDirection VoodooHDAEngine::getEngineDirection()
 {
-	IOAudioStreamDirection direction;
+	/* coreaudiod can call back while the engine is being torn down.
+	 * Do not panic or dereference stale channel state here. */
+	if (mFreeStarted || !mChannel || !mChannel->pcmDevice)
+		return kIOAudioStreamDirectionOutput;
 
-	if (mChannel->direction == PCMDIR_PLAY) {
-		ASSERT(mChannel->pcmDevice->playChanId >= 0);
-		direction = kIOAudioStreamDirectionOutput;
-	} else if (mChannel->direction == PCMDIR_REC) {
-		ASSERT(mChannel->pcmDevice->recChanId >= 0);
-		direction = kIOAudioStreamDirectionInput;
-	} else {
-		BUG("invalid direction");
-	}
-	
-	if (mStream)
-		ASSERT(mStream->getDirection() == direction);
+	if (mChannel->direction == PCMDIR_PLAY)
+		return kIOAudioStreamDirectionOutput;
 
-	return direction;
+	if (mChannel->direction == PCMDIR_REC)
+		return kIOAudioStreamDirectionInput;
+
+	return kIOAudioStreamDirectionOutput;
 }
 
 __attribute__((visibility("hidden")))
 int VoodooHDAEngine::getEngineId()
 {
+	if (mFreeStarted || !mChannel || !mChannel->pcmDevice)
+		return -1;
+
 	if (getEngineDirection() == kIOAudioStreamDirectionOutput)
 		return mChannel->pcmDevice->playChanId;
 	else
 		return mChannel->pcmDevice->recChanId;
 }
 
+
+void VoodooHDAEngine::syncInitialOutputVolume()
+{
+	if (mFreeStarted || !mDevice || !mChannel || !mChannel->pcmDevice)
+		return;
+	if (getEngineDirection() != kIOAudioStreamDirectionOutput)
+		return;
+	if (mChannel->pcmDevice->digital)
+		return;
+
+	PcmDevice *pcmDevice = mChannel->pcmDevice;
+	bool routeMasterToPCM = mEnableVolumeChangeFix || mDevice->shouldRouteMasterVolumeToPCM(pcmDevice);
+	UInt32 targetDev = routeMasterToPCM ? SOUND_MIXER_PCM : SOUND_MIXER_VOLUME;
+
+	/*
+	 * First playback start volume sync.
+	 *
+	 * IOAudioFamily/CoreAudio may restore the visible volume controls before
+	 * the first client starts playback, without delivering a fresh
+	 * volumeChanged() callback to the kext. In that state the HDA amp can still
+	 * be left at the plist/mixer default (usually high), so the first Music.app
+	 * playback starts louder. Pressing a volume key later triggers
+	 * volumeChanged(), routes Volume -> PCM when required and the hardware jumps
+	 * back to the expected level.
+	 *
+	 * Read the live CoreAudio level controls on every analog engine start and
+	 * apply that value to the real hardware OSS mixer before starting DMA. HDMI,
+	 * capture, Rec/iGain/iMix/Monitor are intentionally untouched.
+	 */
+	UInt32 left = oldOutVolumeLeft;
+	UInt32 right = oldOutVolumeRight;
+	if (mVolumeControlLeft)
+		left = (UInt32)mVolumeControlLeft->getIntValue();
+	if (mVolumeControlRight)
+		right = (UInt32)mVolumeControlRight->getIntValue();
+	if (left > 100)
+		left = 100;
+	if (right > 100)
+		right = 100;
+
+	oldOutVolumeLeft = left;
+	oldOutVolumeRight = right;
+
+	if (!pcmDevice->digital && getEngineDirection() == kIOAudioStreamDirectionOutput) {
+		/*
+		 * Keep the real analog output amp synchronized with the visible
+		 * CoreAudio slider before the first client starts.  Use the direct
+		 * analog master helper instead of guessing whether this codec uses
+		 * Volume or PCM as the effective hardware amp.
+		 */
+		if (mDevice->audioCtlApplyAnalogMasterVolume(pcmDevice, left, right))
+			return;
+	}
+
+	if (pcmDevice->left[targetDev] != left || pcmDevice->right[targetDev] != right)
+		mDevice->audioCtlOssMixerSet(pcmDevice, targetDev, left, right);
+	else if (routeMasterToPCM)
+		mDevice->audioCtlOssMixerSet(pcmDevice, targetDev, left, right);
+}
+
 IOReturn VoodooHDAEngine::performAudioEngineStart()
 {
-//	logMsg("VoodooHDAEngine[%p]::performAudioEngineStart\n", this);
+	if (mFreeStarted || !mDevice || !mChannel)
+		return kIOReturnNoDevice;
 
-//	logMsg("calling channelStart() for channel %d\n", getEngineId());
+	/*
+	 * Sync the visible CoreAudio volume before and after channelStart().
+	 *
+	 * Some analog codecs briefly restore their amp/default mixer state while
+	 * streamReset()/streamSetup()/OUT_ENABLE are being recommitted.  If the
+	 * first client is Music.app and CoreAudio has not emitted a fresh
+	 * volumeChanged() callback yet, playback can start too loud until the user
+	 * presses a volume key.  Apply the current IOAudioLevelControl value once
+	 * before touching the stream and once more after channelStart() has finished
+	 * the codec/DMA setup.  The helper is analog-output only, so HDMI/capture
+	 * paths remain untouched.
+	 */
+	syncInitialOutputVolume();
 	takeTimeStamp(false);
 	mDevice->channelStart(mChannel);
+	syncInitialOutputVolume();
 
 	return kIOReturnSuccess;
 }
@@ -744,48 +1151,120 @@ IOReturn VoodooHDAEngine::performAudioEngineStop()
 {
 //	logMsg("VoodooHDAEngine[%p]::performAudioEngineStop\n", this);
 
+	if (mFreeStarted || !mDevice || !mChannel)
+		return kIOReturnSuccess;
+
 //	logMsg("calling channelStop() for channel %d\n", getEngineId());
 	mDevice->channelStop(mChannel);
+	resetDiagnosticState();
 
 	return kIOReturnSuccess;
 }
 	
+/* Mirror of Apple's AppleGFXHDAEngine::recalculateEnginesSampleOffset/Latency().
+ * Called from initHardware() with a default rate, then again on every
+ * performFormatChange() so the offsets scale with the actual sample rate.
+ *
+ * Formula: offset = roundup(rate * safetyCoeff_μs / 1_000_000) + base
+ * Input offset is always analog-style (no large FIFO on the capture side). */
+void VoodooHDAEngine::recalculateSampleOffsets(UInt32 sampleRate)
+{
+	if (mFreeStarted || !mChannel || !mChannel->funcGroup)
+		return;
+
+	bool isDigital = (mChannel->funcGroup->audio.assocs[mChannel->assocNum].digital != 0);
+
+	UInt32 safetyUs  = isDigital ? HDMI_SAFETY_US  : ANALOG_SAFETY_US;
+	UInt32 latencyUs = isDigital ? HDMI_LATENCY_US : ANALOG_LATENCY_US;
+	UInt32 base      = isDigital ? HDMI_FIFO_BASE  : 0;
+
+	UInt32 outOffset = (sampleRate * safetyUs  + 999999) / 1000000 + base;
+	UInt32 latency   = (sampleRate * latencyUs + 999999) / 1000000;
+	UInt32 inOffset  = (sampleRate * ANALOG_SAFETY_US + 999999) / 1000000;
+
+	setSampleOffset(outOffset);        // legacy compat (field+0x104)
+	setOutputSampleOffset(outOffset);  // vtable+0xb78 — output IOAudioStream
+	setInputSampleOffset(inOffset);
+	setSampleLatency(latency);
+	setOutputSampleLatency(latency);
+
+	logMsg("recalculateSampleOffsets: rate=%u %s outOffset=%u inOffset=%u latency=%u\n",
+	       (unsigned)sampleRate, isDigital ? "HDMI/DP" : "Analog",
+	       (unsigned)outOffset, (unsigned)inOffset, (unsigned)latency);
+}
+
 UInt32 VoodooHDAEngine::getCurrentSampleFrame()
 {
-	return (mDevice->channelGetPosition(mChannel) / mSampleSize);
+	if (mFreeStarted || !mDevice || !mChannel)
+		return 0;
+
+	/* AppleGFXHDAEngine::getCurrentSampleFrame clamps to [0, numSampleFrames):
+	 * if frame >= numSampleFrames it returns 0, guarding against SDLPIB glitches. */
+	UInt32 position;
+
+	if (!mFreeStarted && mDigitalStream)
+		return mDigitalStream->getCurrentSampleFrame();
+
+	position = static_cast<UInt32>(mDevice->channelGetPosition(mChannel));
+
+	UInt32 frame = position / mSampleSize;
+	return (frame < mNumSampleFrames) ? frame : 0;
+}
+
+void VoodooHDAEngine::resetClipPosition(IOAudioStream *audioStream, UInt32 clipSampleFrame)
+{
+	/* AppleGFXHDAEngine overrides resetClipPosition() for its digital stream path.
+	 * Mirror that hook for HDMI/DP so IOAudioFamily clip/erase state is reset together
+	 * with the controller-owned link-position state. */
+	if (!mFreeStarted && audioStream == mStream && mDigitalStream)
+		mDigitalStream->resetClipPosition(clipSampleFrame);
+
+	super::resetClipPosition(audioStream, clipSampleFrame);
+}
+
+bool VoodooHDAEngine::usesAppleGfxClipPath() const
+{
+	return mDigitalStream != NULL &&
+	       mChannel != NULL &&
+	       mChannel->direction == PCMDIR_PLAY &&
+	       mChannel->pcmDevice != NULL &&
+	       mChannel->pcmDevice->digital >= 2;
 }
 
 IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 											  const IOAudioStreamFormat *newFormat,
 											  const IOAudioSampleRate *newSampleRate)
 {
-  IOReturn result = kIOReturnError;
-  int setResult;
-  UInt32 ossFormat;
-  
-  // ASSERT(audioStream == mStream);
-  
-  logMsg("VoodooHDAEngine[%p]::peformFormatChange(%p, %p, %p)\n", this, audioStream, newFormat,
-         newSampleRate);
-  
-  if (!newSampleRate)
-    newSampleRate = getSampleRate();
-  if (!newFormat && !newSampleRate) {
-    errorMsg("warning: performFormatChange(%p) called with no effect\n", audioStream);
-    return kIOReturnSuccess;
-  }
-  
-  if (newFormat) {
-    int channels = newFormat->fNumChannels;
-    
-    if(!channels) {
-      channels = 2;
-    }
-    
-    ossFormat = AFMT_STEREO;
+	if (mFreeStarted || !mDevice || !mChannel)
+		return kIOReturnNoDevice;
 
-    if (newFormat->fSampleFormat == kIOAudioStreamSampleFormat1937AC3) {
-      ossFormat = AFMT_AC3;
+	IOReturn result = kIOReturnError;
+	int setResult;
+	UInt32 ossFormat;
+
+	// ASSERT(audioStream == mStream);
+
+	logMsg("VoodooHDAEngine[%p]::peformFormatChange(%p, %p, %p)\n", this, audioStream, newFormat,
+			newSampleRate);
+
+	if (!newSampleRate)
+		newSampleRate = getSampleRate();
+	if (!newFormat && !newSampleRate) {
+		errorMsg("warning: performFormatChange(%p) called with no effect\n", audioStream);
+		return kIOReturnSuccess;
+	}
+
+	if (newFormat) {
+	int channels = newFormat->fNumChannels;
+
+        if(!channels) {
+            channels = 2;
+        }
+
+			ossFormat = AFMT_STEREO;
+
+        if (newFormat->fSampleFormat == kIOAudioStreamSampleFormat1937AC3) {
+            ossFormat = AFMT_AC3;
 		} else if (channels == 4) {
 			ossFormat = SND_FORMAT(0, 4, 0);
 		} else if (channels == 6) {
@@ -794,79 +1273,64 @@ IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 			ossFormat = SND_FORMAT(0, 8, 1);
 		}
 
-		ASSERT(newFormat->fNumericRepresentation == kIOAudioStreamNumericRepresentationSignedInt);
-		ASSERT(newFormat->fAlignment == kIOAudioStreamAlignmentLowByte);
-		ASSERT(newFormat->fByteOrder == kIOAudioStreamByteOrderLittleEndian);
+		if (ossFormat != AFMT_AC3) {
+			if (newFormat->fNumericRepresentation != kIOAudioStreamNumericRepresentationSignedInt ||
+			    newFormat->fAlignment != kIOAudioStreamAlignmentLowByte ||
+			    newFormat->fByteOrder != kIOAudioStreamByteOrderLittleEndian) {
+				errorMsg("warning: unsupported PCM format requested by CoreAudio\n");
+				result = kIOReturnUnsupported;
+				goto done;
+			}
+		}
 
-    if(ossFormat != AFMT_AC3) {
+        if(ossFormat != AFMT_AC3) {
 		switch (newFormat->fBitDepth) {
 			case 16:
-				ASSERT(newFormat->fBitWidth == 16);
+				if (newFormat->fBitWidth != 16) { result = kIOReturnUnsupported; goto done; }
 				ossFormat |= AFMT_S16_LE;
 				break;
 			case 20:		
-				ASSERT(newFormat->fBitWidth == 32);
+				if (newFormat->fBitWidth != 32) { result = kIOReturnUnsupported; goto done; }
 				ossFormat |= AFMT_S32_LE;
 				mChannel->bit32 = 2;
 				break;
-     case 24:
-				ASSERT(newFormat->fBitWidth == 32);
+            case 24:
+				if (newFormat->fBitWidth != 32) { result = kIOReturnUnsupported; goto done; }
 				ossFormat |= AFMT_S32_LE;
 				mChannel->bit32 = 3;
 				break;
 			case 32:
-				ASSERT(newFormat->fBitWidth == 32); 
+				if (newFormat->fBitWidth != 32) { result = kIOReturnUnsupported; goto done; }
 				ossFormat |= AFMT_S32_LE;
 				mChannel->bit32 = 4;
 				break;
 			default:
-        errorMsg("unsupported bit depth %d\n", newFormat->fBitDepth);
-//				goto done;
+				errorMsg("warning: unsupported bit depth %u\n", newFormat->fBitDepth);
+				result = kIOReturnUnsupported;
+				goto done;
 		}
         }
 		//IOLog("ossFormat=%08x\n", (unsigned int)ossFormat);
 		
 		setResult = mDevice->channelSetFormat(mChannel, ossFormat);
-		logMsg("channelSetFormat(0x%08lx) for channel %d returned %d\n",
-           static_cast<long unsigned int>(ossFormat), getEngineId(), setResult);
+		logMsg("channelSetFormat(0x%08lx) for channel %d returned %d\n", static_cast<long unsigned int>(ossFormat), getEngineId(),
+				setResult);
 		if (setResult != 0) {
 			errorMsg("error: couldn't set format 0x%lx (%d-bit depth)\n", (long unsigned int)ossFormat, newFormat->fBitDepth);
 			goto done;
 		}
 
-		ASSERT(mBufferSize);
-		mSampleSize = channels * (newFormat->fBitWidth / 8);
-    bool isDigitalStream = mChannel->pcmDevice->digital >= 2;
-    
-    if (isDigitalStream) {
-      nid_t pin = mDevice->getHDMIPinForChannel(mChannel);
-      if (pin != (nid_t)-1 && mDevice->mFBNotifier) {
-        // Принудительно обновляем ELD перед настройкой потока
-        mDevice->mFBNotifier->ensureAudioPipeEnabled(mChannel->funcGroup->codec->cad, pin);
-      }
-      
-      // ДЛЯ HDMI: Фиксируем 8192 фрейма.
-      // 8192 фрейма * 4 байта (16-bit stereo) = 32768 байт (32 КБ).
-      // Это дает ~170 мс общего времени буфера, что с запасом перекрывает
-      // любые задержки планировщика macOS и предотвращает зацикливание старых данных.
-      mNumSampleFrames = 16384;
-      UInt32 slack = 128;  // 2048 фреймов запаса
-      mBufferSize = (mNumSampleFrames + slack)  * mSampleSize; 
-      mChannel->slack = slack;
-      logMsg("VoodooHDA: Forced digital buffer to %u frames, size %lu bytes slack %lu\n",
-            mNumSampleFrames, (unsigned long)mBufferSize, (unsigned long)slack);
-    } else {
-      // Для аналоговых каналов оставляем стандартную логику
-      mNumSampleFrames = mBufferSize / mSampleSize;
-      mChannel->slack = static_cast<UInt16>(mBufferSize - (mNumSampleFrames * mSampleSize));
-    }
-    
-    
-    logMsg("VoodooHDA DEBUG: mBufferSize=%lu, mSampleSize=%u, mNumSampleFrames=%lu, slack=%u\n",
-          (unsigned long)mBufferSize, mSampleSize, (unsigned long)mNumSampleFrames, mChannel->slack);
-
-    
-		setNumSampleFramesPerBuffer(mNumSampleFrames);
+			if (!mBufferSize || !channels || !newFormat->fBitWidth) {
+				result = kIOReturnBadArgument;
+				goto done;
+			}
+			mSampleSize = channels * (newFormat->fBitWidth / 8);
+			mNumSampleFrames = mBufferSize / mSampleSize;
+			mChannel->slack = static_cast<UInt16>(mBufferSize - mNumSampleFrames * mSampleSize);
+			setNumSampleFramesPerBuffer(mNumSampleFrames);
+			if (mDigitalStream)
+				mDigitalStream->resetPositionState();
+			resetDiagnosticState();
 
 		logMsg("buffer size: %ld, channels: %d, bit depth: %d, # samp. frames: %ld\n", (long int)mBufferSize,
 				channels, newFormat->fBitDepth, (long int)mNumSampleFrames);
@@ -876,10 +1340,16 @@ IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 		setResult = mDevice->channelSetSpeed(mChannel, newSampleRate->whole);
 //		logMsg("channelSetSpeed(%ld) for channel %d returned %d\n", newSampleRate->whole, getEngineId(),
 //				setResult);
-		if ((UInt32) setResult != newSampleRate->whole) {
-			errorMsg("error: couldn't set sample rate %ld\n", (long int)newSampleRate->whole);
-			goto done;
-		}
+			if ((UInt32) setResult != newSampleRate->whole) {
+				errorMsg("error: couldn't set sample rate %ld\n", (long int)newSampleRate->whole);
+				goto done;
+			}
+			if (mDigitalStream)
+				mDigitalStream->resetPositionState();
+			resetDiagnosticState();
+			/* Recalculate sample offsets for the new rate, as Apple does in
+			 * recalculateEnginesSampleOffset() / recalculateEnginesSampleLatency(). */
+			recalculateSampleOffsets(newSampleRate->whole);
 	}
 
 	result = kIOReturnSuccess;
@@ -888,8 +1358,16 @@ done:
 }
 
 static
-IOReturn SelectorChanged(OSObject*, IOAudioControl*, SInt32, SInt32)
+IOReturn SelectorChanged(OSObject *target, IOAudioControl*, SInt32, SInt32)
 {
+	VoodooHDAEngine *audioEngine = OSDynamicCast(VoodooHDAEngine, target);
+	/* CoreAudio output switching can reactivate Line-out after Headphone without
+	 * restarting the whole codec. Restore only the current analog path. */
+	if (audioEngine && !audioEngine->mFreeStarted && audioEngine->mDevice &&
+	    audioEngine->mChannel && audioEngine->mChannel->pcmDevice &&
+	    !audioEngine->mChannel->pcmDevice->digital &&
+	    audioEngine->getEngineDirection() == kIOAudioStreamDirectionOutput)
+		audioEngine->mDevice->restoreAnalogPlaybackPath(audioEngine->mChannel, true);
 	return kIOReturnSuccess;
 }
 
@@ -904,6 +1382,12 @@ bool VoodooHDAEngine::createAudioControls()
 	IOFixed			minDb,
 					maxDb;
 	int				initOssDev, initOssMask, idupper;
+	UInt32			initialLeftValue, initialRightValue;
+	if (!mDevice || !mChannel || !mChannel->funcGroup || !mChannel->pcmDevice) {
+		errorMsg("error: incomplete channel state for createAudioControls\n");
+		goto Done;
+	}
+
 	direction = getEngineDirection();
 	if (direction == kIOAudioStreamDirectionOutput) {
 		usage = kIOAudioControlUsageOutput;
@@ -918,6 +1402,21 @@ bool VoodooHDAEngine::createAudioControls()
 	else {
 		errorMsg("uknown direction\n");
 		goto Done;
+	}
+
+	initialLeftValue = mDevice->mMixerDefaults[initOssDev];
+	initialRightValue = mDevice->mMixerDefaults[initOssDev];
+	if (mChannel && mChannel->pcmDevice) {
+		UInt32 controlDev = initOssDev;
+		if (direction == kIOAudioStreamDirectionOutput && !mChannel->pcmDevice->digital &&
+		    (mEnableVolumeChangeFix || mDevice->shouldRouteMasterVolumeToPCM(mChannel->pcmDevice)))
+			controlDev = SOUND_MIXER_PCM;
+		initialLeftValue = mChannel->pcmDevice->left[controlDev];
+		initialRightValue = mChannel->pcmDevice->right[controlDev];
+		if (initialLeftValue > 100)
+			initialLeftValue = 100;
+		if (initialRightValue > 100)
+			initialRightValue = 100;
 	}
 
 	idupper = mChannel->streamId << 16;
@@ -945,7 +1444,7 @@ bool VoodooHDAEngine::createAudioControls()
 	
 	/* Create Volume controls */
 	/* Left channel */
-	control = IOAudioLevelControl::createVolumeControl(mDevice->mMixerDefaults[initOssDev],
+	control = IOAudioLevelControl::createVolumeControl(initialLeftValue,
 													   0,	
 													   100,	
 													   minDb,
@@ -960,11 +1459,13 @@ bool VoodooHDAEngine::createAudioControls()
     }
     
     control->setValueChangeHandler((IOAudioControl::IntValueChangeHandler)volumeChangeHandler, this);
+    if (direction == kIOAudioStreamDirectionOutput)
+        mVolumeControlLeft = OSDynamicCast(IOAudioLevelControl, control);
     this->addDefaultAudioControl(control);
     control->release();
     
 	/* Right channel */
-	control = IOAudioLevelControl::createVolumeControl(mDevice->mMixerDefaults[initOssDev],
+	control = IOAudioLevelControl::createVolumeControl(initialRightValue,
 													   0,	
 													   100,	
 													   minDb,
@@ -979,6 +1480,8 @@ bool VoodooHDAEngine::createAudioControls()
     }
     
     control->setValueChangeHandler((IOAudioControl::IntValueChangeHandler)volumeChangeHandler, this);
+    if (direction == kIOAudioStreamDirectionOutput)
+        mVolumeControlRight = OSDynamicCast(IOAudioLevelControl, control);
     this->addDefaultAudioControl(control);
     control->release();
     
@@ -1014,6 +1517,8 @@ createSelectorControl:
 		mSelControl->addAvailableSelection(mPortType, mPortName);
 		mSelControl->setValueChangeHandler(SelectorChanged, this);
 		this->addDefaultAudioControl(mSelControl);
+		/* addDefaultAudioControl() retains it; keep mSelControl as a weak pointer. */
+		mSelControl->release();
 	}
 	
 	result = true;
@@ -1026,11 +1531,18 @@ __attribute__((visibility("hidden")))
 void VoodooHDAEngine::setPinName(UInt32 pinConfig, const char* name)
 {
 	UInt32 previousPortType;
+	bool digitalHDMI = mChannel && mChannel->pcmDevice && mChannel->pcmDevice->digital >= 2;
 	if (!name)
 		return;
+	if (digitalHDMI) {
+		if (mPortName == mPortNameBuf)
+			name = mPortNameBuf;
+		else
+			name = "VoodooHDA HDMI/DP Audio";
+	}
 	previousPortType = mPortType;
 	mPortName = name;
-	mPortType = pinConfigToSelection(pinConfig);
+	mPortType = digitalHDMI ? kIOAudioSelectorControlSelectionValueExternalSpeaker : pinConfigToSelection(pinConfig);
 	beginConfigurationChange();
 	setDescription(name);
 	if(mSelControl == 0) {
@@ -1060,6 +1572,9 @@ IOReturn VoodooHDAEngine::volumeChangeHandler(IOService *target, IOAudioControl 
 __attribute__((visibility("hidden")))
 IOReturn VoodooHDAEngine::volumeChanged(IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue)
 {
+	if (mFreeStarted || !mDevice || !mChannel || !mChannel->pcmDevice)
+		return kIOReturnNoDevice;
+
 	if(mVerbose >2)
 		errorMsg("VoodooHDAEngine[%p]::volumeChanged(%p, %ld, %ld)\n", this, volumeControl, (long int)oldValue, (long int)newValue);
 
@@ -1069,29 +1584,30 @@ IOReturn VoodooHDAEngine::volumeChanged(IOAudioControl *volumeControl, SInt32 ol
 		SOUND_MIXER_MIC;
 
 		PcmDevice *pcmDevice = mChannel->pcmDevice;
+		bool routeMasterToPCM = mEnableVolumeChangeFix || mDevice->shouldRouteMasterVolumeToPCM(pcmDevice);
 		
 		switch (ossDev) {
 			case SOUND_MIXER_VOLUME:
 				/* Left channel */
 				if(volumeControl->getChannelID() == 1) {
 					oldOutVolumeLeft = newValue;
-					if (mEnableVolumeChangeFix) {
-						mDevice->audioCtlOssMixerSet(pcmDevice, SOUND_MIXER_PCM, newValue, newValue);
-					} else {
-						mDevice->audioCtlOssMixerSet(pcmDevice, SOUND_MIXER_VOLUME, newValue, pcmDevice->right[0]);
-					}
-          
 				}
 				/* Right channel */
 				else if(volumeControl->getChannelID() == 2) {
 					oldOutVolumeRight = newValue;
-					if (mEnableVolumeChangeFix) {
-						mDevice->audioCtlOssMixerSet(pcmDevice, SOUND_MIXER_PCM, newValue, newValue);
-					} else {
-						mDevice->audioCtlOssMixerSet(pcmDevice, SOUND_MIXER_VOLUME, pcmDevice->left[0], newValue);
-					}
 				}
-				
+
+				if (getEngineDirection() == kIOAudioStreamDirectionOutput && !pcmDevice->digital &&
+				    mDevice->audioCtlApplyAnalogMasterVolume(pcmDevice, oldOutVolumeLeft, oldOutVolumeRight)) {
+					break;
+				}
+
+				if (routeMasterToPCM) {
+					mDevice->audioCtlOssMixerSet(pcmDevice, SOUND_MIXER_PCM, oldOutVolumeLeft, oldOutVolumeRight);
+				} else {
+					mDevice->audioCtlOssMixerSet(pcmDevice, SOUND_MIXER_VOLUME, oldOutVolumeLeft, oldOutVolumeRight);
+				}
+
 				break;
 			case SOUND_MIXER_MIC:
 				oldInputGain = newValue;
@@ -1100,12 +1616,11 @@ IOReturn VoodooHDAEngine::volumeChanged(IOAudioControl *volumeControl, SInt32 ol
 			default:
 				break;
 		}
-		// cue8chalk: this seems to be needed when pin configs aren't set properly
-		if (mEnableVolumeChangeFix) {
-			for (int n = 0; n < SOUND_MIXER_NRDEVICES; n++){
-				mDevice->audioCtlOssMixerSet(pcmDevice, n, newValue, newValue);
-			}
-		}
+		/* Do not spray volume changes to every mixer node.  The old plist workaround
+		 * did that for broken pin configs, but it can corrupt capture, iMix/monitor
+		 * and HDMI state.  The targeted synthetic-master detection above is enough
+		 * for analog laptops whose real output amp is exposed as PCM only.
+		 */
     
 	}
 
@@ -1128,6 +1643,9 @@ IOReturn VoodooHDAEngine::muteChangeHandler(IOService *target, IOAudioControl *m
 __attribute__((visibility("hidden")))
 IOReturn VoodooHDAEngine::muteChanged(IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue)
 {
+	if (mFreeStarted || !mDevice || !mChannel || !mChannel->pcmDevice)
+		return kIOReturnNoDevice;
+
 	if(mVerbose >2)
 		errorMsg("VoodooHDAEngine[%p]::outputMuteChanged(%p, %ld, %ld)\n", this, muteControl, (long int)oldValue, (long int)newValue);
     
@@ -1136,9 +1654,14 @@ IOReturn VoodooHDAEngine::muteChanged(IOAudioControl *muteControl, SInt32 oldVal
     
 	PcmDevice *pcmDevice = mChannel->pcmDevice;
     
+	bool routeMasterToPCM = (ossDev == SOUND_MIXER_VOLUME) &&
+	                         (mEnableVolumeChangeFix || mDevice->shouldRouteMasterVolumeToPCM(pcmDevice));
 	if (newValue) {
         // VertexBZ: Mute fix
-        if(mEnableMuteFix){
+        if (ossDev == SOUND_MIXER_VOLUME && !pcmDevice->digital &&
+            mDevice->audioCtlApplyAnalogMasterVolume(pcmDevice, 0, 0)) {
+            /* direct analog master mute applied */
+        } else if(mEnableMuteFix || routeMasterToPCM){
           mDevice->audioCtlOssMixerSet(pcmDevice, SOUND_MIXER_PCM, 0, 0);
         } else {
           mDevice->audioCtlOssMixerSet(pcmDevice, ossDev, 0, 0);
@@ -1149,7 +1672,10 @@ IOReturn VoodooHDAEngine::muteChanged(IOAudioControl *muteControl, SInt32 oldVal
 		}
 
         // VertexBZ: Mute fix
-        if(mEnableMuteFix){
+        if (ossDev == SOUND_MIXER_VOLUME && !pcmDevice->digital &&
+            mDevice->audioCtlApplyAnalogMasterVolume(pcmDevice, oldOutVolumeLeft, oldOutVolumeRight)) {
+            /* direct analog master unmute applied */
+        } else if(mEnableMuteFix || routeMasterToPCM){
             mDevice->audioCtlOssMixerSet(pcmDevice, SOUND_MIXER_PCM,
                                          (ossDev == SOUND_MIXER_VOLUME) ? oldOutVolumeLeft : oldInputGain,
                                          (ossDev == SOUND_MIXER_VOLUME) ? oldOutVolumeRight: oldInputGain);
@@ -1176,23 +1702,4 @@ OSString *VoodooHDAEngine::getLocalUniqueID()
 	char str[64] = "";
 	snprintf(str, sizeof str, "%s:%lx", ioName->getCStringNoCopy(), (long unsigned int)index);
 	return OSString::withCString(str);
-}
-
-void VoodooHDAEngine::forceResetHDMIState() {
-  // Сбросить ELD
-/*  memset(eld, 0, sizeof(eld));
-  eld_len = 0;
-  
-  // Сбросить ATI регистры
-  writeATIReg(ATI_DIP_XMIT, 0);
-  writeATIReg(ATI_MC01, 0);
-  writeATIReg(ATI_MC23, 0);
-  writeATIReg(ATI_MC45, 0);
-  writeATIReg(ATI_MC67, 0);
-  
-  // Сбросить буфер DMA
-  mWritePointer = 0;
-  mReadPointer = 0;
-  */
-  IOLog("HDMI state force reset\n");
 }

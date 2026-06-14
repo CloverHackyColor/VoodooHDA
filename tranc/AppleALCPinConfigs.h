@@ -23,10 +23,10 @@ typedef struct {
     UInt16 wakeVerbCount;
 } __attribute__((packed)) ALCConfigEntry;
 
-#define ALC_PIN_CONFIGS_COUNT  4173
-#define ALC_EXTRA_VERBS_COUNT  1601
-#define ALC_WAKE_VERBS_COUNT   1089
-#define ALC_CONFIG_ENTRIES_COUNT 655
+#define ALC_PIN_CONFIGS_COUNT  4177
+#define ALC_EXTRA_VERBS_COUNT  1605
+#define ALC_WAKE_VERBS_COUNT   1092
+#define ALC_CONFIG_ENTRIES_COUNT 656
 #define ALC_PIN_NAMES_COUNT    12
 
 extern const ALCPinConfig   gALCPinConfigs[];

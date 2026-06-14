@@ -45,7 +45,8 @@ bool VoodooHDAUserClient::start(IOService *provider)
 		return false;
 
 	mDevice = OSDynamicCast(VoodooHDADevice, provider);
-	ASSERT(mDevice);
+	if (!mDevice)
+		return false;
 
 	mVerbose = mDevice->mVerbose;
 
@@ -57,9 +58,12 @@ bool VoodooHDAUserClient::didTerminate(IOService *provider, IOOptionBits options
 //	logMsg("VoodooHDAUserClient[%p]::didTerminate\n", this);
 
 	// if defer is true, stop will not be called on the user client
-	*defer = false;
+	if (defer)
+		*defer = false;
 
-	return super::didTerminate(provider, options, defer);
+	IOReturn result = super::didTerminate(provider, options, defer);
+	mDevice = NULL;
+	return result;
 }
 
 // clientClose is called when the user process calls IOServiceClose
@@ -102,9 +106,13 @@ IOReturn VoodooHDAUserClient::actionMethod(UInt32 *dataIn, UInt32 *dataOut, IOBy
 
 	//logMsg("VoodooHDAUserClient[%p]::actionMethod(%ld, %ld)\n", this, inputSize, *outputSize);
 
-	if (inputSize != sizeof (UInt32))
+	if (!mDevice || isInactive())
+		return kIOReturnNoDevice;
+	if (!dataIn || !outputSize || inputSize != sizeof (UInt32))
 		return kIOReturnBadArgument;
 	action = *dataIn;
+	dataSize = 0;
+	data = NULL;
 
 	result = mDevice->runAction(&action, &dataSize, &data);
 
@@ -113,7 +121,8 @@ IOReturn VoodooHDAUserClient::actionMethod(UInt32 *dataIn, UInt32 *dataOut, IOBy
 	outputMax = *outputSize;
     *outputSize = dataSize;
 	if (dataSize) {
-		ASSERT(data);
+		if (!data || !dataOut)
+			return kIOReturnBadArgument;
 	    if (outputMax < dataSize)
 	        return kIOReturnNoSpace;
 		bcopy(data, dataOut, dataSize);
@@ -132,8 +141,13 @@ IOReturn VoodooHDAUserClient::clientMemoryForType(UInt32 type, IOOptionBits *opt
 
 	// note: IOConnectUnmapMemory should not be used with this user client
 
+	if (!options || !memory)
+		return kIOReturnBadArgument;
+
 	*options = 0;
 	*memory = NULL;
+	if (!mDevice || isInactive())
+		return kIOReturnNoDevice;
 
 	switch (type) {
 	case kVoodooHDAMemoryMessageBuffer:

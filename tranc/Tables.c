@@ -116,7 +116,7 @@ const ControllerListItem gControllerList[] = {
 	{ HDA_ATI_HAWAII,			"AMD HAWAII"},
 	{ HDA_ATI_BUFFIN,			"AMD BUFFIN"},
 	{ HDA_ATI_VEGA,				"AMD VEGA"},
-	{ HDA_AMD_HUDSON2,			"AMD Hudson-2" },
+	{ HDA_AMD_HUDSON2,		"AMD Hudson-2" },
 
 	{ HDA_RDC_M3010,			"RDC M3010"},
 	{ HDA_VIA_VT82XX,			"VIA VT8251/8237A" },
@@ -378,7 +378,7 @@ const CodecListItem gCodecList[] = {
 	{ HDA_CODEC_ATIRS600_1,		"ATI RS600 HDMI" },
 	{ HDA_CODEC_ATIRS600_2,		"ATI RS600 HDMI" },
 	{ HDA_CODEC_ATIRS690,		"ATI RS690/780 HDMI" },
-	{ HDA_CODEC_ATIR6XX,		"ATI R6xx HDMI" },
+	{ HDA_CODEC_ATIR6XX,		"VoodooHDA HDMI/DP Audio" },
 	{ HDA_CODEC_NVIDIAMCP67,	"NVidia MCP67 HDMI" },
 	{ HDA_CODEC_NVIDIAMCP73,	"NVidia MCP73 HDMI" },
 	{ HDA_CODEC_NVIDIAMCP78,	"NVidia MCP78 HDMI" },
@@ -551,20 +551,20 @@ const QuirkListItem gQuirkList[] = {
 
 __attribute__((visibility("hidden")))
 const MixerValueName MixerValueNamesBind[SOUND_MIXER_NRDEVICES] = {
-{"Main",	SOUND_MIXER_VOLUME, 80},		// SOUND_MIXER_VOLUME
-{"Bass",	SOUND_MIXER_BASS, 50},		// SOUND_MIXER_BASS
-{"Trable",	SOUND_MIXER_TREBLE, 50},		// SOUND_MIXER_TREBLE
-{"Synth",	SOUND_MIXER_SYNTH, 90},	// (was 75) SOUND_MIXER_SYNTH
-{"PCM",		SOUND_MIXER_PCM, 95},	// (was 75) SOUND_MIXER_PCM
-{"Speaker",	SOUND_MIXER_SPEAKER, 90},	// (was 75) SOUND_MIXER_SPEAKER
-{"Line",	SOUND_MIXER_LINE, 75},		// (was 75) SOUND_MIXER_LINE
-{"Mic",		SOUND_MIXER_MIC, 50},		// SOUND_MIXER_MIC
-{"CD",		SOUND_MIXER_CD, 90},	// SOUND_MIXER_CD
-{"iMix",	SOUND_MIXER_IMIX, 70},		// 70: main PCM playback path (NID 2→NID 12→speaker) — must not be 0
-{"AltPCM",	SOUND_MIXER_ALTPCM, 30},		// [?] SOUND_MIXER_ALTPCM
-{"Rec",		SOUND_MIXER_RECLEV, 75},		// SOUND_MIXER_RECLEV
-{"iGain",	SOUND_MIXER_IGAIN, 0},		// 0: loopback path (NID 11→NID 12) muted to prevent startup pop (was 80)
-{"oGain",	SOUND_MIXER_OGAIN, 50},		// SOUND_MIXER_OGAIN
+	{"Main",	SOUND_MIXER_VOLUME, 35},		// SOUND_MIXER_VOLUME
+	{"Bass",	SOUND_MIXER_BASS, 50},		// SOUND_MIXER_BASS
+	{"Trable",	SOUND_MIXER_TREBLE, 50},		// SOUND_MIXER_TREBLE
+	{"Synth",	SOUND_MIXER_SYNTH, 90},	// (was 75) SOUND_MIXER_SYNTH
+	{"PCM",		SOUND_MIXER_PCM, 35},	// SOUND_MIXER_PCM
+	{"Speaker",	SOUND_MIXER_SPEAKER, 35},	// SOUND_MIXER_SPEAKER
+	{"Line",	SOUND_MIXER_LINE, 75},		// (was 75) SOUND_MIXER_LINE
+	{"Mic",		SOUND_MIXER_MIC, 50},		// SOUND_MIXER_MIC
+	{"CD",		SOUND_MIXER_CD, 90},	// SOUND_MIXER_CD
+	{"iMix",	SOUND_MIXER_IMIX, 35},		// Keep non-zero for codecs that route playback through iMix.
+	{"AltPCM",	SOUND_MIXER_ALTPCM, 30},		// [?] SOUND_MIXER_ALTPCM
+	{"Rec",		SOUND_MIXER_RECLEV, 50},		// SOUND_MIXER_RECLEV
+	{"iGain",	SOUND_MIXER_IGAIN, 0},		// 0: loopback path (NID 11→NID 12) muted to prevent startup pop (was 80)
+	{"oGain",	SOUND_MIXER_OGAIN, 50},		// SOUND_MIXER_OGAIN
 {"Line1",	SOUND_MIXER_LINE1, 30},		// (was 75) SOUND_MIXER_LINE1
 {"Line2",	SOUND_MIXER_LINE2, 10},		// [?] SOUND_MIXER_LINE2
 {"Line3",	SOUND_MIXER_LINE3, 10},		// [?] SOUND_MIXER_LINE3
@@ -575,5 +575,4 @@ const MixerValueName MixerValueNamesBind[SOUND_MIXER_NRDEVICES] = {
 {"PhoneOut",	SOUND_MIXER_PHONEOUT, 0},		// [?] SOUND_MIXER_PHONEOUT
 {"Video",	SOUND_MIXER_VIDEO, 75},		// SOUND_MIXER_VIDEO
 {"Radio",	SOUND_MIXER_RADIO, 0},		// [?] SOUND_MIXER_RADIO
-{"Monitor",	SOUND_MIXER_MONITOR, 75}};	// (was 75) SOUND_MIXER_MONITOR
-
+	{"Monitor",	SOUND_MIXER_MONITOR, 0}};	// SOUND_MIXER_MONITOR

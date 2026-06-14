@@ -10,6 +10,7 @@
 #include "Private.h"
 
 class VoodooHDADevice;
+class VoodooGFXHDAStream;
 
 class IOAudioPort;
 class IOAudioSelectorControl;
@@ -30,14 +31,18 @@ public:
 
 	Channel *mChannel;
 	VoodooHDADevice *mDevice;
+	VoodooGFXHDAStream *mDigitalStream;
 	IOAudioStream *mStream;
 	bool emptyStream;
+	volatile UInt32 mFreeStarted;
 
 	const char *mPortName;
 	char mPortNameBuf[64];
 	UInt32 mPortType;
 
 	IOAudioSelectorControl *mSelControl;
+	IOAudioLevelControl *mVolumeControlLeft;
+	IOAudioLevelControl *mVolumeControlRight;
 	
 	UInt32					oldOutVolumeLeft;
 	UInt32					oldOutVolumeRight;
@@ -65,14 +70,13 @@ public:
 	bool createAudioStream();
 
 	bool createAudioControls();
-  
-  void forceResetHDMIState();
 	
 	static IOReturn volumeChangeHandler(IOService *target, IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue);
 	static IOReturn muteChangeHandler(IOService *target, IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
 
 	IOReturn volumeChanged(IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue);
 	IOReturn muteChanged(IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
+	void syncInitialOutputVolume();
 
 	virtual bool initWithChannel(Channel *channel);
 	virtual void free() override;
@@ -82,6 +86,24 @@ public:
 	virtual IOReturn performAudioEngineStop() override;
 
 	virtual UInt32 getCurrentSampleFrame() override;
+	virtual void resetClipPosition(IOAudioStream *audioStream, UInt32 clipSampleFrame) override;
+
+	void recalculateSampleOffsets(UInt32 sampleRate);
+	bool usesAppleGfxClipPath() const;
+	bool diagnosticsEnabled() const;
+	UInt16 diagnosticFlags() const;
+	bool diagnosticUsesMixTone() const;
+	bool diagnosticUsesDirectTone() const;
+	bool diagnosticSkipsErase() const;
+	bool diagnosticBypassesProcessing() const;
+	bool diagnosticFreezesBuffer() const;
+	bool diagnosticPrimesBufferOnStart() const;
+	void resetDiagnosticState();
+	void primeDiagnosticBuffer();
+	void fillDiagnosticMixBuffer(float *floatMixBuf, UInt32 numSamples, UInt32 numChannels);
+	IOReturn fillDiagnosticSampleBuffer(void *sampleBuf, UInt32 firstSampleFrame, UInt32 numSampleFrames,
+			const IOAudioStreamFormat *streamFormat);
+	float nextDiagnosticSample(UInt32 channelIndex);
 
 	virtual IOReturn performFormatChange(IOAudioStream *audioStream, const IOAudioStreamFormat *newFormat,
 			const IOAudioSampleRate *newSampleRate) override;
