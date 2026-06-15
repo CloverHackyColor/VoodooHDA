@@ -59,6 +59,23 @@ OSDefineMetaClassAndStructors(VoodooHDAEngine, IOAudioEngine)
 #define errorMsg(fmt, args...)	messageHandler(kVoodooHDAMessageTypeError, fmt, ##args)
 #define dumpMsg(fmt, args...)	messageHandler(kVoodooHDAMessageTypeDump, fmt, ##args)
 
+static AudioAssoc *VoodooHDAEngineAssocForChannel(Channel *channel)
+{
+	if (!channel || !channel->funcGroup)
+		return NULL;
+	if (!channel->funcGroup->audio.assocs)
+		return NULL;
+	if (channel->assocNum < 0 || channel->assocNum >= channel->funcGroup->audio.numAssocs)
+		return NULL;
+	return &channel->funcGroup->audio.assocs[channel->assocNum];
+}
+
+static bool VoodooHDAEngineChannelIsDigital(Channel *channel)
+{
+	AudioAssoc *assoc = VoodooHDAEngineAssocForChannel(channel);
+	return assoc && assoc->digital != 0;
+}
+
 __attribute__((visibility("hidden")))
 void VoodooHDAEngine::messageHandler(UInt32 type, const char *format, ...)
 {
@@ -184,7 +201,9 @@ void VoodooHDAEngine::fillDiagnosticMixBuffer(float *floatMixBuf, UInt32 numSamp
 		return;
 
 	for (UInt32 i = 0; i < numSamples; i += numChannels) {
-		for (UInt32 ch = 0; ch < numChannels; ch++)
+		UInt32 available = numSamples - i;
+		UInt32 channelsToWrite = (available < numChannels) ? available : numChannels;
+		for (UInt32 ch = 0; ch < channelsToWrite; ch++)
 			floatMixBuf[i + ch] = nextDiagnosticSample(ch);
 	}
 }
@@ -204,6 +223,9 @@ IOReturn VoodooHDAEngine::fillDiagnosticSampleBuffer(void *sampleBuf, UInt32 fir
 
 	channels = streamFormat->fNumChannels;
 	if (!channels)
+		return kIOReturnBadArgument;
+	if (firstSampleFrame > ((UInt32)~0U) / channels ||
+	    numSampleFrames > ((UInt32)~0U) / channels)
 		return kIOReturnBadArgument;
 
 	bitWidth = streamFormat->fBitWidth;
@@ -463,7 +485,9 @@ const char *VoodooHDAEngine::getPortName()
 	
 	dacNid = mChannel->io[0];
 
-	assoc = &mChannel->funcGroup->audio.assocs[mChannel->assocNum];
+	assoc = VoodooHDAEngineAssocForChannel(mChannel);
+	if (!assoc)
+		goto done;
 	outputNid = -1;
 	for (int n = 0; (n < 16) && assoc->dacs[n]; n++)
 		if (assoc->dacs[n] == dacNid)
@@ -651,6 +675,10 @@ bool VoodooHDAEngine::initHardware(IOService *provider)
 		errorMsg("error: incomplete audio engine init state\n");
 		goto done;
 	}
+	if (!VoodooHDAEngineAssocForChannel(mChannel)) {
+		errorMsg("error: invalid channel association for audio engine init\n");
+		goto done;
+	}
 
 	mVerbose = mDevice->mVerbose;
 	if (mChannel && mChannel->pcmDevice &&
@@ -767,7 +795,7 @@ bool VoodooHDAEngine::createAudioStream()
 	 * to a 2ch sink produces noise.  Cap to 2 for digital outputs.
 	 * (AV receivers with 5.1/7.1 can be supported later via ELD.)
 	 */
-	isDigital = (mChannel->funcGroup->audio.assocs[mChannel->assocNum].digital != 0);
+	isDigital = VoodooHDAEngineChannelIsDigital(mChannel);
 	if (isDigital && channels > 2)
 		channels = 2;
 
@@ -823,6 +851,10 @@ bool VoodooHDAEngine::createAudioStream(IOAudioStreamDirection direction, void *
 		errorMsg("error: invalid audio stream buffer/rates\n");
 		goto done;
 	}
+	if (!VoodooHDAEngineAssocForChannel(mChannel)) {
+		errorMsg("error: invalid channel association for audio stream\n");
+		goto done;
+	}
 
 //	logMsg("VoodooHDAEngine[%p]::createAudioStream(%d, %p, %ld)\n", this, direction, sampleBuffer,
 //			sampleBufferSize);
@@ -838,7 +870,7 @@ bool VoodooHDAEngine::createAudioStream(IOAudioStreamDirection direction, void *
 	}
 
 	mStream->setSampleBuffer(sampleBuffer, sampleBufferSize); // also creates mix buffer
-	isDigital = (mChannel->funcGroup->audio.assocs[mChannel->assocNum].digital != 0);
+	isDigital = VoodooHDAEngineChannelIsDigital(mChannel);
 
     for(int i = 0; pcmRates[i]; i++) {
         sampleRate.whole = pcmRates[i];
@@ -1172,7 +1204,7 @@ void VoodooHDAEngine::recalculateSampleOffsets(UInt32 sampleRate)
 	if (mFreeStarted || !mChannel || !mChannel->funcGroup)
 		return;
 
-	bool isDigital = (mChannel->funcGroup->audio.assocs[mChannel->assocNum].digital != 0);
+	bool isDigital = VoodooHDAEngineChannelIsDigital(mChannel);
 
 	UInt32 safetyUs  = isDigital ? HDMI_SAFETY_US  : ANALOG_SAFETY_US;
 	UInt32 latencyUs = isDigital ? HDMI_LATENCY_US : ANALOG_LATENCY_US;
@@ -1387,6 +1419,10 @@ bool VoodooHDAEngine::createAudioControls()
 		errorMsg("error: incomplete channel state for createAudioControls\n");
 		goto Done;
 	}
+	if (!VoodooHDAEngineAssocForChannel(mChannel)) {
+		errorMsg("error: invalid channel association for createAudioControls\n");
+		goto Done;
+	}
 
 	direction = getEngineDirection();
 	if (direction == kIOAudioStreamDirectionOutput) {
@@ -1421,7 +1457,7 @@ bool VoodooHDAEngine::createAudioControls()
 
 	idupper = mChannel->streamId << 16;
 
-	if (mChannel->funcGroup->audio.assocs[mChannel->assocNum].digital) {
+	if (VoodooHDAEngineChannelIsDigital(mChannel)) {
 		/*
 		 * Some digital pin complexes have mute control
 		 */
@@ -1572,7 +1608,8 @@ IOReturn VoodooHDAEngine::volumeChangeHandler(IOService *target, IOAudioControl 
 __attribute__((visibility("hidden")))
 IOReturn VoodooHDAEngine::volumeChanged(IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue)
 {
-	if (mFreeStarted || !mDevice || !mChannel || !mChannel->pcmDevice)
+	if (mFreeStarted || !mDevice || !mChannel || !mChannel->pcmDevice ||
+	    !VoodooHDAEngineAssocForChannel(mChannel))
 		return kIOReturnNoDevice;
 
 	if(mVerbose >2)
@@ -1667,7 +1704,7 @@ IOReturn VoodooHDAEngine::muteChanged(IOAudioControl *muteControl, SInt32 oldVal
           mDevice->audioCtlOssMixerSet(pcmDevice, ossDev, 0, 0);
         }
 	} else {
-		if (mChannel->funcGroup->audio.assocs[mChannel->assocNum].digital) {
+		if (VoodooHDAEngineChannelIsDigital(mChannel)) {
 			oldOutVolumeLeft = oldOutVolumeRight = oldInputGain = 100;
 		}
 

@@ -43,6 +43,7 @@ OSDefineMetaClassAndStructors(VoodooHDADevice, IOAudioDevice)
 #define kVoodooHDAVerboseLevelKey "VoodooHDAVerboseLevel"
 
 static const UInt32 kVoodooHDATimerIdleIntervalMs = 5000;
+static const int kVoodooHDAPrefPanelMaxChannels = 24;
 
 /*
  * Analog speaker protection curve. Keep the macOS slider range intact, but use
@@ -1357,6 +1358,10 @@ nid_t VoodooHDADevice::getHDMIPinForChannel(Channel *channel)
 {
 	if (!channel || !channel->funcGroup || channel->assocNum < 0)
 		return (nid_t)-1;
+	if (!channel->funcGroup->audio.assocs)
+		return (nid_t)-1;
+	if (channel->assocNum >= channel->funcGroup->audio.numAssocs)
+		return (nid_t)-1;
 	AudioAssoc *assoc = &channel->funcGroup->audio.assocs[channel->assocNum];
 	for (int j = 0; j < 16; j++) {
 		if (assoc->pins[j] <= 0) continue;
@@ -1390,6 +1395,8 @@ void VoodooHDADevice::restoreAnalogPlaybackPath(Channel *channel, const bool sho
 	if (channel->direction != PCMDIR_PLAY || channel->pcmDevice->digital)
 		return;
 	if (!mEnableAnalogPathRestore)
+		return;
+	if (!channel->funcGroup->audio.assocs)
 		return;
 	if (channel->assocNum < 0 || channel->assocNum >= channel->funcGroup->audio.numAssocs)
 		return;
@@ -2169,7 +2176,7 @@ IOReturn VoodooHDADevice::handleAction(OSObject *owner, void *arg0, void *arg1, 
 			  //device->useStereo?"Yes":"No", device->StereoBase);
 
 
-		if (ch < device->nSliderTabsCount) {
+		if (device->mPrefPanelMemoryBuf && ch < device->nSliderTabsCount) {
 			device->lockPrefPanelMemoryBuf();
 			device->mPrefPanelMemoryBuf[ch].vectorize = ((opt & 0x1) == 1);
 			device->mPrefPanelMemoryBuf[ch].noiseLevel = (val & 0x0F);
@@ -2203,7 +2210,7 @@ IOReturn VoodooHDADevice::handleAction(OSObject *owner, void *arg0, void *arg1, 
 		ch = ((action >> 8) & 0xFF);
 		flags = static_cast<UInt16>(((action >> 16) & 0xFF) | (((action >> 24) & 0xFF) << 8));
 
-		if (ch < device->nSliderTabsCount) {
+		if (device->mPrefPanelMemoryBuf && ch < device->nSliderTabsCount) {
 			device->lockPrefPanelMemoryBuf();
 			device->mPrefPanelMemoryBuf[ch].diagnosticFlags = flags;
 			device->unlockPrefPanelMemoryBuf();
@@ -4835,7 +4842,7 @@ void VoodooHDADevice::createPrefPanelMemoryBuf(FunctionGroup *funcGroup)
 	if(mPrefPanelMemoryBuf == 0) {
 		//logMsg("VoodooHDADevice::createPrefPanelMemoryBuf allocate memory\n");
 		//mPrefPanelMemoryBufSize = nSliderTabsCount*sizeof(sliders);
-		mPrefPanelMemoryBufSize = SOUND_MIXER_NRDEVICES*sizeof(ChannelInfo);
+			mPrefPanelMemoryBufSize = kVoodooHDAPrefPanelMaxChannels * sizeof(ChannelInfo);
 		mPrefPanelMemoryBuf = (ChannelInfo*)allocMem(mPrefPanelMemoryBufSize);
 		if (!mPrefPanelMemoryBuf) {
 			errorMsg("error: couldn't allocate pref panel memory buffer (%ld bytes)\n", mPrefPanelMemoryBufSize);
@@ -4853,10 +4860,13 @@ void VoodooHDADevice::createPrefPanelMemoryBuf(FunctionGroup *funcGroup)
 		mPrefPanelMemoryBufEnabled = false;
 	}
 
-	for(int i = 0; i < nSliderTabsCount; i++) {
-		VoodooHDAEngine *engine = lookupEngine(i);
-		strlcpy(mPrefPanelMemoryBuf[i].name, sliderTabs[i].name, MAX_SLIDER_TAB_NAME_LENGTH);
-		mPrefPanelMemoryBuf[i].numChannels = nSliderTabsCount;
+		int tabCount = nSliderTabsCount;
+		if (tabCount > kVoodooHDAPrefPanelMaxChannels)
+			tabCount = kVoodooHDAPrefPanelMaxChannels;
+		for(int i = 0; i < tabCount; i++) {
+			VoodooHDAEngine *engine = lookupEngine(i);
+			strlcpy(mPrefPanelMemoryBuf[i].name, sliderTabs[i].name, MAX_SLIDER_TAB_NAME_LENGTH);
+			mPrefPanelMemoryBuf[i].numChannels = tabCount;
 		for(int j = 1; j < 25; j++) {
 			if(sliderTabs[i].volSliders[j].enabled == 0) 
 				continue;
@@ -4874,8 +4884,10 @@ void VoodooHDADevice::createPrefPanelMemoryBuf(FunctionGroup *funcGroup)
 		mPrefPanelMemoryBuf[i].useStereo = useStereo;
 		mPrefPanelMemoryBuf[i].StereoBase = StereoBase;
 		mPrefPanelMemoryBuf[i].digital = sliderTabs[i].pcmDevice ? sliderTabs[i].pcmDevice->digital : 0;
-		mPrefPanelMemoryBuf[i].direction = engine ? static_cast<SInt8>(engine->mChannel->direction) : 0;
-		mPrefPanelMemoryBuf[i].diagnosticFlags = engine ? engine->mChannel->diagnosticFlags : 0;
+			mPrefPanelMemoryBuf[i].direction = (engine && engine->mChannel) ?
+			    static_cast<SInt8>(engine->mChannel->direction) : 0;
+			mPrefPanelMemoryBuf[i].diagnosticFlags = (engine && engine->mChannel) ?
+			    engine->mChannel->diagnosticFlags : 0;
 		mPrefPanelMemoryBuf[i].debugLevel = static_cast<UInt8>(mVerbose & 0xff);
 		mPrefPanelMemoryBuf[i].buildFlags = VOODOO_HDA_DEBUG_BUILD ? kVoodooHDABuildSupportsDebug : 0;
 	}
@@ -4886,9 +4898,16 @@ void VoodooHDADevice::createPrefPanelMemoryBuf(FunctionGroup *funcGroup)
 void VoodooHDADevice::createPrefPanelStruct(FunctionGroup *funcGroup)
 {
 	//logMsg("createPrefPanelStruct: codec %d have %d assocNum\n", funcGroup->codec->cad, funcGroup->audio.numAssocs);
-	
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+		
 	//Перебираем все ассоциации которые были созданы ранее
 	for(int i = 0; i < funcGroup->audio.numAssocs; i++) {
+		if (nSliderTabsCount >= kVoodooHDAPrefPanelMaxChannels) {
+			errorMsg("warning: pref pane channel list truncated at %d associations\n",
+			    kVoodooHDAPrefPanelMaxChannels);
+			break;
+		}
 		//Получаем ноду которая является главной в ассоциации - это, как правило, устройство к которому или от которого приходит сигнал
 		nid_t mainNid = funcGroup->audio.assocs[i].pins[0];
 		Widget *mainWidget = widgetGet(funcGroup, mainNid);
@@ -4898,8 +4917,8 @@ void VoodooHDADevice::createPrefPanelStruct(FunctionGroup *funcGroup)
 			 //В соответствии с названием устройства называем вкладку
 			//catPinName(mainWidget); //->pin.config, sliderTabs[nSliderTabsCount].name, MAX_SLIDER_TAB_NAME_LENGTH);
 			//sliderTabs[nSliderTabsCount].name = (char *)&mainWidget->name[5];
-			for(int l = 0; l < MAX_SLIDER_TAB_NAME_LENGTH; l++)
-				sliderTabs[nSliderTabsCount].name[l] = mainWidget->name[l+5];
+			strlcpy(sliderTabs[nSliderTabsCount].name, &mainWidget->name[5],
+			    MAX_SLIDER_TAB_NAME_LENGTH);
 		}
 		AudioControl *control;
 		UInt32 ossmask = 0;
@@ -4923,10 +4942,12 @@ void VoodooHDADevice::createPrefPanelStruct(FunctionGroup *funcGroup)
 			//Ищем PCM устройство к которому принадлежит OSS устройство
 			for(int pcmDeviceIndex = 0; pcmDeviceIndex < funcGroup->audio.numPcmDevices; pcmDeviceIndex++) {
 				curPCMDevice = &funcGroup->audio.pcmDevices[pcmDeviceIndex];
-				if(curPCMDevice->playChanId >= 0 && mChannels[curPCMDevice->playChanId].assocNum == i)
-					pcmDevice = curPCMDevice;
-				if(curPCMDevice->recChanId >= 0 && mChannels[curPCMDevice->recChanId].assocNum == i)
-					pcmDevice = curPCMDevice;
+					if(curPCMDevice->playChanId >= 0 && curPCMDevice->playChanId < mNumChannels &&
+					    mChannels[curPCMDevice->playChanId].assocNum == i)
+						pcmDevice = curPCMDevice;
+					if(curPCMDevice->recChanId >= 0 && curPCMDevice->recChanId < mNumChannels &&
+					    mChannels[curPCMDevice->recChanId].assocNum == i)
+						pcmDevice = curPCMDevice;
 			}
 		}
 		//logMsg("createPrefPanelStruct:         ossdev %s, pcmDev = %d\n", audioCtlMixerMaskToString(ossmask, buf, sizeof(buf)), pcmDeviceNum);
@@ -4958,8 +4979,13 @@ void VoodooHDADevice::updatePrefPanelMemoryBuf(void)
 {
 
 	//logMsg("VoodooHDADevice::updatePrefPanelMemoryBuf\n");
+	if (!mPrefPanelMemoryBuf)
+		return;
 
-	for(int i = 0; i < nSliderTabsCount; i++) {
+	int tabCount = nSliderTabsCount;
+	if (tabCount > kVoodooHDAPrefPanelMaxChannels)
+		tabCount = kVoodooHDAPrefPanelMaxChannels;
+	for(int i = 0; i < tabCount; i++) {
 		if(sliderTabs[i].pcmDevice == 0) continue;
 		VoodooHDAEngine *engine = lookupEngine(i);
 
@@ -4970,7 +4996,7 @@ void VoodooHDADevice::updatePrefPanelMemoryBuf(void)
 			mPrefPanelMemoryBuf[i].mixerValues[j - 1].value = sliderTabs[i].pcmDevice->left[j];
 		}
 		mPrefPanelMemoryBuf[i].mixerValues[24].value = sliderTabs[i].pcmDevice->left[0];// mMixerDefaults[0];
-		if (engine) {
+		if (engine && engine->mChannel) {
 			mPrefPanelMemoryBuf[i].vectorize = engine->mChannel->vectorize;
 			mPrefPanelMemoryBuf[i].noiseLevel = engine->mChannel->noiseLevel;
 			mPrefPanelMemoryBuf[i].useStereo = engine->mChannel->useStereo;

@@ -53,7 +53,8 @@ const ChannelCaps gDefaultChanCaps = { 48000, 48000, &gAFMT[0], 0, 2};
 
 static inline bool VoodooHDAValidAssocIndex(FunctionGroup *funcGroup, int assocNum)
 {
-	return funcGroup && assocNum >= 0 && assocNum < funcGroup->audio.numAssocs;
+	return funcGroup && funcGroup->audio.assocs &&
+	    assocNum >= 0 && assocNum < funcGroup->audio.numAssocs;
 }
 
 /*
@@ -947,13 +948,23 @@ void VoodooHDADevice::audioDisableUseless(FunctionGroup *funcGroup)
 		for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
 			if (control->enable == 0)
 				continue;
-			if (control->widget->enable == 0 || (control->childWidget && (control->childWidget->enable == 0 || !control->widget->connsenable[control->index]))) {
+			if (!control->widget)
+				continue;
+			bool childDisabled = false;
+			if (control->childWidget) {
+				bool connDisabled = (control->index < 0 ||
+				    control->index >= control->widget->nconns ||
+				    !control->widget->connsenable[control->index]);
+				childDisabled = control->childWidget->enable == 0 || connDisabled;
+			}
+			if (control->widget->enable == 0 || childDisabled) {
 				control->forcemute = 1;
 				control->muted = HDA_AMP_MUTE_ALL;
 				control->left = 0;
 				control->right = 0;
 				control->enable = 0;
-				if (control->widget->enable &&
+				if (control->widget->enable && control->index >= 0 &&
+					control->index < control->widget->nconns &&
 					control->widget->connsenable[control->index]) {
 					control->widget->connsenable[control->index] = 0;
 					control->widget->connsenabled--;
@@ -1193,6 +1204,9 @@ double_break:
 
 void VoodooHDADevice::audioBuildTree(FunctionGroup *funcGroup)
 {
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 //  audioTraceAssociationExtra(funcGroup);
 
@@ -1230,6 +1244,9 @@ void VoodooHDADevice::audioBuildTree(FunctionGroup *funcGroup)
 
 void VoodooHDADevice::audioDisableUnassociated(FunctionGroup *funcGroup)
 {
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 
 	/* Disable unassosiated widgets. */
@@ -1307,6 +1324,9 @@ void VoodooHDADevice::audioDisableUnassociated(FunctionGroup *funcGroup)
 
 void VoodooHDADevice::audioDisableNonSelected(FunctionGroup *funcGroup)
 {
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 
 	/* On playback path we can safely disable all unselected inputs. */
@@ -1357,6 +1377,9 @@ bool isFirstPin(int bindSeqMask, AudioAssoc* assoc)
 void VoodooHDADevice::audioDisableCrossAssociations(FunctionGroup *funcGroup)
 {
 	AudioControl *control;
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 
 	/* Disable crossassociated and unwanted crosschannel connections. */
@@ -1658,6 +1681,9 @@ void VoodooHDADevice::audioUndoTrace(FunctionGroup *funcGroup, int assocNum, int
  */
 int VoodooHDADevice::audioTraceAssociationOut(FunctionGroup *funcGroup, int assocNum, int seq)
 {
+	if (!VoodooHDAValidAssocIndex(funcGroup, assocNum))
+		return 0;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 	int i, hpredir;
 	nid_t min, res;
@@ -1713,6 +1739,9 @@ int VoodooHDADevice::audioTraceAssociationOut(FunctionGroup *funcGroup, int asso
  */
 int VoodooHDADevice::audioTraceAssociationIn(FunctionGroup *funcGroup, int assocNum)
 {
+	if (!VoodooHDAValidAssocIndex(funcGroup, assocNum))
+		return 0;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 	
 	for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
@@ -1760,6 +1789,9 @@ int VoodooHDADevice::audioTraceAssociationIn(FunctionGroup *funcGroup, int assoc
  */
 int VoodooHDADevice::audioTraceToOut(FunctionGroup *funcGroup, nid_t nid, int depth)
 {
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return 0;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 	Widget *widget;
 	nid_t res = 0;
@@ -1826,6 +1858,9 @@ int VoodooHDADevice::audioTraceToOut(FunctionGroup *funcGroup, nid_t nid, int de
  */
 void VoodooHDADevice::audioTraceAssociationExtra(FunctionGroup *funcGroup)
 {
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 
 	/* Input monitor */
@@ -1906,6 +1941,9 @@ void VoodooHDADevice::audioTraceAssociationExtra(FunctionGroup *funcGroup)
  */
 void VoodooHDADevice::audioBindAssociation(FunctionGroup *funcGroup)
 {
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 	int cnt = 0, free_channels;
 
@@ -1960,6 +1998,9 @@ void VoodooHDADevice::audioBindAssociation(FunctionGroup *funcGroup)
  */
 void VoodooHDADevice::audioAssignNames(FunctionGroup *funcGroup)
 {
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 	int used = 0;
 	static const int types[7][13] = {
@@ -2217,6 +2258,9 @@ int VoodooHDADevice::audioCtlSourceAmp(FunctionGroup *funcGroup, nid_t nid, int 
 void VoodooHDADevice::audioCtlDestAmp(FunctionGroup *funcGroup, nid_t nid, int index, int ossdev,
 		int depth, int need)
 {
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 	Widget *widget;
 	char buf[64];
@@ -2303,6 +2347,9 @@ void VoodooHDADevice::audioCtlDestAmp(FunctionGroup *funcGroup, nid_t nid, int i
 
 void VoodooHDADevice::audioAssignMixers(FunctionGroup *funcGroup)
 {
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 	AudioControl *control;
 	Widget *childWidget;
@@ -2368,6 +2415,9 @@ void VoodooHDADevice::audioAssignMixers(FunctionGroup *funcGroup)
 
 void VoodooHDADevice::audioPreparePinCtrl(FunctionGroup *funcGroup)
 {
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 	UInt32 pincap;
 
@@ -2599,7 +2649,12 @@ void VoodooHDADevice::audioCommit(FunctionGroup *funcGroup)
 
 void VoodooHDADevice::dumpCtls(PcmDevice *pcmDevice, const char *banner, UInt32 flag)
 {
+	if (!pcmDevice || !pcmDevice->funcGroup || !mChannels)
+		return;
+
 	FunctionGroup *funcGroup = pcmDevice->funcGroup;
+	bool playChannelValid = pcmDevice->playChanId >= 0 && pcmDevice->playChanId < mNumChannels;
+	bool recChannelValid = pcmDevice->recChanId >= 0 && pcmDevice->recChanId < mNumChannels;
 
 	if (flag == 0) {
 		flag = ~(SOUND_MASK_VOLUME | SOUND_MASK_PCM | SOUND_MASK_CD | SOUND_MASK_LINE |
@@ -2614,11 +2669,11 @@ void VoodooHDADevice::dumpCtls(PcmDevice *pcmDevice, const char *banner, UInt32 
 			continue;
 		printed = 0;
 		for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
-			if ((control->enable == 0) || (control->widget->enable == 0))
+			if ((control->enable == 0) || !control->widget || (control->widget->enable == 0))
 				continue;
-			if (!(((pcmDevice->playChanId >= 0) &&
+			if (!((playChannelValid &&
 					(control->widget->bindAssoc == mChannels[pcmDevice->playChanId].assocNum)) ||
-					((pcmDevice->recChanId >= 0) &&
+					(recChannelValid &&
 					(control->widget->bindAssoc == mChannels[pcmDevice->recChanId].assocNum)) ||
 					((control->widget->bindAssoc == -2) && (pcmDevice->index == 0))))
 				continue;
@@ -3121,10 +3176,16 @@ void VoodooHDADevice::dumpDstNid(PcmDevice *pcmDevice, nid_t nid, int depth)
 
 void VoodooHDADevice::dumpDac(PcmDevice *pcmDevice)
 {
+	if (!pcmDevice || !pcmDevice->funcGroup || !pcmDevice->funcGroup->audio.assocs || !mChannels)
+		return;
+
 	FunctionGroup *funcGroup = pcmDevice->funcGroup;
 	AudioAssoc *assoc; // = funcGroup->audio.assocs; //Slice - not sure
 	int printed = 0;
-	if (pcmDevice->playChanId < 0)
+	if (pcmDevice->playChanId < 0 || pcmDevice->playChanId >= mNumChannels)
+		return;
+	if (mChannels[pcmDevice->playChanId].assocNum < 0 ||
+	    mChannels[pcmDevice->playChanId].assocNum >= funcGroup->audio.numAssocs)
 		return;
 	assoc = &funcGroup->audio.assocs[mChannels[pcmDevice->playChanId].assocNum]; //Slice ??
 	for (int i = 0; i < 16; i++) {
@@ -3162,9 +3223,12 @@ void VoodooHDADevice::dumpDac(PcmDevice *pcmDevice)
 
 void VoodooHDADevice::dumpAdc(PcmDevice *pcmDevice)
 {
+	if (!pcmDevice || !pcmDevice->funcGroup || !mChannels)
+		return;
+
 	FunctionGroup *funcGroup = pcmDevice->funcGroup;
 
-	if (pcmDevice->recChanId < 0)
+	if (pcmDevice->recChanId < 0 || pcmDevice->recChanId >= mNumChannels)
 		return;
 
 	for (int i = funcGroup->startNode, printed = 0; i < funcGroup->endNode; i++) {
@@ -4191,7 +4255,13 @@ UInt32 VoodooHDADevice::audioCtlRecSelComm(PcmDevice *pcmDevice, UInt32 src, nid
 #if MULTICHANNEL
 int VoodooHDADevice::pcmChannelSetup(Channel *channel)
 {
+	if (!channel)
+		return 0;
+
 	FunctionGroup *funcGroup = channel->funcGroup;
+	if (!funcGroup || !VoodooHDAValidAssocIndex(funcGroup, channel->assocNum))
+		return 0;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 	UInt32 cap, fmtcap, pcmcap;
 	int ret, max, channels, onlystereo;
@@ -4406,7 +4476,13 @@ int VoodooHDADevice::pcmChannelSetup(Channel *channel)
 #warning not multichannel
 int VoodooHDADevice::pcmChannelSetup(Channel *channel)
 {
+	if (!channel)
+		return 0;
+
 	FunctionGroup *funcGroup = channel->funcGroup;
+	if (!funcGroup || !VoodooHDAValidAssocIndex(funcGroup, channel->assocNum))
+		return 0;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 	UInt32 cap, fmtcap, pcmcap;
 	int ret, max;
@@ -4547,8 +4623,15 @@ int VoodooHDADevice::pcmChannelSetup(Channel *channel)
 }
 
 #endif
+
+#define IOMax(x,y)  ((x>y)?x:y)
+
+
 void VoodooHDADevice::createPcms(FunctionGroup *funcGroup)
 {
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 	UInt32 numAnalogPlayDevs = 0, numAnalogRecDevs = 0;
 	UInt32 numDigitalPlayDevs = 0, numDigitalRecDevs = 0;
@@ -4645,7 +4728,8 @@ void VoodooHDADevice::SwitchHandlerRename(FunctionGroup *funcGroup, nid_t nid, i
 	Widget *widget;
 	nid_t defNid;
 	
-	if (!funcGroup || assocsNum < 0 || assocsNum >= funcGroup->audio.numAssocs)
+	if (!funcGroup || !funcGroup->audio.assocs || assocsNum < 0 ||
+	    assocsNum >= funcGroup->audio.numAssocs)
 		return;
 
 	assocs = funcGroup->audio.assocs;
@@ -4700,7 +4784,7 @@ void VoodooHDADevice::micSwitchHandler(FunctionGroup *funcGroup, nid_t nid, UInt
 	int assocsNum;
 	UInt32 maskJack, maskDef;
 	
-	if (!funcGroup || !funcGroup->codec)
+	if (!funcGroup || !funcGroup->codec || !funcGroup->audio.assocs)
 		return;
 	
 //	cad = funcGroup->codec->cad;		
@@ -4779,7 +4863,7 @@ void VoodooHDADevice::hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 
 	UInt32 val;
 	nid_t cad;
 	
-	if (!funcGroup || !funcGroup->codec)
+	if (!funcGroup || !funcGroup->codec || !funcGroup->audio.assocs)
 		return;
 
 	cad = funcGroup->codec->cad;	
@@ -4854,7 +4938,7 @@ void VoodooHDADevice::switchHandler(FunctionGroup *funcGroup, bool first)
 	Widget *widget;
 	int type, res;
 	
-	if (!funcGroup || !funcGroup->codec)
+	if (!funcGroup || !funcGroup->codec || !funcGroup->audio.assocs)
 		return;
 
 	cad = funcGroup->codec->cad;
@@ -4911,6 +4995,9 @@ void VoodooHDADevice::switchHandler(FunctionGroup *funcGroup, bool first)
  */
 void VoodooHDADevice::switchInit(FunctionGroup *funcGroup)
 {
+	if (!funcGroup || !funcGroup->audio.assocs)
+		return;
+
 	AudioAssoc *assocs = funcGroup->audio.assocs;
 //    UInt32 id;
     int enable = 0 /* , poll = 0 */;
@@ -5459,7 +5546,12 @@ void VoodooHDADevice::extDumpNodes(FunctionGroup *funcGroup)
 
 void VoodooHDADevice::extDumpCtls(PcmDevice *pcmDevice, const char *banner, UInt32 flag)
 {
+	if (!pcmDevice || !pcmDevice->funcGroup || !mChannels)
+		return;
+
 	FunctionGroup *funcGroup = pcmDevice->funcGroup;
+	bool playChannelValid = pcmDevice->playChanId >= 0 && pcmDevice->playChanId < mNumChannels;
+	bool recChannelValid = pcmDevice->recChanId >= 0 && pcmDevice->recChanId < mNumChannels;
 	
 	if (flag == 0) {
 		flag = ~(SOUND_MASK_VOLUME | SOUND_MASK_PCM | SOUND_MASK_CD | SOUND_MASK_LINE |
@@ -5474,11 +5566,11 @@ void VoodooHDADevice::extDumpCtls(PcmDevice *pcmDevice, const char *banner, UInt
 			continue;
 		printed = 0;
 		for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
-			if ((control->enable == 0) || (control->widget->enable == 0))
+			if ((control->enable == 0) || !control->widget || (control->widget->enable == 0))
 				continue;
-			if (!(((pcmDevice->playChanId >= 0) &&
+			if (!((playChannelValid &&
 				   (control->widget->bindAssoc == mChannels[pcmDevice->playChanId].assocNum)) ||
-				  ((pcmDevice->recChanId >= 0) &&
+				  (recChannelValid &&
 				   (control->widget->bindAssoc == mChannels[pcmDevice->recChanId].assocNum)) ||
 				  ((control->widget->bindAssoc == -2) && (pcmDevice->index == 0))))
 				continue;
