@@ -593,46 +593,55 @@ bool VoodooHDAFramebufferNotifier::parseEDIDAudio(FBConnectionState *conn)
 /* ---------- ELD construction ---------- */
 void VoodooHDAFramebufferNotifier::buildELDFromEDID(FBConnectionState *conn)
 {
+  if (!conn->edidData || conn->edidLen < 128) return;
+  
+  int mnl = 0; // Monitor name length (пока 0, можно расширить позже)
+  
+  // ПРАВИЛЬНЫЙ расчёт длины Baseline ELD:
+  // Байты 4-7: 4 фиксированных байта (SAD count/MNL, connection type, sync delay, speaker alloc)
+  // Байты 8+: SAD'ы (3 байта каждый) + Monitor name (MNL байт)
+  int baselineLen = 4 + conn->numSADs * 3 + mnl;
+  
+  // Округляем ВВЕРХ до кратного 4 (до целого числа DWORD)
+  int baselineLenAligned = ((baselineLen + 3) / 4) * 4;
+  
+  // Общая длина ELD = заголовок (4 байта) + выровненный Baseline
+  int totalLen = 4 + baselineLenAligned;
+  
+  // Освобождаем старый ELD, если был
   if (conn->eld) {
     IOFree(conn->eld, conn->eldLen);
-    conn->eld = NULL;
-    conn->eldLen = 0;
   }
   
-  // mnl = monitor name length (0)
-  int mnl = 0;
-  int baselineLen = 4 + mnl + conn->numSADs * 3;
-  int totalLen = 4 + baselineLen;
-  
+  // Выделяем новый буфер (гарантированно кратный 4)
   conn->eld = (uint8_t *)IOMalloc(totalLen);
-  if (!conn->eld) return;
+  if (!conn->eld) {
+    conn->eldLen = 0;
+    return;
+  }
+  
   conn->eldLen = totalLen;
-  bzero(conn->eld, totalLen);
+  bzero(conn->eld, totalLen); // Заполняем нулями (включая padding)
   
-  // ELD version 2
-  conn->eld[0] = 0x02 << 3;
-  // ELD size in DWORDs
-  conn->eld[2] = baselineLen / 4;
-  // Number of SADs << 4 | mnl
-  conn->eld[4] = (conn->numSADs << 4) | mnl;
-  // Connection type: 0x00 = HDMI, 0x04 = DP
-  conn->eld[5] = 0x00;  // HDMI
-                        // Audio sync delay (0)
-  conn->eld[6] = 0;
-  // Speaker allocation
-  conn->eld[7] = conn->speakerAllocation;
+  // Заполняем заголовок ELD (байты 0-3)
+  conn->eld[0] = 0x02 << 3;  // ELD version 2
+  conn->eld[1] = 0x00;       // Reserved
+  conn->eld[2] = baselineLenAligned / 4;  // Baseline ELD length in DWORDs (ПРАВИЛЬНО!)
+  conn->eld[3] = (conn->numSADs << 4) | (mnl & 0x0F);  // SAD count + MNL
   
-  // Copy SADs
+  // Заполняем Baseline ELD (байты 4+)
+  conn->eld[4] = 0x00;  // Connection type: 0 = HDMI
+  conn->eld[5] = 0x00;  // Audio sync delay
+  conn->eld[6] = conn->speakerAllocation;  // Speaker allocation
+  conn->eld[7] = 0x00;  // Reserved
+  
+  // Копируем SAD'ы (начиная с байта 8)
   for (int i = 0; i < conn->numSADs * 3; i++) {
     conn->eld[8 + i] = conn->sads[i];
   }
   
-  FBLOG("buildELD: pin=%d eldLen=%d spkalloc=0x%02x nsads=%d",
-        conn->mappedPinNid, totalLen, conn->speakerAllocation, conn->numSADs);
-  
-  // DEBUG: dump first few bytes
-  FBLOG("buildELD: eld[0]=0x%02x eld[2]=0x%02x eld[4]=0x%02x eld[5]=0x%02x eld[7]=0x%02x",
-        conn->eld[0], conn->eld[2], conn->eld[4], conn->eld[5], conn->eld[7]);
+  FBLOG("buildELDFromEDID: pin=%d baselineLen=%d aligned=%d totalLen=%d eld[2]=%d",
+        conn->mappedPinNid, baselineLen, baselineLenAligned, totalLen, conn->eld[2]);
 }
 
 /* ---------- audio pipe control ---------- */
@@ -1125,7 +1134,8 @@ bool VoodooHDAFramebufferNotifier::enableGPUAudioEngine(
   
   /* 5b. Setup secondary packets (REQUIRED FOR BOTH DP AND HDMI ON AMD) */
   /* УБРАН if (isDP) - это критически важно для устранения хрипов на HDMI! */
-  gpuWrite32(r->dpSecAudN0 + digIndex * r->digStride, 0x8000);
+  if (isDP) {
+    gpuWrite32(r->dpSecAudN0 + digIndex * r->digStride, 0x8000);
   uint32_t timestamp = gpuRead32(r->dpSecTimestamp0 + digIndex * r->digStride);
   timestamp &= ~0x01u;
   gpuWrite32(r->dpSecTimestamp0 + digIndex * r->digStride, timestamp);
@@ -1137,7 +1147,7 @@ bool VoodooHDAFramebufferNotifier::enableGPUAudioEngine(
   /* Master enable LAST */
   dpSec |= DP_SEC_STREAM_ENABLE;
   gpuWrite32(r->dpSecCntl0 + digIndex * r->digStride, dpSec);
-  
+}
   /* 5c. Unmute audio */
   uint32_t pktCtl = gpuRead32(r->afmtPktCtl0 + digIndex * r->digStride);
   pktCtl |= AFMT_AUDIO_SAMPLE_SEND;

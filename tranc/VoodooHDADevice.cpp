@@ -414,7 +414,7 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 		mSubDeviceId = HP_NX6325_SUBVENDOR;
 
 	mLayoutId = 0;
-	/* voodoo-layout-id is set by bootloader (OpenCore DeviceProperties);
+	/* voodoo-layout-id is set by bootloader (DeviceProperties);
 	   layout-id on the PCI device may be overwritten by AppleHDA or the system */
 	OSData *layoutData = OSDynamicCast(OSData, mPciNub->getProperty("voodoo-layout-id"));
 	if (layoutData && layoutData->getLength() >= sizeof(UInt32))
@@ -2053,8 +2053,10 @@ int VoodooHDADevice::rirbFlush()
 			 * Queue format: even slot = (cad << 16) | tag, odd slot = resp */
 			mUnsolq[mUnsolqWritePtr++] = (cad << 16) | ((resp >> 26) & 0xffff);
 			mUnsolqWritePtr %= HDAC_UNSOLQ_MAX;
+#if 0
 			mUnsolq[mUnsolqWritePtr++] = resp;
 			mUnsolqWritePtr %= HDAC_UNSOLQ_MAX;
+#endif
 		} else if (commands && (commands->numCommands > 0) &&
 				(codec->numRespReceived < commands->numCommands))
 			commands->responses[codec->numRespReceived++] = resp;
@@ -2077,13 +2079,16 @@ int VoodooHDADevice::unsolqFlush()
 		mUnsolqState = HDAC_UNSOLQ_BUSY;
 		while (mUnsolqReadPtr != mUnsolqWritePtr) {
 			nid_t cad;
-			UInt32 tag, resp;
+			UInt32 tag;
 			cad = mUnsolq[mUnsolqReadPtr] >> 16;
 			tag = mUnsolq[mUnsolqReadPtr++] & 0xffff;
+#if 0			
 			mUnsolqReadPtr %= HDAC_UNSOLQ_MAX;
-			resp = mUnsolq[mUnsolqReadPtr++];
+			UInt32 resp = mUnsolq[mUnsolqReadPtr++];
+#endif			
 			mUnsolqReadPtr %= HDAC_UNSOLQ_MAX;
-			handleUnsolicited(mCodecs[cad], tag, resp);
+//			handleUnsolicited(mCodecs[cad], tag, resp);
+			handleUnsolicited(mCodecs[cad], tag, 0);
 			ret++;
 		}
 		mUnsolqState = HDAC_UNSOLQ_READY;
@@ -2791,25 +2796,25 @@ void VoodooHDADevice::channelStart(Channel *channel, const bool shouldLock)
 	streamReset(channel);
   // 🔧 Polaris/AMD: ждём фактического сброса позиции в 0
   bool isDigital = (channel->funcGroup->audio.assocs[channel->assocNum].digital != 0);
-  if (isDigital) {
-    writeData32(channel->off + HDAC_SDLPIB, 0);
-    IODelay(1000); // 1 мс для стабилизации DMA перед стартом
-  } else {
-    // Для аналога оставляем ожидание
+//  if (isDigital) {
+//    writeData32(channel->off + HDAC_SDLPIB, 0);
+//    IODelay(1000); // 1 мс для стабилизации DMA перед стартом
+//  } else {
+//    // Для аналога оставляем ожидание
     int timeout = 200;
     while (timeout-- > 0) {
       if (readData32(channel->off + HDAC_SDLPIB) == 0) break;
       IODelay(10);
     }
-  }
+//  }
   // 🔧 КРИТИЧНО: полная очистка статусных флагов ПЕРЕД настройкой DMA.
   // Убирает "хвосты" BCIS/FIFOE от предыдущего потока (HDMI или аналог).
   writeData8(channel->off + HDAC_SDSTS, 0xFF); // 0xFF = сброс всех битов SDSTS
   
   // 🔧 ДОБАВИТЬ ЭТО: Микроскопическая задержка ТОЛЬКО для HDMI, чтобы GPU успел синхронизироваться
-  if (channel->pcmDevice && channel->pcmDevice->digital >= 2) {
-    IODelay(1000); // 1 миллисекунда
-  }
+//  if (channel->pcmDevice && channel->pcmDevice->digital >= 2) {
+//    IODelay(1000); // 1 миллисекунда
+//  }
   
   /* Zero the DMA sample buffer before each playback session so that wrap-around
    * never replays stale audio from a prior clip (old data → elongation + crackling). */

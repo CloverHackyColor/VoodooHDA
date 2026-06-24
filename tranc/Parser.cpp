@@ -3707,20 +3707,6 @@ void VoodooHDADevice::widgetPinParse(Widget *widget)
 
 	config = widgetPinGetConfig(widget);
 	widget->pin.config = config;
-  
-  
-  // =========================================================================
-  // РАННЕЕ ОТКЛЮЧЕНИЕ "МЁРТВЫХ" ПИНОВ (AppleALC dummy pins)
-  // Если Connectivity = None (например, конфиг 0x411111f0),
-  // мы отключаем виджет НЕМЕДЛЕННО. Это предотвращает его участие
-  // в audioCtlParse и audioAssociationParse, исключая конфликты маршрутизации.
-  // =========================================================================
-//  if ((config & HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_MASK) == HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_NONE) {
-//    widget->enable = 0;
-//    dumpMsg("Early disable: nid %d is a dummy pin (config=0x%08lx)\n",
-//            nid, (long unsigned int)config);
-//  }
-  // =========================================================================
 
 	pincap = widgetPinGetCaps(widget);
 	widget->pin.cap = pincap;
@@ -5032,7 +5018,7 @@ void VoodooHDADevice::buildELDFromTVEdid(Widget *widget)
     }
   }
   
-  if (edid_len < 128) {
+  if (edid_len <= 128) {
     // Минимальный безопасный ELD
     createMinimalELD(widget);
     return;
@@ -5087,7 +5073,7 @@ void VoodooHDADevice::buildELDFromTVEdid(Widget *widget)
   
   // Заполняем ELD
   widget->eld[0] = 0x02 << 3;  // версия 2
-  widget->eld[2] = baseline_len / 4;
+  widget->eld[2] = (baseline_len + 3) / 4;
   widget->eld[4] = (num_sads << 4) | mnl;
   widget->eld[5] = 0x00;  // HDMI connection type (НЕ DP!)
   widget->eld[6] = 0;     // audio sync delay
@@ -5112,7 +5098,7 @@ void VoodooHDADevice::createMinimalELD(Widget *widget)
   
   bzero(widget->eld, 11);
   widget->eld[0] = 0x02 << 3;  // version 2
-  widget->eld[2] = 11 / 4;     // ELD size in DWORDs
+  widget->eld[2] = (11 + 3) / 4;     // ELD size in DWORDs
   widget->eld[4] = 0x10;       // 1 SAD (0x1 << 4)
   widget->eld[5] = 0x00;       // HDMI connection
   widget->eld[7] = 0x01;       // FL/FR speaker allocation

@@ -25,8 +25,8 @@ OSDefineMetaClassAndStructors(VoodooHDAEngine, IOAudioEngine)
 
 #define SAMPLE_CHANNELS		2	// forced stereo quirk is always enabled
 
-#define SAMPLE_OFFSET		256	// note: these values definitely need to be tweaked
-#define SAMPLE_LATENCY	128
+#define SAMPLE_OFFSET		64	// note: these values definitely need to be tweaked
+#define SAMPLE_LATENCY	32
 
 //extern const char * const gDeviceTypes[], * const gConnTypes[];
 
@@ -447,12 +447,12 @@ bool VoodooHDAEngine::createAudioStream()
 
 	logMsg("(min: %ld, max: %ld) channels=%d%s\n", (long int)mChannel->caps.minSpeed, (long int)mChannel->caps.maxSpeed, (int)channels, isDigital ? " (digital, capped to 2)" : "");
 	sampleBuffer = (UInt8 *) mChannel->buffer->virtAddr;
-  if (isDigital) {
-    mBufferSize = 32768; // 32 КБ = 8192 фрейма (идеально для 48kHz стерео)
-    logMsg("VoodooHDA: Forced digital buffer size to 32768 bytes\n");
-  } else {
+//  if (isDigital) {
+//    mBufferSize = 32768; // 32 КБ = 8192 фрейма (идеально для 48kHz стерео)
+//    logMsg("VoodooHDA: Forced digital buffer size to 32768 bytes\n");
+//  } else {
     mBufferSize = 65536; // 64 КБ для аналоговых выходов
-  }
+//  }
   
   if (!createAudioStream(direction, sampleBuffer, mBufferSize, mChannel->pcmRates,
                          mChannel->supPcmSizeRates, mChannel->supStreamFormats, channels)) {
@@ -838,28 +838,28 @@ IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 		mSampleSize = channels * (newFormat->fBitWidth / 8);
     bool isDigitalStream = mChannel->pcmDevice->digital >= 2;
     
-    if (isDigitalStream) {
-      nid_t pin = mDevice->getHDMIPinForChannel(mChannel);
-      if (pin != (nid_t)-1 && mDevice->mFBNotifier) {
-        // Принудительно обновляем ELD перед настройкой потока
-        mDevice->mFBNotifier->ensureAudioPipeEnabled(mChannel->funcGroup->codec->cad, pin);
-      }
-      
-      // ДЛЯ HDMI: Фиксируем 8192 фрейма.
-      // 8192 фрейма * 4 байта (16-bit stereo) = 32768 байт (32 КБ).
-      // Это дает ~170 мс общего времени буфера, что с запасом перекрывает
-      // любые задержки планировщика macOS и предотвращает зацикливание старых данных.
-      mNumSampleFrames = 16384;
-      UInt32 slack = 128;  // 2048 фреймов запаса
-      mBufferSize = (mNumSampleFrames + slack)  * mSampleSize; 
-      mChannel->slack = slack;
-      logMsg("VoodooHDA: Forced digital buffer to %u frames, size %lu bytes slack %lu\n",
-            mNumSampleFrames, (unsigned long)mBufferSize, (unsigned long)slack);
-    } else {
+//    if (isDigitalStream) {
+//      nid_t pin = mDevice->getHDMIPinForChannel(mChannel);
+//      if (pin != (nid_t)-1 && mDevice->mFBNotifier) {
+//        // Принудительно обновляем ELD перед настройкой потока
+//        mDevice->mFBNotifier->ensureAudioPipeEnabled(mChannel->funcGroup->codec->cad, pin);
+//      }
+//      
+//      // ДЛЯ HDMI: Фиксируем 8192 фрейма.
+//      // 8192 фрейма * 4 байта (16-bit stereo) = 32768 байт (32 КБ).
+//      // Это дает ~170 мс общего времени буфера, что с запасом перекрывает
+//      // любые задержки планировщика macOS и предотвращает зацикливание старых данных.
+//      mNumSampleFrames = 16384;
+//      UInt32 slack = 0;  // 2048 фреймов запаса
+//      mBufferSize = (mNumSampleFrames + slack)  * mSampleSize;
+//      mChannel->slack = slack;
+//      logMsg("VoodooHDA: Forced digital buffer to %u frames, size %lu bytes slack %lu\n",
+//            mNumSampleFrames, (unsigned long)mBufferSize, (unsigned long)slack);
+//    } else {
       // Для аналоговых каналов оставляем стандартную логику
       mNumSampleFrames = mBufferSize / mSampleSize;
       mChannel->slack = static_cast<UInt16>(mBufferSize - (mNumSampleFrames * mSampleSize));
-    }
+ //   }
     
     
     logMsg("VoodooHDA DEBUG: mBufferSize=%lu, mSampleSize=%u, mNumSampleFrames=%lu, slack=%u\n",
