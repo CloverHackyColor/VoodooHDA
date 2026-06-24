@@ -595,53 +595,58 @@ void VoodooHDAFramebufferNotifier::buildELDFromEDID(FBConnectionState *conn)
 {
   if (!conn->edidData || conn->edidLen < 128) return;
   
-  int mnl = 0; // Monitor name length (пока 0, можно расширить позже)
+  int mnl = 0; // Monitor name length (пока не используем)
   
-  // ПРАВИЛЬНЫЙ расчёт длины Baseline ELD:
-  // Байты 4-7: 4 фиксированных байта (SAD count/MNL, connection type, sync delay, speaker alloc)
-  // Байты 8+: SAD'ы (3 байта каждый) + Monitor name (MNL байт)
-  int baselineLen = 4 + conn->numSADs * 3 + mnl;
+  // ПРАВИЛЬНЫЙ расчёт Baseline ELD по HDA Spec 7.3.2:
+  // Byte 4: Speaker Allocation (1 byte)
+  // Bytes 5-12: Port ID (8 bytes)
+  // Byte 13: Audio Sync Delay (1 byte)
+  // Byte 14: Reserved + HDCP + AI_CP (1 byte)
+  // Byte 15: SAD count + CEA_EDID_Version (1 byte)
+  // Bytes 16+: SADs (3 bytes × numSADs)
+  // После SADs: Monitor Name (MNL bytes)
+  // Итого Baseline = 1 + 8 + 1 + 1 + 1 + 3*numSADs + MNL = 12 + 3*numSADs + MNL
+  
+  int baselineLen = 12 + 3 * conn->numSADs + mnl;
   
   // Округляем ВВЕРХ до кратного 4 (до целого числа DWORD)
   int baselineLenAligned = ((baselineLen + 3) / 4) * 4;
-  
-  // Общая длина ELD = заголовок (4 байта) + выровненный Baseline
   int totalLen = 4 + baselineLenAligned;
   
-  // Освобождаем старый ELD, если был
+  // Освобождаем старый ELD
   if (conn->eld) {
     IOFree(conn->eld, conn->eldLen);
+    conn->eld = NULL;
+    conn->eldLen = 0;
   }
   
-  // Выделяем новый буфер (гарантированно кратный 4)
   conn->eld = (uint8_t *)IOMalloc(totalLen);
-  if (!conn->eld) {
-    conn->eldLen = 0;
-    return;
-  }
+  if (!conn->eld) return;
   
   conn->eldLen = totalLen;
-  bzero(conn->eld, totalLen); // Заполняем нулями (включая padding)
+  bzero(conn->eld, totalLen); // Заполняем нулями (включая padding и Port ID)
   
-  // Заполняем заголовок ELD (байты 0-3)
-  conn->eld[0] = 0x02 << 3;  // ELD version 2
+  // === HEADER (bytes 0-3) ===
+  conn->eld[0] = 0x02 << 3;  // ELD version 2 (bits 7:3 = 0x10)
   conn->eld[1] = 0x00;       // Reserved
-  conn->eld[2] = baselineLenAligned / 4;  // Baseline ELD length in DWORDs (ПРАВИЛЬНО!)
-  conn->eld[3] = (conn->numSADs << 4) | (mnl & 0x0F);  // SAD count + MNL
+  conn->eld[2] = baselineLenAligned / 4;  // Baseline ELD length in DWORDs
+  conn->eld[3] = (0x03 << 5) | (mnl & 0x1F);  // CEA_EDID_Version=3 + MNL
   
-  // Заполняем Baseline ELD (байты 4+)
-  conn->eld[4] = 0x00;  // Connection type: 0 = HDMI
-  conn->eld[5] = 0x00;  // Audio sync delay
-  conn->eld[6] = conn->speakerAllocation;  // Speaker allocation
-  conn->eld[7] = 0x00;  // Reserved
+  // === BASELINE ELD (bytes 4+) ===
+  conn->eld[4] = conn->speakerAllocation;  // Speaker Allocation (ПРАВИЛЬНОЕ МЕСТО!)
+                                           // Bytes 5-12: Port ID — остаются нулями (bzero)
+  conn->eld[13] = 0x00;  // Audio Sync Delay
+  conn->eld[14] = 0x00;  // Reserved + HDCP + AI_CP
+  conn->eld[15] = (conn->numSADs << 4) | 0x00;  // SAD count (bits 7:4) + CEA_EDID_Version
   
-  // Копируем SAD'ы (начиная с байта 8)
+  // === SADs (bytes 16+) ===
   for (int i = 0; i < conn->numSADs * 3; i++) {
-    conn->eld[8 + i] = conn->sads[i];
+    conn->eld[16 + i] = conn->sads[i];
   }
   
-  FBLOG("buildELDFromEDID: pin=%d baselineLen=%d aligned=%d totalLen=%d eld[2]=%d",
-        conn->mappedPinNid, baselineLen, baselineLenAligned, totalLen, conn->eld[2]);
+  FBLOG("buildELDFromEDID: pin=%d baselineLen=%d aligned=%d totalLen=%d eld[2]=%d spkalloc=0x%02x nsads=%d",
+        conn->mappedPinNid, baselineLen, baselineLenAligned, totalLen,
+        conn->eld[2], conn->eld[4], conn->numSADs);
 }
 
 /* ---------- audio pipe control ---------- */
@@ -733,9 +738,19 @@ void VoodooHDAFramebufferNotifier::injectELDIntoWidget(FBConnectionState *conn)
 		if (w->eld) {
 			memcpy(w->eld, conn->eld, conn->eldLen);
 			w->eld_len = conn->eldLen;
-			FBLOG("injectELD: nid=%d eld_len=%d spkalloc=0x%02x",
-			      conn->mappedPinNid, w->eld_len,
-			      (w->eld_len > 7) ? w->eld[7] : 0);
+      // ПРАВИЛЬНОЕ место для spkalloc — это eld[4], а не eld[7]!
+      uint8_t spkalloc = (w->eld_len > 4) ? w->eld[4] : 0;
+      FBLOG("injectELD: nid=%d eld_len=%d spkalloc=0x%02x (from eld[4])",
+            conn->mappedPinNid, w->eld_len, spkalloc);
+      
+      // Отладочный вывод первых 20 байт ELD для проверки
+      if (w->eld_len > 0) {
+        FBLOG("injectELD: ELD dump (first %d bytes):",
+              (w->eld_len < 20) ? w->eld_len : 20);
+        for (int i = 0; i < (w->eld_len < 20 ? w->eld_len : 20); i++) {
+          FBLOG("  eld[%d] = 0x%02x", i, w->eld[i]);
+        }
+      }
       // КРИТИЧЕСКИ ВАЖНО: Если ELD был отложен, обновляем его сейчас
       if (w->needELDUpdate) {
         w->needELDUpdate = false;
@@ -782,8 +797,9 @@ void VoodooHDAFramebufferNotifier::injectELDIntoAllPinsWithPresence(FBConnection
       if (w->eld) {
         memcpy(w->eld, conn->eld, conn->eldLen);
         w->eld_len = conn->eldLen;
-        FBLOG("injectELD(presence): nid=%d spkalloc=0x%02x",
-              nid, (w->eld_len > 7) ? w->eld[7] : 0);
+        uint8_t spkalloc = (w->eld_len > 4) ? w->eld[4] : 0;
+        FBLOG("injectELD(presence): nid=%d pinSense=0x%08x eld_len=%d spkalloc=0x%02x",
+              nid, pinSense, w->eld_len, spkalloc);
       }
     }
     return;
@@ -822,8 +838,9 @@ void VoodooHDAFramebufferNotifier::injectELDIntoPinIfReady(int cad, nid_t pinNid
         if (w->eld) {
           memcpy(w->eld, src->eld, src->eldLen);
           w->eld_len = src->eldLen;
-          FBLOG("injectELDIntoPinIfReady: nid=%d eld_len=%d spkalloc=0x%02x",
-                pinNid, w->eld_len, (w->eld_len > 7) ? w->eld[7] : 0);
+          uint8_t spkalloc = (w->eld_len > 4) ? w->eld[4] : 0;
+          FBLOG("injectELDIntoPinIfReady: nid=%d eld_len=%d spkalloc=0x%02x (from eld[4])",
+                pinNid, w->eld_len, spkalloc);
         }
 				break;
 			}
@@ -1136,18 +1153,18 @@ bool VoodooHDAFramebufferNotifier::enableGPUAudioEngine(
   /* УБРАН if (isDP) - это критически важно для устранения хрипов на HDMI! */
   if (isDP) {
     gpuWrite32(r->dpSecAudN0 + digIndex * r->digStride, 0x8000);
-  uint32_t timestamp = gpuRead32(r->dpSecTimestamp0 + digIndex * r->digStride);
-  timestamp &= ~0x01u;
-  gpuWrite32(r->dpSecTimestamp0 + digIndex * r->digStride, timestamp);
-  
-  uint32_t dpSec = gpuRead32(r->dpSecCntl0 + digIndex * r->digStride);
-  dpSec |= DP_SEC_ASP_ENABLE | DP_SEC_ATP_ENABLE | DP_SEC_AIP_ENABLE;
-  gpuWrite32(r->dpSecCntl0 + digIndex * r->digStride, dpSec);
-  
-  /* Master enable LAST */
-  dpSec |= DP_SEC_STREAM_ENABLE;
-  gpuWrite32(r->dpSecCntl0 + digIndex * r->digStride, dpSec);
-}
+    uint32_t timestamp = gpuRead32(r->dpSecTimestamp0 + digIndex * r->digStride);
+    timestamp &= ~0x01u;
+    gpuWrite32(r->dpSecTimestamp0 + digIndex * r->digStride, timestamp);
+    
+    uint32_t dpSec = gpuRead32(r->dpSecCntl0 + digIndex * r->digStride);
+    dpSec |= DP_SEC_ASP_ENABLE | DP_SEC_ATP_ENABLE | DP_SEC_AIP_ENABLE;
+    gpuWrite32(r->dpSecCntl0 + digIndex * r->digStride, dpSec);
+    
+    /* Master enable LAST */
+    dpSec |= DP_SEC_STREAM_ENABLE;
+    gpuWrite32(r->dpSecCntl0 + digIndex * r->digStride, dpSec);
+  }
   /* 5c. Unmute audio */
   uint32_t pktCtl = gpuRead32(r->afmtPktCtl0 + digIndex * r->digStride);
   pktCtl |= AFMT_AUDIO_SAMPLE_SEND;
