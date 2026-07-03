@@ -15,7 +15,6 @@
 // xxx: check what these flags were for
 
 #define HDAC_F_DMA_NOCACHE		0x00000001
-#define HDAC_F_MSI				0x00000002
 
 #define HDAC_UNSOLQ_MAX			64
 #define HDAC_UNSOLQ_READY		0
@@ -49,13 +48,8 @@
 #define HDA_BLK_ALIGN			(~(HDA_BLK_MIN - 1))
 
 #define HDA_BUFSZ_MIN			4096
-	//#define HDA_BUFSZ_MAX			65536
 #define HDA_BUFSZ_MAX			262144
 #define HDA_BUFSZ_DEFAULT		HDA_BUFSZ_MAX
-
-#define HDA_GPIO_MAX    8
-#define HDA_MATCH_ALL    0xffffffff
-#define HDA_INVALID    0xffffffff
 
 #define HDA_PARSE_MAXDEPTH		10
 
@@ -171,15 +165,12 @@ typedef struct _Widget {
 	int bindSeqMask;
 	int ossdev;
 	int sense;
-	UInt8 alcNameIdx;
 	UInt32 ossmask;
 	nid_t conns[HDA_MAX_CONNS];
 	UInt8 connsenable[HDA_MAX_CONNS];
 	char name[HDA_MAX_NAMELEN];
-  uint8_t  *eld;
-  int  eld_len;
 	FunctionGroup *funcGroup;
-	UInt8 traceDir; 
+	UInt8 traceDir;
 	UInt8 stripecap;
 	nid_t favoritDAC;
 	struct {
@@ -302,9 +293,9 @@ typedef struct _Channel {
 	//Math
 	bool vectorize;
 	bool useStereo;
-    UInt8 noiseLevel;	
+    UInt8 noiseLevel;
 	UInt8 StereoBase;
-	
+
 	UInt16 slack;
 	DmaMemory *bdlMem;
 	DmaMemory *buffer;
@@ -325,16 +316,5 @@ typedef struct _Codec {
 	FunctionGroup *funcGroups;
 	int	numFuncGroups;
 } Codec;
-
-/* ATI HDMI codec: vendor ID 0x1002 (all known ATI/AMD HDMI codec IDs) */
-static inline bool isAtiHdmiCodec(Codec *codec) {
-	return codec->vendorId == 0x1002;
-}
-
-/* Rev3+ ATI codecs (0x1002aa01 with revision >= 0x03) support single-channel remap mode */
-static inline bool isAtiHdmiRev3(Codec *codec) {
-	return (CODEC_ID(codec) == 0x1002aa01) &&
-	       (codec->revisionId >= 0x03);
-}
 
 #endif

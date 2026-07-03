@@ -1,14 +1,12 @@
 #include "License.h"
 
 #include "VoodooHDADevice.h"
-#include "VoodooHDAFramebufferNotifier.h"
 #include "VoodooHDAEngine.h"
 #include "Private.h"
 #include "Tables.h"
 #include "Models.h"
 #include "Common.h"
 #include "Verbs.h"
-#include "AppleALCPinConfigs.h"
 
 #ifdef TIGER
 #include "TigerAdditionals.h"
@@ -28,25 +26,6 @@ const char * const gConnTypes[4] = { "Jack", "None", "Fixed", "Both" };
 
 const char * const gJacks[16] = {"Unknown", "1/8", "1/4", "ATAPI", "RCA", "Optic", "Digital", "Analog",
 	"Multi", "XLR", "RJ-11", "Combo", "Res.F", "Res.G", "Res.H", "Other"};
-
-const char *HDA_LOCS[64] = {
-  "0x00", "Rear", "Front", "Left", "Right", "Top", "Bottom", "Rear-panel",
-  "Drive-bay", "0x09", "0x0a", "0x0b", "0x0c", "0x0d", "0x0e", "0x0f",
-  "Internal", "0x11", "0x12", "0x13", "0x14", "0x15", "0x16", "Riser",
-  "0x18", "Onboard", "0x1a", "0x1b", "0x1c", "0x1d", "0x1e", "0x1f",
-  "External", "Ext-Rear", "Ext-Front", "Ext-Left", "Ext-Right", "Ext-Top", "Ext-Bottom", "0x07",
-  "0x28", "0x29", "0x2a", "0x2b", "0x2c", "0x2d", "0x2e", "0x2f",
-  "Other", "0x31", "0x32", "0x33", "0x34", "0x35", "Other-Bott", "Lid-In",
-  "Lid-Out", "0x39", "0x3a", "0x3b", "0x3c", "0x3d", "0x3e", "0x3f" };
-
-const char *HDA_GPIO_ACTIONS[8] = {
-  "keep", "set", "clear", "disable", "input", "0x05", "0x06", "0x07"};
-
-const char *HDA_HDMI_CODING_TYPES[18] = {
-  "undefined", "LPCM", "AC-3", "MPEG1", "MP3", "MPEG2", "AAC-LC", "DTS",
-  "ATRAC", "DSD", "E-AC-3", "DTS-HD", "MLP", "DST", "WMAPro", "HE-AAC",
-  "HE-AACv2", "MPEG-Surround"
-};
 
 const UInt32 gAFMT[] = { AFMT_STEREO | AFMT_S16_LE, 0 };
 const ChannelCaps gDefaultChanCaps = { 48000, 48000, &gAFMT[0], 0, 2};
@@ -204,7 +183,6 @@ void VoodooHDADevice::probeFunction(Codec *codec, nid_t nid)
 
 	dumpMsg("Powering up...\n");
 	powerup(funcGroup);
-	applyAppleALCExtraVerbs(funcGroup);
 	dumpMsg("Parsing audio FG...\n");
 	audioParse(funcGroup);
 	dumpMsg("Parsing vendor patch...\n");
@@ -224,7 +202,6 @@ void VoodooHDADevice::probeFunction(Codec *codec, nid_t nid)
 	audioDisableUseless(funcGroup);
 	dumpMsg("Patched pins configuration:\n");
 	dumpPinConfigs(funcGroup);
-	adjustPinAssociationsForSwitching(funcGroup);
 	dumpMsg("Parsing pin associations...\n");
 	audioAssociationParse(funcGroup);
 	dumpMsg("Building AFG tree...\n");
@@ -243,8 +220,6 @@ void VoodooHDADevice::probeFunction(Codec *codec, nid_t nid)
 	audioBindAssociation(funcGroup);
 	dumpMsg("Assigning names to signal sources...\n");
 	audioAssignNames(funcGroup);
-//	dumpMsg("Parsing Ctls...\n");
-//	audioCtlParse(funcGroup);
 	dumpMsg("Assigning mixers to the tree...\n");
 	audioAssignMixers(funcGroup);
 	dumpMsg("Preparing pin controls...\n");
@@ -273,6 +248,9 @@ void VoodooHDADevice::probeFunction(Codec *codec, nid_t nid)
 				dumpMsg(" %s", gQuirkTypes[i].key);
 		dumpMsg("\n");
 	}
+	/* Enable EAPD after mixer defaults are applied (pop prevention). */
+	audioCommitEapd(funcGroup);
+
 	//Slice - move here
 	dumpMsg("HP switch init...\n");
 	switchInit(funcGroup);
@@ -288,7 +266,7 @@ void VoodooHDADevice::probeFunction(Codec *codec, nid_t nid)
 	dumpMsg("| DUMPING HDA AMPLIFIERS |\n");
 	dumpMsg("+------------------------+\n");
 	dumpMsg("\n");
-	for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
+	for (int i = 0; (control = audioCtlEach(funcGroup, &i)); ) {
 		dumpMsg("%3d: nid %3d %s (%s) index %d", i, (control->widget) ? control->widget->nid : -1,
 				(control->ndir == HDA_CTL_IN) ? "in " : "out",
 				(control->dir == HDA_CTL_IN) ? "in " : "out", control->index);
@@ -301,7 +279,7 @@ void VoodooHDADevice::probeFunction(Codec *codec, nid_t nid)
 				control->size, control->offset, (control->enable == 0) ? " [DISABLED]" :
 				((control->ossmask == 0) ? " [UNUSED]" : ""));
 	}
-*/	
+*/
 	createPrefPanelMemoryBuf(funcGroup);
 }
 
@@ -315,65 +293,6 @@ void VoodooHDADevice::powerup(FunctionGroup *funcGroup)
 	for (int i = funcGroup->startNode; i < funcGroup->endNode; i++)
 		sendCommand(HDA_CMD_SET_POWER_STATE(cad, i, HDA_CMD_POWER_STATE_D0), cad);
 	IODelay(1000);
-}
-
-void VoodooHDADevice::applyAppleALCExtraVerbs(FunctionGroup *funcGroup)
-{
-	if (mLayoutId == 0)
-		return;
-
-	UInt32 codecId = CODEC_ID(funcGroup->codec);
-	const ALCConfigEntry *entry = alcLookupPinConfig(codecId, mLayoutId);
-	if (!entry || entry->extraVerbCount == 0)
-		return;
-
-	nid_t cad = funcGroup->codec->cad;
-	dumpMsg("AppleALC: applying %u extra verbs for codec=0x%08lx layout=%u\n",
-			entry->extraVerbCount, (long unsigned int)codecId, mLayoutId);
-
-	for (UInt16 i = 0; i < entry->extraVerbCount; i++) {
-		UInt32 verb = gALCExtraVerbs[entry->extraVerbStart + i];
-		/* Substitute real CAD into bits [31:28] */
-		verb = (verb & 0x0FFFFFFF) | (((UInt32)cad) << 28);
-		sendCommand(verb, cad);
-	}
-}
-
-void VoodooHDADevice::applyAppleALCWakeVerbs(FunctionGroup *funcGroup)
-{
-	if (mLayoutId == 0)
-		return;
-
-	UInt32 codecId = CODEC_ID(funcGroup->codec);
-	const ALCConfigEntry *entry = alcLookupPinConfig(codecId, mLayoutId);
-	if (!entry)
-		return;
-
-	nid_t cad = funcGroup->codec->cad;
-
-	/* Use wake verbs if available, otherwise replay extra verbs */
-	const UInt32 *verbs;
-	UInt16 verbStart, verbCount;
-	if (entry->wakeVerbCount > 0) {
-		verbs = gALCWakeVerbs;
-		verbStart = entry->wakeVerbStart;
-		verbCount = entry->wakeVerbCount;
-	} else if (entry->extraVerbCount > 0) {
-		verbs = gALCExtraVerbs;
-		verbStart = entry->extraVerbStart;
-		verbCount = entry->extraVerbCount;
-	} else {
-		return;
-	}
-
-	dumpMsg("AppleALC: applying %u wake verbs for codec=0x%08lx layout=%u\n",
-			verbCount, (long unsigned int)codecId, mLayoutId);
-
-	for (UInt16 i = 0; i < verbCount; i++) {
-		UInt32 verb = verbs[verbStart + i];
-		verb = (verb & 0x0FFFFFFF) | (((UInt32)cad) << 28);
-		sendCommand(verb, cad);
-	}
 }
 
 void VoodooHDADevice::audioParse(FunctionGroup *funcGroup)
@@ -462,13 +381,14 @@ void VoodooHDADevice::audioCtlParse(FunctionGroup *funcGroup)
 		}
 	}
 
-  funcGroup->audio.numControls = max;
-	if (max < 1) {
-		dumpMsg("no controls in the codec\n");
+	funcGroup->audio.numControls = max;
+
+	if (max < 1 || max > 50) {
+		errorMsg("error: wrong controls number %d\n", max);
 		return;
 	}
-  
-	controls = (AudioControl *) allocMem(sizeof (*controls) * max); //if we are here then max >=1
+
+	controls = (AudioControl *) allocMem(sizeof (*controls) * max);
 	if (!controls) {
 		errorMsg("error: unable to allocate controls\n");
 		funcGroup->audio.numControls = 0;
@@ -505,14 +425,14 @@ void VoodooHDADevice::audioCtlParse(FunctionGroup *funcGroup)
 			controls[cnt].offset = offset;
 			controls[cnt].left = offset;
 			controls[cnt].right = offset;
-			
+
 			//Определяем к входной или выходной цепочке принадлежит регулятор
 			if ((widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX) || //Если этот widget - разъем
 				widget->waspin) //???
 				controls[cnt].ndir = HDA_CTL_IN;
-			else 
+			else
 				controls[cnt].ndir = HDA_CTL_OUT;
-			
+
 			controls[cnt++].dir = HDA_CTL_OUT;
 		}
 
@@ -573,7 +493,7 @@ void VoodooHDADevice::audioCtlParse(FunctionGroup *funcGroup)
 				controls[cnt].right = offset;
 				if (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
 					controls[cnt].ndir = HDA_CTL_OUT;
-				else 
+				else
 					controls[cnt].ndir = HDA_CTL_IN;
 				controls[cnt++].dir = HDA_CTL_IN;
 				break;
@@ -657,7 +577,7 @@ void VoodooHDADevice::vendorPatchParse(FunctionGroup *funcGroup)
 	dumpMsg("NumNodes = %d\n", NumNodes);
 	for (int i = 0; i<NumNodes; i++){
 		N = NodesToPatchArray[i].Node;
-		if (!N) 
+		if (!N)
 			continue;
 		if(funcGroup->codec->cad != (int)NodesToPatchArray[i].cad)
 			continue;
@@ -673,7 +593,7 @@ void VoodooHDADevice::vendorPatchParse(FunctionGroup *funcGroup)
 			dumpMsg("Patching nid (%d) with conns = %d\n", N, (int)NodesToPatchArray[i].nConns);
 			if(NodesToPatchArray[i].nConns){
 				for(unsigned int connsIndex = 0; connsIndex < NodesToPatchArray[i].nConns; connsIndex++) {
-					widget->conns[connsIndex] = NodesToPatchArray[i].Conns[connsIndex];	
+					widget->conns[connsIndex] = NodesToPatchArray[i].Conns[connsIndex];
 					widget->connsenable[connsIndex] = 1; //Slice
 				}
 				widget->nconns = NodesToPatchArray[i].nConns;
@@ -681,7 +601,7 @@ void VoodooHDADevice::vendorPatchParse(FunctionGroup *funcGroup)
 				widget->nconns = 0;
 				widget->connsenable[0] = 0;
 			}
-			widget->connsenabled = widget->nconns; 
+			widget->connsenabled = widget->nconns;
 		}
 		if (NodesToPatchArray[i].Enable & 0x4)
 			widget->type = NodesToPatchArray[i].Type;
@@ -719,9 +639,9 @@ void VoodooHDADevice::vendorPatchParse(FunctionGroup *funcGroup)
 				widget->enable = 0;
 				dumpMsg("VHDevice NID=27 disabled for IDT by user info.list\n");
 				continue;
-			} else if ((funcGroup->codec->vendorId == ANALOGDEVICES_VENDORID) &&  (i == 32)) {
+			} else if ((funcGroup->codec->vendorId == ANALOGDEVICES_VENDORID) &&  (i == 33)) {
 				widget->enable = 0;
-				dumpMsg("VHDevice NID=32 disabled for AD by user info.list\n");
+				dumpMsg("VHDevice NID=33 disabled for AD by user info.list\n");
 				continue;
 			}
 			/* else if ((funcGroup->codec->vendorId == VIA_VENDORID) &&  (i == 22)) {
@@ -748,7 +668,7 @@ void VoodooHDADevice::vendorPatchParse(FunctionGroup *funcGroup)
 	}
 //
 //Slice - disable any predefined patches
-#if 0	
+#if 0
 	switch (id) {
 	case HDA_CODEC_ALC883:
 		/*
@@ -897,7 +817,7 @@ void VoodooHDADevice::vendorPatchParse(FunctionGroup *funcGroup)
       hda_command(dev, HDA_CMD_SET_PROCESSING_COEFF(0, 0x20, val|0x80));
     }
   }
-#endif	
+#endif
 }
 
 void VoodooHDADevice::audioDisableNonAudio(FunctionGroup *funcGroup)
@@ -939,7 +859,7 @@ void VoodooHDADevice::audioDisableUseless(FunctionGroup *funcGroup)
 		AudioControl *control;
 		done = 1;
 		/* Disable and mute controls for disabled widgets. */
-		for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
+		for (int i = 0; (control = audioCtlEach(funcGroup, &i)); ) {
 			if (control->enable == 0)
 				continue;
 			if (control->widget->enable == 0 || (control->childWidget && (control->childWidget->enable == 0 || !control->widget->connsenable[control->index]))) {
@@ -995,7 +915,7 @@ void VoodooHDADevice::audioDisableUseless(FunctionGroup *funcGroup)
           }
         }
       }
-*/      
+*/
 			/* Disable mixers and selectors without inputs. */
 /*			found = 0;
 			for (int j = 0; j < widget->nconns; j++) {
@@ -1150,9 +1070,8 @@ void VoodooHDADevice::audioAssociationParse(FunctionGroup *funcGroup)
 				assocs[cnt].defaultPin = seq;
 			} else {
 				assocs[cnt].jackPin = seq; //Last seq will be jack
-				/* Redirection for headphones and input jacks. */
-				hpredir = (type == HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT) ||
-						(assocs[cnt].dir == HDA_CTL_IN);
+				/* Redirection only for headphones. */
+				hpredir = (type == HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT);
 			}
 
 			assocs[cnt].pins[seq] = widget->nid;
@@ -1189,7 +1108,7 @@ double_break:
 void VoodooHDADevice::audioBuildTree(FunctionGroup *funcGroup)
 {
 	AudioAssoc *assocs = funcGroup->audio.assocs;
-//  audioTraceAssociationExtra(funcGroup);
+//	audioTraceAssociationExtra(funcGroup);
 
 	/* Trace all associations in order of their numbers, */
 	for (int j = 0; j < funcGroup->audio.numAssocs; j++) {
@@ -1424,7 +1343,7 @@ void VoodooHDADevice::audioDisableCrossAssociations(FunctionGroup *funcGroup)
 	}
 
 	/* ... using controls */
-	for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
+	for (int i = 0; (control = audioCtlEach(funcGroup, &i)); ) {
 		if ((control->enable == 0) || !control->childWidget)
 			continue;
 /*		if ((control->widget->bindAssoc == -2) || (control->childWidget->bindAssoc == -2))
@@ -1467,16 +1386,16 @@ nid_t VoodooHDADevice::audioTraceDac(FunctionGroup *funcGroup, int assocNum,
 	nid_t m = 0, ret;
 //	nid_t pinNid;
 	nid_t favoritDAC = 0;
-	
+
 	if (depth > HDA_PARSE_MAXDEPTH)
 		return 0;
-	
+
 	//Получаю номер DAC к которому желательно привести данный поиск
 //	pinNid = funcGroup->audio.assocs[assocNum].pins[seq];
 	widget = widgetGet(funcGroup, nid);
 	if(widget)
 		favoritDAC = widget->favoritDAC;
-	
+
 //	widget = widgetGet(funcGroup, nid);
 	if (!widget || (widget->enable == 0))
 		return 0;
@@ -1532,9 +1451,9 @@ nid_t VoodooHDADevice::audioTraceDac(FunctionGroup *funcGroup, int assocNum,
 					im = i;
 					break;
 				}
-				//Если до сих пор не найдено ни одного DAC, или найденный DAC имеет меньший номер, то сохраняем найденный DAC				
+				//Если до сих пор не найдено ни одного DAC, или найденный DAC имеет меньший номер, то сохраняем найденный DAC
 				if ((m == 0) || (ret < m)) {
-					m = ret;  
+					m = ret;
 					im = i;
 				}
 				if (only || (dupseq >= 0))
@@ -1615,7 +1534,7 @@ nid_t VoodooHDADevice::audioTraceAdc(FunctionGroup *funcGroup, int assocNum, int
 		widget->bindAssoc = assocNum;
 		widget->bindSeqMask |= (1 << seq);
 	}
-	
+
 	dumpMsg(" %*snid %d returned %d\n", depth + 1, "", widget->nid, res);
 	return res;
 }
@@ -1709,7 +1628,7 @@ int VoodooHDADevice::audioTraceAssociationOut(FunctionGroup *funcGroup, int asso
 int VoodooHDADevice::audioTraceAssociationIn(FunctionGroup *funcGroup, int assocNum)
 {
 	AudioAssoc *assocs = funcGroup->audio.assocs;
-	
+
 	for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
 		Widget *widget;
 		int i;
@@ -1743,7 +1662,7 @@ int VoodooHDADevice::audioTraceAssociationIn(FunctionGroup *funcGroup, int assoc
 		if (i == 16) {
 			//AutumnRain
 			//audioTraceSwitchNid(funcGroup, assocNum);
-			
+
 			return 1;
 		}
 	}
@@ -1769,7 +1688,7 @@ int VoodooHDADevice::audioTraceToOut(FunctionGroup *funcGroup, nid_t nid, int de
 	if ((depth > 0) && (widget->bindAssoc != -1)) {
 		if ((widget->bindAssoc < 0) || (assocs[widget->bindAssoc].dir == HDA_CTL_OUT)) {
 			dumpMsg(" %*snid %d found output association %d\n", depth + 1, "", widget->nid, widget->bindAssoc);
-      
+
 			if (widget->bindAssoc >= 0)
 				widget->pflags |= HDA_ADC_MONITOR;
 			return 1;
@@ -1956,7 +1875,7 @@ void VoodooHDADevice::audioAssignNames(FunctionGroup *funcGroup)
 	int used = 0;
 	static const int types[7][13] = {
 	    { SOUND_MIXER_LINE, SOUND_MIXER_LINE1, SOUND_MIXER_LINE2, SOUND_MIXER_LINE3, -1 },	/* line */
-	    { SOUND_MIXER_MONITOR, SOUND_MIXER_MIC, -1 }, /* int mic */ 
+	    { SOUND_MIXER_MONITOR, SOUND_MIXER_MIC, -1 }, /* int mic */
 	    { SOUND_MIXER_MIC, SOUND_MIXER_MONITOR, -1 }, /* ext mic */
 	    { SOUND_MIXER_CD, -1 },	/* cd */
 	    { SOUND_MIXER_SPEAKER, -1 },	/* speaker */
@@ -2017,7 +1936,7 @@ void VoodooHDADevice::audioAssignNames(FunctionGroup *funcGroup)
 		case HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_BEEP_WIDGET:
 			use = SOUND_MIXER_SPEAKER;
 			break;
-		//Slice		
+		//Slice
 		case HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_MIXER:
 			if (!(widget->pflags & HDA_ADC_MONITOR)) {
 				use = SOUND_MIXER_IMIX;
@@ -2025,7 +1944,7 @@ void VoodooHDADevice::audioAssignNames(FunctionGroup *funcGroup)
 				use = SOUND_MIXER_IGAIN;
 			}
 			break;
-	
+
 		default:
 			break;
 		}
@@ -2116,9 +2035,9 @@ int VoodooHDADevice::audioCtlSourceAmp(FunctionGroup *funcGroup, nid_t nid, int 
 		if(mVerbose > 1) {
 			dumpMsg("nid %d in audioCtlSourceAmp\n", nid);
 		}
-		
+
 //	if(mVerbose > 1) dumpMsg(" %*strace source, nid %d\n", depth + 1, " ", nid);
-	
+
 	if (depth > HDA_PARSE_MAXDEPTH)
 		return need;
 
@@ -2141,7 +2060,7 @@ int VoodooHDADevice::audioCtlSourceAmp(FunctionGroup *funcGroup, nid_t nid, int 
 		AudioControl *control = audioCtlAmpGet(funcGroup, widget->nid, HDA_CTL_IN, index, 1);
 		if (control) {
 			if(mVerbose > 1) dumpMsg(" %*sadd in ossmask %s\n", depth+1, " ", audioCtlMixerMaskToString(1 << ossdev, buf, sizeof (buf)));
-			
+
 			if (HDA_CTL_GIVE(control) & need)
 				control->ossmask |= (1 << ossdev);
 			else
@@ -2149,7 +2068,7 @@ int VoodooHDADevice::audioCtlSourceAmp(FunctionGroup *funcGroup, nid_t nid, int 
 			need &= ~HDA_CTL_GIVE(control);
 		}
 	}
-	
+
 	/* If widget has own ossdev - not traverse it.
 	   It will be traversed on it's own. */
 	if ((widget->ossdev >= 0) && (depth > 0))
@@ -2164,7 +2083,7 @@ int VoodooHDADevice::audioCtlSourceAmp(FunctionGroup *funcGroup, nid_t nid, int 
 	/* record that this widget exports such signal, */
 	widget->ossmask |= (1 << ossdev);
 	//Slice - for debug purpose
-/*	if(ossdev == SOUND_MIXER_MONITOR) 
+/*	if(ossdev == SOUND_MIXER_MONITOR)
 		widget->ossmask |= SOUND_MASK_MIC; */
 
 	/* If signals mixed, we can't assign controls farther.
@@ -2177,9 +2096,9 @@ int VoodooHDADevice::audioCtlSourceAmp(FunctionGroup *funcGroup, nid_t nid, int 
 	if (controllable) {
 		AudioControl *control = audioCtlAmpGet(funcGroup, widget->nid, HDA_CTL_OUT, -1, 1);
 		if (control) {
-			
+
 			if(mVerbose > 1) dumpMsg(" %*sadd out ossmask %s\n", depth+1, " ", audioCtlMixerMaskToString(1 << ossdev, buf, sizeof (buf)));
-			
+
 			if (HDA_CTL_GIVE(control) & need)
 				control->ossmask |= (1 << ossdev);
 			else
@@ -2199,7 +2118,7 @@ int VoodooHDADevice::audioCtlSourceAmp(FunctionGroup *funcGroup, nid_t nid, int 
 		}
 	}
 	rneed &= need;
-	
+
 	return rneed;
 }
 
@@ -2216,17 +2135,17 @@ void VoodooHDADevice::audioCtlDestAmp(FunctionGroup *funcGroup, nid_t nid, int i
 		if(mVerbose > 1) {
 			dumpMsg("nid %d is audioCtlDestAmp\n", nid);
 		}
-	
+
 
 //	if(mVerbose > 1) dumpMsg(" %*strace dest nid %d\n", depth + 1, " ", nid);
-	
+
 	if (depth > HDA_PARSE_MAXDEPTH)
 		return;
 
 	widget = widgetGet(funcGroup, nid);
 	if (!widget || (widget->enable == 0))
 		return;
-	
+
 	if (depth > 0) {
 		int consumers;
 		AudioControl *control;
@@ -2253,7 +2172,7 @@ void VoodooHDADevice::audioCtlDestAmp(FunctionGroup *funcGroup, nid_t nid, int i
 			return;
 
 		/* Else use it's output mixer. */
-		
+
 		control = audioCtlAmpGet(funcGroup, widget->nid, HDA_CTL_OUT, -1, 1);
 		if (control) {
 			if(mVerbose > 1) dumpMsg(" %*sadd out ossmask %s\n", depth+1, " ", audioCtlMixerMaskToString(1 << ossdev, buf, sizeof (buf)));
@@ -2263,15 +2182,15 @@ void VoodooHDADevice::audioCtlDestAmp(FunctionGroup *funcGroup, nid_t nid, int i
 				control->possmask |= (1 << ossdev);
 			need &= ~HDA_CTL_GIVE(control);
 		}
-		
+
 	}
-	
+
 	/* We must not traverse pin */
 	if ((widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX) && (depth > 0)) {
 		if(mVerbose > 1) dumpMsg(" %*strace goed to pin complex\n", depth + 1, " ");
 		return;
 	}
-	
+
 	for (int i = 0; i < widget->nconns; i++) {
 		AudioControl *control;
 		int tneed = need;
@@ -2279,7 +2198,7 @@ void VoodooHDADevice::audioCtlDestAmp(FunctionGroup *funcGroup, nid_t nid, int i
 			continue;
 		if ((index >= 0) && (i != index))
 			continue;
-		
+
 		control = audioCtlAmpGet(funcGroup, widget->nid, HDA_CTL_IN, i, 1);
 		if (control) {
 			if(mVerbose > 1) dumpMsg(" %*sadd out ossmask %s\n", depth+1, " ", audioCtlMixerMaskToString(1 << ossdev, buf, sizeof (buf)));
@@ -2314,17 +2233,17 @@ void VoodooHDADevice::audioAssignMixers(FunctionGroup *funcGroup)
 /*		} else if ((widget->pflags & HDA_ADC_MONITOR) != 0) {
 			if (widget->ossdev < 0)
 				continue;
-*/			//if (audioCtlSourceAmp(funcGroup, widget->nid, -1, widget->ossdev, 1, 0, 1)) 
+*/			//if (audioCtlSourceAmp(funcGroup, widget->nid, -1, widget->ossdev, 1, 0, 1))
 				/* If we are unable to control input monitor
 				   as source - try to control it as destination. */
 //				audioCtlDestAmp(funcGroup, widget->nid, widget->ossdev, 0, 1);
-			
+
 		} else if (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_INPUT) {
 			audioCtlDestAmp(funcGroup, widget->nid, -1, SOUND_MIXER_RECLEV, 0, 1);
 		} else if ((widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX) &&
 				(assocs[widget->bindAssoc].dir == HDA_CTL_OUT)) {
 			audioCtlDestAmp(funcGroup, widget->nid, -1, SOUND_MIXER_VOLUME, 0, 1);
-		} 
+		}
 		if (widget->ossdev == SOUND_MIXER_IMIX) {
 			if (audioCtlSourceAmp(funcGroup, widget->nid, -1,
 										  widget->ossdev, 1, 0, 1)) {
@@ -2351,7 +2270,7 @@ void VoodooHDADevice::audioAssignMixers(FunctionGroup *funcGroup)
 		}
 	}
 	/* Treat unrequired as possible. */
-	for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++)
+	for (int i = 0; (control = audioCtlEach(funcGroup, &i)); )
 		if (control->ossmask == 0)
 			control->ossmask = control->possmask;
 }
@@ -2427,7 +2346,7 @@ void VoodooHDADevice::audioPreparePinCtrl(FunctionGroup *funcGroup)
 void VoodooHDADevice::audioCtlCommit(FunctionGroup *funcGroup)
 {
 	AudioControl *control;
-	for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
+	for (int i = 0; (control = audioCtlEach(funcGroup, &i)); ) {
 		int z;
 		if ((control->enable == 0) || (control->ossmask != 0)) {
 			/* Mute disabled and mixer controllable controls.
@@ -2458,30 +2377,8 @@ void VoodooHDADevice::audioCommit(FunctionGroup *funcGroup)
 	/* Commit controls. */
 	audioCtlCommit(funcGroup);
 
-	/* Unmute output amps on output pins.  audioCtlCommit mutes disabled
-	 * controls, but output pin amps must always pass audio — switching
-	 * is handled by input amps and pin ctrl only.  Use audioCtlAmpSetInternal
-	 * directly to bypass the forcemute flag set by audioDisableUnassociated. */
-	{
-		AudioControl *ctl;
-		for (int i = 0; (ctl = audioCtlEach(funcGroup, i)); i++) {
-			if (ctl->enable != 0) continue;
-			if (!(ctl->dir & HDA_CTL_OUT)) continue;
-			if (!ctl->widget) continue;
-			Widget *w = ctl->widget;
-			if (w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX) continue;
-			UInt32 devType = w->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
-			if (devType != HDA_CONFIG_DEFAULTCONF_DEVICE_LINE_OUT &&
-				devType != HDA_CONFIG_DEFAULTCONF_DEVICE_SPEAKER &&
-				devType != HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT) continue;
-			int z = ctl->offset;
-			if (z > ctl->step) z = ctl->step;
-			audioCtlAmpSetInternal(cad, w->nid, ctl->index, 0, 0, z, z, 0);
-			dumpMsg("Unmuted output amp on pin nid=%d to 0dB\n", w->nid);
-		}
-	}
-
-	/* Commit selectors, pins and EAPD. */
+	/* Commit selectors and pins (EAPD is deferred to audioCommitEapd,
+	 * called after mixerSetDefaults, to prevent startup pop). */
 	for (int i = 0; i < funcGroup->numNodes; i++) {
 		Widget *widget = &funcGroup->widgets[i];
 		if (!widget)
@@ -2492,51 +2389,6 @@ void VoodooHDADevice::audioCommit(FunctionGroup *funcGroup)
 			widgetConnectionSelect(widget, widget->selconn);
 		if (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
 			sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, widget->nid, widget->pin.ctrl), cad);
-		if (widget->params.eapdBtl != HDAC_INVALID) {
-		    UInt32 val;
-			val = widget->params.eapdBtl;
-			if (funcGroup->audio.quirks & HDA_QUIRK_EAPDINV)
-				val ^= HDA_CMD_SET_EAPD_BTL_ENABLE_EAPD;
-			sendCommand(HDA_CMD_SET_EAPD_BTL_ENABLE(cad, widget->nid, val), cad);
-		}
-	}
-
-	/*
-	 * ATI/AMD HDMI init: clear downmix and set multichannel mode.
-	 * Must happen after pin controls are committed.
-	 */
-	if (isAtiHdmiCodec(funcGroup->codec)) {
-		IOLog("VoodooHDA ATI DBG: audioCommit detected ATI HDMI codec (vendorId=0x%04x deviceId=0x%04x rev=0x%02x)\n",
-			  funcGroup->codec->vendorId, funcGroup->codec->deviceId, funcGroup->codec->revisionId);
-		for (int i = 0; i < funcGroup->numNodes; i++) {
-			Widget *widget = &funcGroup->widgets[i];
-			if (!widget || widget->enable == 0)
-				continue;
-			if (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
-				continue;
-			if (!HDA_PARAM_PIN_CAP_DP(widget->pin.cap) &&
-				!HDA_PARAM_PIN_CAP_HDMI(widget->pin.cap)) {
-				IOLog("VoodooHDA ATI DBG: audioCommit nid=%d: pin but no HDMI/DP cap (cap=0x%08x), skip\n",
-					  widget->nid, (unsigned)widget->pin.cap);
-				continue;
-			}
-
-			IOLog("VoodooHDA ATI DBG: audioCommit nid=%d: HDMI/DP pin, setting downmix=0\n", widget->nid);
-			/* Disable downmix */
-			sendCommand(ATI_CMD_12BIT(cad, widget->nid, ATI_VERB_SET_DOWNMIX_INFO, 0), cad);
-
-			/* Rev3+ codecs: keep default paired multichannel mode.
-		 * AppleGFXHDA does NOT set single-channel mode; paired mode (default)
-		 * uses verbs 0x777-0x77a with format: (base_slot << 4) | enable_bit */
-			if (isAtiHdmiRev3(funcGroup->codec)) {
-				IOLog("VoodooHDA ATI DBG: audioCommit nid=%d: rev3+, keeping paired multichannel mode\n", widget->nid);
-			}
-
-			logMsg("ATI HDMI init: nid=%d downmix=0 mode=%s\n", widget->nid,
-				   isAtiHdmiRev3(funcGroup->codec) ? "single" : "paired");
-		}
-	} else {
-		IOLog("VoodooHDA ATI DBG: audioCommit: NOT ATI codec (vendorId=0x%04x)\n", funcGroup->codec->vendorId);
 	}
 
 	/* Commit GPIOs. */
@@ -2576,6 +2428,23 @@ void VoodooHDADevice::audioCommit(FunctionGroup *funcGroup)
 	}
 }
 
+/* Enable EAPD on all widgets that support it.  Called after mixerSetDefaults()
+ * so that the external amplifier is switched on only once all volume controls
+ * are at their final values, preventing the startup pop. */
+void VoodooHDADevice::audioCommitEapd(FunctionGroup *funcGroup)
+{
+	nid_t cad = funcGroup->codec->cad;
+	for (int i = 0; i < funcGroup->numNodes; i++) {
+		Widget *widget = &funcGroup->widgets[i];
+		if (!widget || widget->params.eapdBtl == HDAC_INVALID)
+			continue;
+		UInt32 val = widget->params.eapdBtl;
+		if (funcGroup->audio.quirks & HDA_QUIRK_EAPDINV)
+			val ^= HDA_CMD_SET_EAPD_BTL_ENABLE_EAPD;
+		sendCommand(HDA_CMD_SET_EAPD_BTL_ENABLE(cad, widget->nid, val), cad);
+	}
+}
+
 /********************************************************************************************/
 /********************************************************************************************/
 
@@ -2595,7 +2464,7 @@ void VoodooHDADevice::dumpCtls(PcmDevice *pcmDevice, const char *banner, UInt32 
 		if ((flag & (1 << j)) == 0)
 			continue;
 		printed = 0;
-		for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
+		for (int i = 0; (control = audioCtlEach(funcGroup, &i)); ) {
 			if ((control->enable == 0) || (control->widget->enable == 0))
 				continue;
 			if (!(((pcmDevice->playChanId >= 0) &&
@@ -2641,10 +2510,10 @@ void VoodooHDADevice::dumpCtls(PcmDevice *pcmDevice, const char *banner, UInt32 
 					dumpMsg("inOut ");
 					break;
 			}
-			
+
 			char buf[64];
 			dumpMsg("oss: %s ", audioCtlMixerMaskToString(control->ossmask, buf, sizeof (buf)));
-			
+
 			if (control->step > 0) {
 				dumpMsg("%+d/%+ddB (%d steps)%s\n", (0 - control->offset) * (control->size + 1) / 4,
 						(control->step - control->offset) * (control->size + 1) / 4, control->step + 1,
@@ -2810,95 +2679,6 @@ void VoodooHDADevice::dumpPinConfig(Widget *widget, UInt32 conf)
 			(widget->enable == 0) ? " [DISABLED]" : "");
 }
 
-/*
- * Adjust pin associations for jack sensing (auto-switching).
- *
- * AppleALC pin configs place HP Out and Speaker in separate associations,
- * and External Mic and Internal Mic in separate associations. This is correct
- * for AppleHDA but VoodooHDA requires pins that should auto-switch to share
- * the same association so that hpredir is set and jack detection is enabled.
- *
- * This function merges HP→Speaker's association and ExtMic→IntMic's association.
- */
-void VoodooHDADevice::adjustPinAssociationsForSwitching(FunctionGroup *funcGroup)
-{
-	if (mLayoutId == 0)
-		return;
-
-	/* Find relevant pins */
-	Widget *hpWidget = NULL;
-	Widget *spkWidget = NULL;
-	Widget *extMicWidget = NULL;
-	Widget *intMicWidget = NULL;
-
-	for (int i = funcGroup->startNode; i < funcGroup->endNode; i++) {
-		Widget *widget = widgetGet(funcGroup, i);
-		if (!widget || !widget->enable)
-			continue;
-		if (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
-			continue;
-
-		UInt32 config = widget->pin.config;
-		UInt32 type = config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
-		UInt32 conn = config & HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_MASK;
-
-		if (type == HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT &&
-				conn == HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_JACK) {
-			hpWidget = widget;
-		} else if (type == HDA_CONFIG_DEFAULTCONF_DEVICE_SPEAKER &&
-				conn == HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_FIXED) {
-			spkWidget = widget;
-		} else if ((type == HDA_CONFIG_DEFAULTCONF_DEVICE_MIC_IN ||
-				type == HDA_CONFIG_DEFAULTCONF_DEVICE_LINE_IN) &&
-				conn == HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_JACK) {
-			extMicWidget = widget;
-		} else if (type == HDA_CONFIG_DEFAULTCONF_DEVICE_MIC_IN &&
-				conn == HDA_CONFIG_DEFAULTCONF_CONNECTIVITY_FIXED) {
-			intMicWidget = widget;
-		}
-	}
-
-	/* Merge HP into Speaker's association if they differ */
-	if (hpWidget && spkWidget) {
-		UInt32 hpAssoc = HDA_CONFIG_DEFAULTCONF_ASSOCIATION(hpWidget->pin.config);
-		UInt32 spkAssoc = HDA_CONFIG_DEFAULTCONF_ASSOCIATION(spkWidget->pin.config);
-		UInt32 spkSeq = HDA_CONFIG_DEFAULTCONF_SEQUENCE(spkWidget->pin.config);
-
-		if (hpAssoc != spkAssoc) {
-			UInt32 newSeq = spkSeq + 1;
-			if (newSeq > 15) newSeq = 15;
-
-			hpWidget->pin.config &= ~(HDA_CONFIG_DEFAULTCONF_ASSOCIATION_MASK |
-					HDA_CONFIG_DEFAULTCONF_SEQUENCE_MASK);
-			hpWidget->pin.config |= (spkAssoc << HDA_CONFIG_DEFAULTCONF_ASSOCIATION_SHIFT) |
-					(newSeq << HDA_CONFIG_DEFAULTCONF_SEQUENCE_SHIFT);
-
-			dumpMsg("Jack sensing: merged HP Out nid=%d into association %d seq=%d (with Speaker nid=%d)\n",
-					hpWidget->nid, (int)spkAssoc, (int)newSeq, spkWidget->nid);
-		}
-	}
-
-	/* Merge External Mic into Internal Mic's association if they differ */
-	if (extMicWidget && intMicWidget) {
-		UInt32 extAssoc = HDA_CONFIG_DEFAULTCONF_ASSOCIATION(extMicWidget->pin.config);
-		UInt32 intAssoc = HDA_CONFIG_DEFAULTCONF_ASSOCIATION(intMicWidget->pin.config);
-		UInt32 intSeq = HDA_CONFIG_DEFAULTCONF_SEQUENCE(intMicWidget->pin.config);
-
-		if (extAssoc != intAssoc) {
-			UInt32 newSeq = intSeq + 1;
-			if (newSeq > 15) newSeq = 15;
-
-			extMicWidget->pin.config &= ~(HDA_CONFIG_DEFAULTCONF_ASSOCIATION_MASK |
-					HDA_CONFIG_DEFAULTCONF_SEQUENCE_MASK);
-			extMicWidget->pin.config |= (intAssoc << HDA_CONFIG_DEFAULTCONF_ASSOCIATION_SHIFT) |
-					(newSeq << HDA_CONFIG_DEFAULTCONF_SEQUENCE_SHIFT);
-
-			dumpMsg("Jack sensing: merged Ext Mic nid=%d into association %d seq=%d (with Int Mic nid=%d)\n",
-					extMicWidget->nid, (int)intAssoc, (int)newSeq, intMicWidget->nid);
-		}
-	}
-}
-
 void VoodooHDADevice::dumpPinConfigs(FunctionGroup *funcGroup)
 {
 	for (int i = funcGroup->startNode; i < funcGroup->endNode; i++) {
@@ -2994,12 +2774,12 @@ void VoodooHDADevice::dumpNodes(FunctionGroup *funcGroup)
 			dumpMsg("           EAPD: 0x%08lx\n", (long unsigned int)widget->params.eapdBtl);
 		if (HDA_PARAM_AUDIO_WIDGET_CAP_OUT_AMP(widget->params.widgetCap) && (widget->params.outAmpCap != 0)) {
 			dumpAmp(widget->params.outAmpCap, "Output");
-			
+
 			int left, right;
 			int lmute, rmute;
 			AudioControl *control = audioCtlAmpGet(funcGroup, widget->nid, HDA_CTL_OUT, -1, 1);
             if(control != 0 && control->forcemute) {
-                dumpMsg("     Output val: [forceMute forceMute]\n");             
+                dumpMsg("     Output val: [forceMute forceMute]\n");
             }else{
                 audioCtlAmpGetInternal(funcGroup->codec->cad, widget->nid, 0, &lmute, &rmute, &left, &right, 0);
                 dumpMsg("     Output val: [0x%02X 0x%02X]\n", (lmute << 7) | left, (rmute << 7) | right);
@@ -3009,7 +2789,7 @@ void VoodooHDADevice::dumpNodes(FunctionGroup *funcGroup)
 			dumpAmp(widget->params.inAmpCap, " Input");
 			int left, right;
 			int lmute, rmute;
-			
+
 
 			int last = (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_MIXER ||
 						widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_SELECTOR) ? widget->nconns : 1;
@@ -3017,7 +2797,7 @@ void VoodooHDADevice::dumpNodes(FunctionGroup *funcGroup)
             for (int j = 0; j < last; j++) {
                 AudioControl *control = audioCtlAmpGet(funcGroup, widget->nid, HDA_CTL_IN, j, 1);
                 if(control != 0 && control->forcemute) {
-                    dumpMsg("[forceMute forceMute] ");             
+                    dumpMsg("[forceMute forceMute] ");
                 }else{
                     audioCtlAmpGetInternal(funcGroup->codec->cad, widget->nid, j, &lmute, &rmute, &left, &right, 1);
                     dumpMsg("[0x%02X 0x%02X] ", (lmute << 7) | left, (rmute << 7) | right);
@@ -3086,7 +2866,7 @@ void VoodooHDADevice::dumpDstNid(PcmDevice *pcmDevice, nid_t nid, int depth)
 		}
 	}
 	dumpMsg("\n");
-		
+
 	for (int i = 0, printed = 0; i < widget->nconns; i++) {
 		if (widget->connsenable[i] == 0)
 			continue;
@@ -3122,7 +2902,7 @@ void VoodooHDADevice::dumpDac(PcmDevice *pcmDevice)
 		}
 		dumpMsg("\n");
 		dumpDstNid(pcmDevice, assoc->pins[i], 0);
-/*		
+/*
 	for (int i = funcGroup->startNode, printed = 0; i < funcGroup->endNode; i++) {
 		Widget *widget = widgetGet(funcGroup, i);
 		if (!widget || widget->enable == 0)
@@ -3138,7 +2918,7 @@ void VoodooHDADevice::dumpDac(PcmDevice *pcmDevice)
 		}
 		dumpMsg("\n");
 		dumpDstNid(pcmDevice, i, 0);
-*/ 
+*/
 	}
 }
 
@@ -3252,8 +3032,9 @@ void VoodooHDADevice::pinDump()
 						HDA_PARAM_PIN_CAP_EAPD_CAP(pinCap) ? "EAPD" : "",
 						HDA_PARAM_PIN_CAP_VREF_CTRL(pinCap) ? "VREF" : "");
 				if (HDA_PARAM_PIN_CAP_IMP_SENSE_CAP(pinCap) || HDA_PARAM_PIN_CAP_PRESENCE_DETECT_CAP(pinCap)) {
-					UInt32 delay = 0, result = 0;
+					UInt32 delay, result;
 					if (HDA_PARAM_PIN_CAP_TRIGGER_REQD(pinCap)) {
+						delay = 0;
 						sendCommand(HDA_CMD_SET_PIN_SENSE(cad, widget->nid, 0), cad);
 						for (delay = 0; delay < 10000; delay++) {
 							result = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, widget->nid), cad);
@@ -3262,6 +3043,7 @@ void VoodooHDADevice::pinDump()
 							IODelay(10);
 						}
 					} else {
+						delay = 0;
 						result = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, widget->nid), cad);
 					}
 					dumpMsg(" Sense: 0x%08lx", (long unsigned int)result);
@@ -3421,7 +3203,7 @@ UInt32 VoodooHDADevice::widgetPinPatch(UInt32 config, const char *str)
 
 #ifdef TIGER
 	strncpy(buf, str, sizeof (buf));
-#else	
+#else
 	strlcpy(buf, str, sizeof (buf));
 #endif
 	rest = buf;
@@ -3499,47 +3281,6 @@ UInt32 VoodooHDADevice::widgetPinGetConfig(Widget *widget)
 	nid = widget->nid;
 	id = CODEC_ID(widget->funcGroup->codec);
 
-	/*
-	 * AppleALC pin config override.
-	 *
-	 * When a valid layout-id is set (via alc-layout-id or layout-id device
-	 * property), we look up the codec+layout pair in the embedded AppleALC
-	 * pin config table (gALCPinConfigs[], generated by tools/gen_pinconfigs.py
-	 * from AppleALC's PinConfigs.kext/Contents/Info.plist).
-	 *
-	 * For each matching NID we:
-	 *   1. Override the BIOS pin config with the AppleALC-verified value,
-	 *      which fixes broken/missing BIOS defaults on many laptops.
-	 *   2. Store pins[i].nameIdx into widget->alcNameIdx. This index
-	 *      references gALCPinNames[] — a string pool of Apple-style device
-	 *      names ("Internal Speakers", "Headphones", "Internal Microphone",
-	 *      etc.) derived from the pin config's device_type and connectivity
-	 *      fields by gen_pinconfigs.py::derive_name().
-	 *
-	 * The stored alcNameIdx is later consumed by catPinName() to display
-	 * user-friendly names in Sound Preferences instead of generic HDA names
-	 * like "Speaker (Analog Internal)".
-	 *
-	 * nameIdx == 0 means "no name available" — catPinName() falls through
-	 * to the original generic naming logic in that case.
-	 */
-	if (mLayoutId != 0) {
-		const ALCConfigEntry *entry = alcLookupPinConfig(id, mLayoutId);
-		if (entry && entry->pinConfigCount > 0) {
-			const ALCPinConfig *pins = &gALCPinConfigs[entry->pinConfigStart];
-			for (UInt8 i = 0; i < entry->pinConfigCount; i++) {
-				if (pins[i].nid == (UInt8)nid) {
-					widget->alcNameIdx = pins[i].nameIdx;
-#ifdef DEBUG
-					dumpMsg("AppleALC pin config nid=%u: 0x%08lx (layout=%u)\n",
-							nid, (long unsigned int)pins[i].pinConfig, mLayoutId);
-#endif
-					return pins[i].pinConfig;
-				}
-			}
-		}
-	}
-
 	config = sendCommand(HDA_CMD_GET_CONFIGURATION_DEFAULT(cad, nid), cad);
 	orig = config;
 
@@ -3547,7 +3288,7 @@ UInt32 VoodooHDADevice::widgetPinGetConfig(Widget *widget)
 
 	/* XXX: Old patches require complete review. Now they may create more problem then solve due to
 	 * incorrect associations. */
-#if 0	 
+#if 0
 	if ((id == HDA_CODEC_ALC880) && (mSubDeviceId == LG_LW20_SUBVENDOR)) {
 		switch (nid) {
 		case 26:
@@ -3718,12 +3459,12 @@ UInt32 VoodooHDADevice::widgetPinGetConfig(Widget *widget)
 
 UInt32 VoodooHDADevice::widgetPinGetCaps(Widget *widget)
 {
-  UInt32 caps, orig; //, id;
+	UInt32 caps, orig, id;
 	nid_t cad, nid;
 
 	cad = widget->funcGroup->codec->cad;
 	nid = widget->nid;
-	//id = CODEC_ID(widget->funcGroup->codec);
+	id = CODEC_ID(widget->funcGroup->codec);
 
 	caps = sendCommand(HDA_CMD_GET_PARAMETER(cad, nid, HDA_PARAM_PIN_CAP), cad);
 	orig = caps;
@@ -3950,13 +3691,13 @@ char *VoodooHDADevice::audioCtlMixerMaskToString(UInt32 mask, char *buf, size_t 
 	return buf;
 }
 
-AudioControl *VoodooHDADevice::audioCtlEach(FunctionGroup *funcGroup, int index)
+AudioControl *VoodooHDADevice::audioCtlEach(FunctionGroup *funcGroup, int *index)
 {
-	if (!funcGroup || (funcGroup->nodeType != HDA_PARAM_FCT_GRP_TYPE_NODE_TYPE_AUDIO) ||
-			!funcGroup->audio.controls || (funcGroup->audio.numControls < 1) ||
-			(index >= funcGroup->audio.numControls))
+	if (!funcGroup || (funcGroup->nodeType != HDA_PARAM_FCT_GRP_TYPE_NODE_TYPE_AUDIO) || !index ||
+			!funcGroup->audio.controls || (funcGroup->audio.numControls < 1) || (*index < 0) ||
+			(*index >= funcGroup->audio.numControls))
 		return NULL;
-	return &funcGroup->audio.controls[index];
+	return &funcGroup->audio.controls[(*index)++];
 }
 
 AudioControl *VoodooHDADevice::audioCtlAmpGet(FunctionGroup *funcGroup, nid_t nid, int dir, int index, int cnt)
@@ -3966,7 +3707,7 @@ AudioControl *VoodooHDADevice::audioCtlAmpGet(FunctionGroup *funcGroup, nid_t ni
 	if (!funcGroup || !funcGroup->audio.controls)
 		return NULL;
 
-	for (int i = 0, found = 0; (control = audioCtlEach(funcGroup, i)); i++) {
+	for (int i = 0, found = 0; (control = audioCtlEach(funcGroup, &i)); ) {
 		if (control->enable == 0)
 			continue;
 		if (control->widget->nid != nid)
@@ -4004,7 +3745,7 @@ void VoodooHDADevice::audioCtlAmpSet(AudioControl *control, UInt32 mute, int lef
 	nid_t nid, cad;
 	int lmute, rmute;
 
-	
+
 	cad = control->widget->funcGroup->codec->cad;
 	nid = control->widget->nid;
 
@@ -4015,7 +3756,7 @@ void VoodooHDADevice::audioCtlAmpSet(AudioControl *control, UInt32 mute, int lef
 		control->left = left;
 	if (right != HDA_AMP_VOL_DEFAULT)
 		control->right = right;
-	// Prepare effective values 
+	// Prepare effective values
 	if (control->forcemute) {
 		lmute = 1;
 		rmute = 1;
@@ -4027,31 +3768,31 @@ void VoodooHDADevice::audioCtlAmpSet(AudioControl *control, UInt32 mute, int lef
 		left = control->left;
 		right = control->right;
 	}
-	
-	// Apply effective values 
+
+	// Apply effective values
 	if (control->dir & HDA_CTL_OUT)
 		audioCtlAmpSetInternal(cad, nid, control->index, lmute, rmute, left, right, 0);
 	if (control->dir & HDA_CTL_IN)
 		audioCtlAmpSetInternal(cad, nid, control->index, lmute, rmute, left, right, 1);
-	 
+
 }
 //AutumnRain
 void VoodooHDADevice::audioCtlAmpGetInternal(nid_t cad, nid_t nid, int index, int *lmute, int *rmute, int *left,
 											 int *right, int dir)
 {
 	UInt16 v = 0;
-	//UInt32 cmd = 0;
+	UInt32 cmd = 0;
 	UInt32 res = 0xFF;
-	
+
 	//Если dir = 0 - output
 	//           1 - input
-	
+
 	if(dir != 0 ) dir = 1;
-	
+
 	if(lmute != 0 || left != 0) {
 		//Читаем настройки левого канала
-		v = ((1 - dir) << 15) | (1 << 13) | index; 
-		/*cmd = */HDA_CMD_GET_AMP_GAIN_MUTE(cad, nid, v);
+		v = ((1 - dir) << 15) | (1 << 13) | index;
+		cmd = HDA_CMD_GET_AMP_GAIN_MUTE(cad, nid, v);
 		//logMsg("GetAmp for 0x%x nid - 0x%x left\n", nid, cmd);
 		res = sendCommand(HDA_CMD_GET_AMP_GAIN_MUTE(cad, nid, v), cad);
 		if(lmute != 0)
@@ -4059,11 +3800,11 @@ void VoodooHDADevice::audioCtlAmpGetInternal(nid_t cad, nid_t nid, int index, in
 		if(left != 0)
 			(*left) = (res & 0x7F);
 	}
-	
+
 	if(rmute != 0 || right != 0) {
 		//Читаем настройки правого канала
-		v = ((1 - dir) << 15) | index; 
-		/*cmd = */HDA_CMD_GET_AMP_GAIN_MUTE(cad, nid, v);
+		v = ((1 - dir) << 15) | index;
+		cmd = HDA_CMD_GET_AMP_GAIN_MUTE(cad, nid, v);
 		//logMsg("GetAmp for 0x%x nid - 0x%x right\n", nid, cmd);
 		res = sendCommand(HDA_CMD_GET_AMP_GAIN_MUTE(cad, nid, v), cad);
 		if(rmute != 0)
@@ -4071,17 +3812,17 @@ void VoodooHDADevice::audioCtlAmpGetInternal(nid_t cad, nid_t nid, int index, in
 		if(right != 0)
 			(*right) = (res & 0x7F);
 	}
-	
+
 }
 
 void VoodooHDADevice::audioCtlAmpGetGain(AudioControl *control)
 {
 	nid_t nid, cad;
 	int lmute = 0, rmute = 0;
-	
+
 	cad = control->widget->funcGroup->codec->cad;
 	nid = control->widget->nid;
-	
+
 	/* Get carrent values */
 	if (control->dir & HDA_CTL_OUT)
 		audioCtlAmpGetInternal(cad, nid, control->index, &lmute, &rmute, &(control->left), &(control->right), 0);
@@ -4089,7 +3830,7 @@ void VoodooHDADevice::audioCtlAmpGetGain(AudioControl *control)
 		audioCtlAmpGetInternal(cad, nid, control->index, &lmute, &rmute, &(control->left), &(control->right), 1);
 
 	control->muted = (rmute << 1) | lmute;
-	
+
 	//logMsg("VoodooHDADevice::audioCtlAmpGetGain for nid %d [%d %d]\n", nid, control->left, control->right);
 }
 
@@ -4120,7 +3861,7 @@ UInt32 VoodooHDADevice::audioCtlRecSelComm(PcmDevice *pcmDevice, UInt32 src, nid
 		return 0;
 
 	//dumpMsg("recSelComm widget %d\n", nid);
-	
+
 	for (int i = 0; i < widget->nconns; i++) {
 		Widget *childWidget;
 		if (widget->connsenable[i] == 0)
@@ -4140,7 +3881,7 @@ UInt32 VoodooHDADevice::audioCtlRecSelComm(PcmDevice *pcmDevice, UInt32 src, nid
 			AudioControl *control;
 			int muted;
 			control = audioCtlAmpGet(funcGroup, widget->nid, HDA_CTL_IN, i, 1);
-			if (!control) 
+			if (!control)
 				continue;
 			/* If we have input control on this node mute them according to requested sources. */
 			muted = (src & childWidget->ossmask) ? 0 : 1;
@@ -4148,7 +3889,7 @@ UInt32 VoodooHDADevice::audioCtlRecSelComm(PcmDevice *pcmDevice, UInt32 src, nid
 				control->forcemute = muted;
 				audioCtlAmpSet(control, HDA_AMP_MUTE_DEFAULT, HDA_AMP_VOL_DEFAULT, HDA_AMP_VOL_DEFAULT);
 			}
-			dumpMsg("Recsel (%s): nid %d source %d %s\n", audioCtlMixerMaskToString(src, buf, sizeof (buf)), 
+			dumpMsg("Recsel (%s): nid %d source %d %s\n", audioCtlMixerMaskToString(src, buf, sizeof (buf)),
 					nid, i, muted ? "mute" : "unmute");
 		}else if (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_SELECTOR) {
 			if (widget->nconns == 0) //Slice - were 1
@@ -4159,7 +3900,7 @@ UInt32 VoodooHDADevice::audioCtlRecSelComm(PcmDevice *pcmDevice, UInt32 src, nid
 				errorMsg("Recsel fails src=%08lx oss=%08lx\n", (long unsigned int)src, (long unsigned int)childWidget->ossmask);
 				continue;
 			}
-				
+
 			/* If we found requested source - select it and exit. */
 			widgetConnectionSelect(widget, i);
 			dumpMsg("Recsel (%s): nid %d source %d select\n", audioCtlMixerMaskToString(src, buf,
@@ -4200,7 +3941,7 @@ int VoodooHDADevice::pcmChannelSetup(Channel *channel)
 
 	max = (sizeof (channel->io) / sizeof (channel->io[0])) - 1;
 	for (int i = 0; (i < 16) && (ret < max); i++) {  // (i < 16) && (ret < max) or (i < 16)
-	
+
 		int j;
 		Widget *widget;
 
@@ -4221,9 +3962,9 @@ int VoodooHDADevice::pcmChannelSetup(Channel *channel)
 		widget = widgetGet(funcGroup, assocs[channel->assocNum].dacs[i]);
 		if (!widget || (widget->enable == 0))
 			continue;
-			//Multi 
+			//Multi
 		if (!HDA_PARAM_AUDIO_WIDGET_CAP_STEREO(widget->params.widgetCap))
-			continue; 
+			continue;
 		cap = widget->params.supStreamFormats;
 		/* if (HDA_PARAM_SUPP_STREAM_FORMATS_FLOAT32(cap)) */
 		if (!HDA_PARAM_SUPP_STREAM_FORMATS_PCM(cap) && !HDA_PARAM_SUPP_STREAM_FORMATS_AC3(cap))
@@ -4249,15 +3990,15 @@ int VoodooHDADevice::pcmChannelSetup(Channel *channel)
 		if (HDA_PARAM_AUDIO_WIDGET_CAP_CC(widget->params.widgetCap) != 1)
 			onlystereo = 0;
 		pinset |= (1 << i);
-	
+
 	}
 	channel->io[ret] = -1;
 	if (assocs[channel->assocNum].fakeredir)
 		ret--;
-	// Standard speaks only about stereo pins and playback, ... 
+	// Standard speaks only about stereo pins and playback, ...
 	if ((!onlystereo) || assocs[channel->assocNum].dir != HDA_CTL_OUT)
 		pinset = 0;
-	// ..., but there it gives us info about speakers layout. 
+	// ..., but there it gives us info about speakers layout.
 	assocs[channel->assocNum].pinset = pinset;
 	channel->supStreamFormats = fmtcap;
 	channel->supPcmSizeRates = pcmcap;
@@ -4283,11 +4024,6 @@ int VoodooHDADevice::pcmChannelSetup(Channel *channel)
 				channel->bit32 = 3;
 			else if (HDA_PARAM_SUPP_PCM_SIZE_RATE_20BIT(pcmcap))
 				channel->bit32 = 2;
-			/* ATI HDMI codecs are pass-through: force 24-bit so
-			 * AFMT_S32_LE enters formats[] and channelSetFormat
-			 * accepts 24-bit from performFormatChange. */
-			if (!channel->bit32 && assocs[channel->assocNum].digital >= 2)
-				channel->bit32 = 3;
 			if (!(funcGroup->audio.quirks & HDA_QUIRK_FORCESTEREO)) {
 				channel->formats[i++] = AFMT_S16_LE;
 				if (channel->bit32 == 4)
@@ -4295,7 +4031,7 @@ int VoodooHDADevice::pcmChannelSetup(Channel *channel)
 				else if (channel->bit32) channel->formats[i++] = AFMT_S32_LE;
 			}
 			if (channels >= 2) {
-				channel->formats[i++] = AFMT_S16_LE | AFMT_STEREO; 
+				channel->formats[i++] = AFMT_S16_LE | AFMT_STEREO;
 				if (channel->bit32 == 4)
 					channel->formats[i++] = AFMT_S32_LE | AFMT_STEREO;
 				else if (channel->bit32) channel->formats[i++] = AFMT_S32_LE  | AFMT_STEREO;
@@ -4570,15 +4306,15 @@ void VoodooHDADevice::createPcms(FunctionGroup *funcGroup)
 void VoodooHDADevice::micSwitchHandlerEnableWidget(FunctionGroup *funcGroup, nid_t nid, int connNum, bool Enabled)
 {
 	Widget *switchWidget = widgetGet(funcGroup, nid);
-	
-	if(switchWidget == 0 || switchWidget->enable == 0) 
+
+	if(switchWidget == 0 || switchWidget->enable == 0)
 		return;
 
 	if(switchWidget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_MIXER) {
 		AudioControl *control;
 		int muted;
 		control = audioCtlAmpGet(funcGroup, nid, HDA_CTL_IN, connNum, 1);
-		if (!control) 
+		if (!control)
 			return;
 		/* If we have input control on this node mute them according to requested sources. */
 		muted = (Enabled) ? 0 : 1;
@@ -4590,7 +4326,7 @@ void VoodooHDADevice::micSwitchHandlerEnableWidget(FunctionGroup *funcGroup, nid
 		if(Enabled)
 			widgetConnectionSelect(switchWidget, connNum);
 	}
-	
+
 }
 
 void VoodooHDADevice::SwitchHandlerRename(FunctionGroup *funcGroup, nid_t nid, int assocsNum, UInt32 res)
@@ -4598,19 +4334,19 @@ void VoodooHDADevice::SwitchHandlerRename(FunctionGroup *funcGroup, nid_t nid, i
 	AudioAssoc *assocs;
 	Widget *widget;
 	nid_t defNid;
-	
+
 	assocs = funcGroup->audio.assocs;
-	
+
 	defNid = assocs[assocsNum].pins[assocs[assocsNum].defaultPin];
-	
+
 	if(res)
 		widget = widgetGet(funcGroup, nid);
 	else
 		widget = widgetGet(funcGroup, defNid);
-	
+
 	if(widget != 0) {
 		VoodooHDAEngine* engine = NULL;
-		
+
 		for(int channelNum = 0; channelNum < mNumChannels; channelNum++) {
 			if( mChannels[channelNum].funcGroup != funcGroup) continue;
 			if( mChannels[channelNum].assocNum == assocsNum ) {
@@ -4646,13 +4382,13 @@ void VoodooHDADevice::micSwitchHandler(FunctionGroup *funcGroup, nid_t nid, UInt
 //	nid_t cad;
 	int assocsNum;
 	UInt32 maskJack, maskDef;
-	
+
 	if (!funcGroup || !funcGroup->codec)
 		return;
-	
-//	cad = funcGroup->codec->cad;		
+
+//	cad = funcGroup->codec->cad;
 	assocs = funcGroup->audio.assocs;
-	widget = widgetGet(funcGroup, nid); 
+	widget = widgetGet(funcGroup, nid);
 	if (!widget || (widget->enable == 0) || (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX))
 		return;
 	assocsNum = widget->bindAssoc;
@@ -4661,11 +4397,11 @@ void VoodooHDADevice::micSwitchHandler(FunctionGroup *funcGroup, nid_t nid, UInt
 		assocs[assocsNum].activeNid = nid;
 	} else
 		assocs[assocsNum].activeNid = defaultNid;
-	//jackNid = assocs[assocsNum].pins[assocs[assocsNum].jackPin];	
+	//jackNid = assocs[assocsNum].pins[assocs[assocsNum].jackPin];
 	Widget *widgetDef = widgetGet(funcGroup, defaultNid);
 	maskJack = widget->bindSeqMask;
 	maskDef = widgetDef->bindSeqMask;
-	
+
 	// find widget with the same assoc and bindSeq
 	for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {	// all widgets
 		widget = widgetGet(funcGroup, j);
@@ -4675,7 +4411,7 @@ void VoodooHDADevice::micSwitchHandler(FunctionGroup *funcGroup, nid_t nid, UInt
 
 		//Slice -- switch on jack and off others
 		for (int i=0; i < widget->nconns; i++) {
-			if (!widget->connsenable[i]) 
+			if (!widget->connsenable[i])
 				continue;
 			nid_t cnid = widget->conns[i];
 			Widget *child = widgetGet(funcGroup, cnid);
@@ -4684,21 +4420,21 @@ void VoodooHDADevice::micSwitchHandler(FunctionGroup *funcGroup, nid_t nid, UInt
 			}
 			if (child->bindSeqMask & maskJack ) {
 				micSwitchHandlerEnableWidget(funcGroup, j, i, res);
-				logMsg("   switch nid %d conn %d %s\n", j, i, res?"on":"off"); 				
+				logMsg("   switch nid %d conn %d %s\n", j, i, res?"on":"off");
 			} else {
 				micSwitchHandlerEnableWidget(funcGroup, j, i, (1-res));
-				logMsg("   switch nid %d conn %d %s\n", j, i, (1-res)?"on":"off"); 				
+				logMsg("   switch nid %d conn %d %s\n", j, i, (1-res)?"on":"off");
 			}
 			if (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_MIXER) {
 				if (child->bindSeqMask & maskDef) {
 					micSwitchHandlerEnableWidget(funcGroup, j, i, (1-res));
-					logMsg("   mute nid %d conn %d %s\n", j, i, (1-res)?"on":"off"); 				
+					logMsg("   mute nid %d conn %d %s\n", j, i, (1-res)?"on":"off");
 				} else {
 					micSwitchHandlerEnableWidget(funcGroup, j, i, res);
-					logMsg("   mute nid %d conn %d %s\n", j, i, res?"on":"off"); 				
+					logMsg("   mute nid %d conn %d %s\n", j, i, res?"on":"off");
 				}
 				//			}
-			//else	
+			//else
 			}
 		}
 	}
@@ -4715,20 +4451,21 @@ void VoodooHDADevice::hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 
 	Widget *widget;
 	UInt32 val;
 	nid_t cad;
-	
+
 	if (!funcGroup || !funcGroup->codec)
 		return;
 
-	cad = funcGroup->codec->cad;	
+	cad = funcGroup->codec->cad;
 	assocs = funcGroup->audio.assocs;
-	
+
 	widget = widgetGet(funcGroup, nid); //assocs[assocsNum].pins[15]);
 	if (!widget || (widget->enable == 0) || (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX))
 		return;
 	int assocsNum = widget->bindAssoc;
+	UInt32 triggerPinType = widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
 	//Change device name
 //	SwitchHandlerRename(funcGroup, nid ,assocsNum, res);
-	
+
 	/* (Un)Mute headphone pin. */
 	control = audioCtlAmpGet(funcGroup, nid /* assocs[assocsNum].pins[15]*/, HDA_CTL_IN, -1, 1);
 	if (control && control->mute) {
@@ -4780,6 +4517,44 @@ void VoodooHDADevice::hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 
 			}
 		}
 	}
+	/* (Un)Mute output pins from other associations (e.g. external speakers).
+	 * Only triggered by a genuine HP_OUT pin to avoid falsely muting speakers
+	 * when a non-HP pin (SPEAKER, LINE_OUT) incorrectly reports presence. */
+	if (triggerPinType == HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT) {
+		for (int otherAssoc = 0; otherAssoc < funcGroup->audio.numAssocs; otherAssoc++) {
+			if (otherAssoc == assocsNum)
+				continue;
+			if (assocs[otherAssoc].dir != HDA_CTL_OUT)
+				continue;
+			if (assocs[otherAssoc].hpredir >= 0)
+				continue;
+			for (int j = 0; j < 16; j++) {
+				int pin = assocs[otherAssoc].pins[j];
+				if (pin <= 0)
+					continue;
+				control = audioCtlAmpGet(funcGroup, pin, HDA_CTL_IN, -1, 1);
+				if (control && control->mute) {
+					val = (res != 0) ? 1 : 0;
+					if (val == (UInt32)control->forcemute)
+						continue;
+					control->forcemute = val;
+					audioCtlAmpSet(control, HDA_AMP_MUTE_DEFAULT, HDA_AMP_VOL_DEFAULT, HDA_AMP_VOL_DEFAULT);
+					continue;
+				}
+				widget = widgetGet(funcGroup, pin);
+				if (widget && (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)) {
+					if (res != 0)
+						val = widget->pin.ctrl & ~HDA_CMD_SET_PIN_WIDGET_CTRL_OUT_ENABLE;
+					else
+						val = widget->pin.ctrl | HDA_CMD_SET_PIN_WIDGET_CTRL_OUT_ENABLE;
+					if (val != widget->pin.ctrl) {
+						widget->pin.ctrl = val;
+						sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, widget->nid, widget->pin.ctrl), cad);
+					}
+				}
+			}
+		}
+	}
 }
 
 void VoodooHDADevice::switchHandler(FunctionGroup *funcGroup, bool first)
@@ -4788,7 +4563,7 @@ void VoodooHDADevice::switchHandler(FunctionGroup *funcGroup, bool first)
 	nid_t cad;
 	Widget *widget;
 	int type, res;
-	
+
 	if (!funcGroup || !funcGroup->codec)
 		return;
 
@@ -4810,13 +4585,13 @@ void VoodooHDADevice::switchHandler(FunctionGroup *funcGroup, bool first)
 			//logMsg("No jack detection support at pin %d\n", assocs[i].pins[jackPin]);
 			continue;
 		}
-		res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, nid), cad);	
+		res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, nid), cad);
 		res = HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT(res);
 		if (funcGroup->audio.quirks & HDA_QUIRK_SENSEINV)
 			res ^= 1;
 		if(!first && (widget->sense == res)) continue; // nothing changed
 		widget->sense = res;
-		
+
 		logMsg("Pin sense: cad %d nid=%d res=%d\n", (int)cad,  (int)nid, (int)res);
 		type = widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
 		/* Get pin direction. */
@@ -4828,12 +4603,53 @@ void VoodooHDADevice::switchHandler(FunctionGroup *funcGroup, bool first)
 			hpSwitchHandler(funcGroup, nid, res);
 			//dir = HDA_CTL_OUT;
 			//continue;
-		}					
+		}
 		else {
 			micSwitchHandler(funcGroup, nid, res);
 		}
 		if (!assocs[assocNum].dirty) {
 			SwitchHandlerRename(funcGroup, nid ,assocNum, res);
+		}
+		assocs[assocNum].dirty |= res;
+	}
+	/* Handle HP_OUT pins in standalone associations (hpredir < 0):
+	 * read presence detection and update HPHN_ENABLE so that macOS does
+	 * not select disconnected headphones as the default output. */
+	for (int nid = funcGroup->startNode; nid < funcGroup->endNode; nid++) {
+		widget = widgetGet(funcGroup, nid);
+		if (!widget || (widget->enable == 0) || (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX))
+			continue;
+		if (HDA_PARAM_PIN_CAP_PRESENCE_DETECT_CAP(widget->pin.cap) == 0)
+			continue;
+		if ((HDA_CONFIG_DEFAULTCONF_MISC(widget->pin.config) & 1) != 0)
+			continue;
+		if ((widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK) != HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT)
+			continue;
+		assocNum = widget->bindAssoc;
+		if (assocs[assocNum].hpredir >= 0)
+			continue; /* already handled by the main loop above */
+		res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, nid), cad);
+		res = HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT(res);
+		if (funcGroup->audio.quirks & HDA_QUIRK_SENSEINV)
+			res ^= 1;
+		if (!first && (widget->sense == res))
+			continue;
+		widget->sense = res;
+		logMsg("HP standalone pin sense: cad %d nid=%d res=%d\n", (int)cad, (int)nid, (int)res);
+		/* Enable headphone amplifier only when headphones are present. */
+		UInt32 val;
+		if (res != 0)
+			val = widget->pin.ctrl | HDA_CMD_SET_PIN_WIDGET_CTRL_HPHN_ENABLE;
+		else
+			val = widget->pin.ctrl & ~HDA_CMD_SET_PIN_WIDGET_CTRL_HPHN_ENABLE;
+		if (val != widget->pin.ctrl) {
+			widget->pin.ctrl = val;
+			sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, nid, widget->pin.ctrl), cad);
+		}
+		/* Mute/unmute other output associations (e.g. external speakers). */
+		hpSwitchHandler(funcGroup, nid, res);
+		if (!assocs[assocNum].dirty) {
+			SwitchHandlerRename(funcGroup, nid, assocNum, res);
 		}
 		assocs[assocNum].dirty |= res;
 	}
@@ -4863,258 +4679,51 @@ void VoodooHDADevice::switchInit(FunctionGroup *funcGroup)
 			//logMsg("No jack detection support at pin %d\n", assocs[i].pins[jackPin]);
 			continue;
 		}
-		
-		/*
-		 * Register unsolicited response for ALL pins with the capability,
-		 * including HDMI/DP pins (FreeBSD hdaa_sense_init pattern).
-		 * HDMI/DP pins need unsolicited events for ELD change detection.
-		 */
+
+		if (assocs[widget->bindAssoc].hpredir < 0) {
+			continue;
+		}
+		enable = 1;
 		if (HDA_PARAM_AUDIO_WIDGET_CAP_UNSOL_CAP(widget->params.widgetCap)) {
 			sendCommand(HDA_CMD_SET_UNSOLICITED_RESPONSE(cad, j,
 					HDA_CMD_SET_UNSOLICITED_RESPONSE_ENABLE | HDAC_UNSOLTAG_EVENT_HP), cad);
-			IOLog("VoodooHDA DBG: switchInit registered unsol response for nid=%d (HDMI=%d DP=%d)\n",
-				  j, HDA_PARAM_PIN_CAP_HDMI(widget->pin.cap) ? 1 : 0,
-				  HDA_PARAM_PIN_CAP_DP(widget->pin.cap) ? 1 : 0);
-		}
-
-		/* Read initial presence state */
+		} /* else
+			poll = 1; */
+		//Slice - test initial state
 		int res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, j), cad);
 		res = HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT(res);
 		if (funcGroup->audio.quirks & HDA_QUIRK_SENSEINV)
 			res ^= 1;
 		widget->sense = res;
-
-		/* HDMI/DP pins: call ELD handler, skip HP redirect logic */
-		if (HDA_PARAM_PIN_CAP_DP(widget->pin.cap) ||
-			HDA_PARAM_PIN_CAP_HDMI(widget->pin.cap)) {
-			IOLog("VoodooHDA DBG: switchInit calling hdaa_eld_handler for HDMI/DP nid=%d sense=%d\n", j, res);
-			hdaa_eld_handler(widget);
-			continue;
-		}
-
-		/* Analog pins: require HP redirect for jack switching */
-		if (assocs[widget->bindAssoc].hpredir < 0)
-			continue;
-		enable = 1;
-
 		UInt32 type = widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK;
+		/* Get pin direction. */
 		if ((type == HDA_CONFIG_DEFAULTCONF_DEVICE_LINE_OUT) ||
 			(type == HDA_CONFIG_DEFAULTCONF_DEVICE_SPEAKER) ||
 			(type == HDA_CONFIG_DEFAULTCONF_DEVICE_HP_OUT) ||
 			(type == HDA_CONFIG_DEFAULTCONF_DEVICE_SPDIF_OUT) ||
 			(type == HDA_CONFIG_DEFAULTCONF_DEVICE_DIGITAL_OTHER_OUT))
 			logMsg("Enabling output audio routing switching at node %d:\n", j);
-		else
+		else {
 			logMsg("Enabling input audio routing switching at node %d:\n", j);
+		}
+	/*	if (res) {
+			assocs[widget->bindAssoc].activeNid = j;
+	 //	SwitchHandlerRename(funcGroup, widget->bindAssoc, j, res);
+		}*/
 	}
 	funcGroup->mSwitchEnable = enable;
 /*	if (enable) {
 			//switchHandler(funcGroup, true);
-		
+
 		if (poll)
 			errorMsg("XXX\nXXX: poll based jack detection unimplemented\nXXX\n");
 	}*/
 }
 
-void VoodooHDADevice::hdaa_eld_handler(Widget *widget)
-{
-  uint32_t res;
-  int cad = widget->funcGroup->codec->cad;
-  nid_t nid = widget->nid;
-  if (!widget || (widget->enable == 0))
-    return;
-  if ((widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX))
-    return;
-  if (HDA_PARAM_PIN_CAP_PRESENCE_DETECT_CAP(widget->pin.cap) == 0 ||
-      (HDA_CONFIG_DEFAULTCONF_MISC(widget->pin.config) & 1) != 0)
-    return;
-
-  /* Check framebuffer-sourced ELD first (ATI codecs on macOS) */
-  if (mFBNotifier) {
-    uint8_t *fbELD = NULL;
-    int fbELDLen = 0;
-    if (mFBNotifier->getFramebufferELD(cad, nid, &fbELD, &fbELDLen) && fbELDLen > 0) {
-      if (widget->eld) { freeMem(widget->eld); widget->eld = NULL; widget->eld_len = 0; }
-      widget->eld = (uint8_t *)allocMem(fbELDLen);
-      if (widget->eld) {
-        memcpy(widget->eld, fbELD, fbELDLen);
-        widget->eld_len = fbELDLen;
-        IOLog("VoodooHDA HDMI: nid=%d using FRAMEBUFFER ELD (%d bytes, spkalloc=0x%02x)\n",
-              nid, fbELDLen, (fbELDLen > 7) ? widget->eld[7] : 0);
-        return;
-      }
-    }
-  }
-
-  res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, nid), cad);
-  bool atiCodec = isAtiHdmiCodec(widget->funcGroup->codec);
-  bool presence = (res & HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT_MASK) != 0;
-  bool eldValid = (res & HDA_CMD_GET_PIN_SENSE_ELD_VALID) != 0;
-  bool isDP = HDA_PARAM_PIN_CAP_DP(widget->pin.cap) != 0;
-  bool isHDMI = HDA_PARAM_PIN_CAP_HDMI(widget->pin.cap) != 0;
-
-  IOLog("VoodooHDA HDMI: ELD handler nid=%d ati=%d DP=%d HDMI=%d pinSense=0x%08x presence=%d ELD_VALID=%d pinCap=0x%08x pinCtrl=0x%02x\n",
-        nid, atiCodec, isDP, isHDMI, (unsigned)res, presence, eldValid,
-        (unsigned)widget->pin.cap, (unsigned)widget->pin.ctrl);
-
-  if (!atiCodec) {
-    if ((widget->eld != 0) == (eldValid))
-      return;
-  }
-
-  /* Free old ELD */
-  if (widget->eld != NULL) {
-    widget->eld_len = 0;
-    freeMem(widget->eld);
-    widget->eld = NULL;
-  }
-
-  if (!atiCodec && !eldValid)
-    return;
-
-  /*
-   * Strategy for ATI codecs on macOS:
-   *   1. Try standard HDA ELD verbs first — Apple GPU drivers may
-   *      program the ELD via standard path even on ATI HDA codecs.
-   *   2. If standard verbs fail or return empty, try ATI-specific verbs.
-   *   This handles both native macOS GPU driver and Hackintosh scenarios.
-   */
-
-  /* === Attempt 1: Standard HDA ELD verbs === */
-  uint32_t dipSize = sendCommand(HDA_CMD_GET_HDMI_DIP_SIZE(cad, nid, 0x08), cad);
-  int stdEldLen = (dipSize != HDA_INVALID) ? (dipSize & 0xff) : 0;
-
-  IOLog("VoodooHDA HDMI: nid=%d standard DIP_SIZE(0x08) -> 0x%08x (eldLen=%d)\n",
-        nid, (unsigned)dipSize, stdEldLen);
-
-  if (stdEldLen > 0) {
-    widget->eld_len = stdEldLen;
-    widget->eld = (uint8_t*)allocMem(stdEldLen);
-    if (widget->eld) {
-      int validBytes = 0;
-      for (int i = 0; i < stdEldLen; i++) {
-        res = sendCommand(HDA_CMD_GET_HDMI_ELDD(cad, nid, i), cad);
-        if (res & 0x80000000) {
-          widget->eld[i] = res & 0xff;
-          if (widget->eld[i] != 0) validBytes++;
-        }
-      }
-      IOLog("VoodooHDA HDMI: nid=%d standard ELD read: %d bytes, %d non-zero\n",
-            nid, stdEldLen, validBytes);
-
-      if (validBytes > 0) {
-        /* Standard ELD has data — use it */
-        IOLog("VoodooHDA HDMI: nid=%d using STANDARD ELD path (version=0x%02x spkalloc=0x%02x)\n",
-              nid, (stdEldLen > 0) ? widget->eld[0] >> 3 : 0,
-              (stdEldLen > 7) ? widget->eld[7] : 0);
-        logMsg("HDMI ELD (standard) nid=%d: %d bytes\n", nid, stdEldLen);
-        for (int i = 0; i < stdEldLen; i++)
-          logMsg("  eld[%d]=0x%02x\n", i, widget->eld[i]);
-        return; /* success with standard verbs */
-      }
-
-      /* Standard ELD was all zeros — fall through to ATI path */
-      IOLog("VoodooHDA HDMI: nid=%d standard ELD all zeros, trying ATI verbs\n", nid);
-      freeMem(widget->eld);
-      widget->eld = NULL;
-      widget->eld_len = 0;
-    }
-  }
-
-  if (!atiCodec) {
-    IOLog("VoodooHDA HDMI: nid=%d not ATI codec, no fallback available\n", nid);
-    return;
-  }
-
-  /* === Attempt 2: ATI-specific ELD emulation === */
-  IOLog("VoodooHDA HDMI: nid=%d trying ATI ELD emulation verbs\n", nid);
-
-  uint32_t spkalloc = sendCommand(ATI_CMD_12BIT(cad, nid, ATI_VERB_GET_SPEAKER_ALLOCATION, 0), cad);
-  uint32_t avdelay = sendCommand(ATI_CMD_12BIT(cad, nid, ATI_VERB_GET_AUDIO_VIDEO_DELAY, 0), cad);
-
-  IOLog("VoodooHDA HDMI: nid=%d ATI SPEAKER_ALLOC=0x%08x AV_DELAY=0x%08x\n",
-        nid, (unsigned)spkalloc, (unsigned)avdelay);
-
-  if (spkalloc == HDA_INVALID) spkalloc = 0;
-  if (avdelay == HDA_INVALID) avdelay = 0;
-
-  /* Read audio descriptors (SADs) */
-  uint8_t sads[15 * 3];
-  int nsads = 0;
-  for (int i = 0; i < 15; i++) {
-    sendCommand(ATI_CMD_12BIT(cad, nid, ATI_VERB_SET_AUDIO_DESCRIPTOR, i), cad);
-    uint32_t desc = sendCommand(ATI_CMD_12BIT(cad, nid, ATI_VERB_GET_AUDIO_DESCRIPTOR, 0), cad);
-    if (i < 3) /* log first few */
-      IOLog("VoodooHDA HDMI: nid=%d ATI SAD[%d]=0x%08x\n", nid, i, (unsigned)desc);
-    if (desc == HDA_INVALID) continue;
-    uint8_t sad0 = desc & 0xff;
-    if (sad0 == 0) break;
-    sads[nsads * 3 + 0] = sad0;
-    sads[nsads * 3 + 1] = (desc >> 8) & 0xff;
-    sads[nsads * 3 + 2] = (desc >> 16) & 0xff;
-    nsads++;
-  }
-
-  bool atiDataEmpty = (spkalloc == 0) && (nsads == 0);
-  IOLog("VoodooHDA HDMI: nid=%d ATI ELD result: spkalloc=0x%02x nsads=%d %s\n",
-        nid, spkalloc & 0xff, nsads, atiDataEmpty ? "EMPTY (GPU not ready?)" : "OK");
-
-  /* Build minimal ELD */
-  int mnl = 0;
-  int baseline_len = 4 + mnl + nsads * 3;
-  int total_len = 4 + baseline_len;
-  widget->eld_len = total_len;
-  widget->eld = (uint8_t*)allocMem(total_len);
-  if (widget->eld == NULL) {
-    widget->eld_len = 0;
-    return;
-  }
-  bzero(widget->eld, total_len);
-  widget->eld[0] = 0x02;
-  widget->eld[2] = baseline_len / 4;
-  widget->eld[4] = (nsads << 4) | mnl;
-  widget->eld[5] = isDP ? 0x04 : 0x00; /* conn_type: DP=1, HDMI=0 */
-  widget->eld[6] = avdelay & 0xff;
-  widget->eld[7] = spkalloc & 0xff;
-  for (int i = 0; i < nsads * 3; i++)
-    widget->eld[8 + i] = sads[i];
-
-  logMsg("HDMI ELD (ATI emulated) nid=%d: spkalloc=0x%02x nsads=%d\n",
-         nid, spkalloc & 0xff, nsads);
-}
-
 //Slice
-/*
- * catPinName — assign a human-readable name to a pin widget.
- *
- * This name appears in macOS Sound Preferences as the device label
- * (e.g. "Internal Speakers", "Headphones", "Internal Microphone").
- *
- * Naming priority:
- *   1. AppleALC name (alcNameIdx > 0): derived at build time from the pin
- *      config's device_type + connectivity fields by gen_pinconfigs.py.
- *      The index was stored by widgetPinGetConfig() when it matched an
- *      AppleALC entry. This produces Apple-style names like:
- *        "Internal Speakers", "Headphones", "Internal Microphone",
- *        "External Microphone", "Line In", "Line Out", "HDMI", etc.
- *
- *   2. Generic HDA name (fallback): built from pin config  fields
- *      — device type string + location/color/connection info, producing
- *      names like "Speaker (Analog Internal)", "Mic (Front Pink)".
- *
- * The "pin: " prefix is always prepended; downstream code (getPortName in
- * VoodooHDADevice.cpp) strips it and uses the remainder as the port name.
- */
+//Change widget name
 void VoodooHDADevice::catPinName(Widget *widget)
 {
-	/* AppleALC name: use pre-derived Apple-style name if available */
-	if (widget->alcNameIdx > 0 && widget->alcNameIdx < ALC_PIN_NAMES_COUNT) {
-		strlcpy(widget->name, "pin: ", 6);
-		strlcat(widget->name, gALCPinNames[widget->alcNameIdx], sizeof(widget->name));
-		return;
-	}
-
-	/* Fallback: build generic name from pin config  fields */
 
 	const char *devstr = gDeviceTypes[(widget->pin.config & HDA_CONFIG_DEFAULTCONF_DEVICE_MASK) >>
 									  HDA_CONFIG_DEFAULTCONF_DEVICE_SHIFT];
@@ -5123,7 +4732,7 @@ void VoodooHDADevice::catPinName(Widget *widget)
 	//Slice - more advanced name
 	int where = (widget->pin.config & HDA_CONFIG_DEFAULTCONF_LOCATION_MASK) >> HDA_CONFIG_DEFAULTCONF_LOCATION_SHIFT;
 	int type = (widget->pin.config & HDA_CONFIG_DEFAULTCONF_CONNECTION_TYPE_MASK) >> HDA_CONFIG_DEFAULTCONF_CONNECTION_TYPE_SHIFT;
-	
+
 	const char *ConnType;
 	if(conn == 0){
 	//THeKiNG
@@ -5146,15 +4755,15 @@ void VoodooHDADevice::catPinName(Widget *widget)
 		ConnType = gConnTypes[conn];
 	if (where == 0x18) ConnType = "HDMI";
 	if (where == 0x19) ConnType = "ATAPI";
-	
+
 
 #ifdef TIGER
 //	strncpy(buf, str, sizeof (buf));
-#else	
+#else
 //	strlcpy(buf, str, sizeof (buf));
 #endif
-	
-	
+
+
 	strlcpy(widget->name, "pin: ", 6);
 	strlcat(widget->name, devstr, sizeof (widget->name));
 	strlcat(widget->name, " (", sizeof (widget->name));
@@ -5171,54 +4780,54 @@ void VoodooHDADevice::catPinName(Widget *widget)
 
 void VoodooHDADevice::updateExtDump(void)
 {
-	
-	
+
+
 	lockExtMsgBuffer();
-	
+
 	//Очищаю буфер
 	mExtMsgBufferPos = 0;
 	bzero(mExtMsgBuffer, mExtMsgBufferSize);
-	
+
 	unlockExtMsgBuffer();
-	
+
 	for(int cad = 0; cad < 15; cad++) {
 		Codec *codec = mCodecs[cad];
 		if(codec == 0) continue;
-	
+
 		dumpExtMsg("\n");
 		dumpExtMsg("\n");
 		dumpExtMsg("Codec # %d\n", cad);
 		if(codec->numFuncGroups == 0) continue;
 		updateExtDumpForFunctionGroup(&codec->funcGroups[0]);
 	}
-	
+
 //done:
 	return;
 }
 
 void VoodooHDADevice::updateExtDumpForFunctionGroup(FunctionGroup *funcGroup)
-{	
-	
+{
+
 	extDumpNodes(funcGroup);
-	
-	
+
+
 	PcmDevice *pcmDevice;
 
 	dumpExtMsg("\n");
 	dumpExtMsg("\n");
 	dumpExtMsg("PCM Devices %d count\n", funcGroup->audio.numPcmDevices);
-	
+
 	dumpExtMsg("+-------------------------+\n");
 	dumpExtMsg("| DUMPING Volume Controls |\n");
 	dumpExtMsg("+-------------------------+\n");
-	
-	
+
+
 	for(int i = 0; i <  funcGroup->audio.numPcmDevices; i++) {
 		pcmDevice = &funcGroup->audio.pcmDevices[i];
 		dumpExtMsg("+-------------------------+\n");
 		dumpExtMsg("+  PCM  #%d               +\n", i);
 		dumpExtMsg("+-------------------------+\n");
-		
+
 		extDumpCtls(pcmDevice, "Master Volume", SOUND_MASK_VOLUME);
 		extDumpCtls(pcmDevice, "PCM Volume", SOUND_MASK_PCM);
 		extDumpCtls(pcmDevice, "CD Volume", SOUND_MASK_CD);
@@ -5231,7 +4840,7 @@ void VoodooHDADevice::updateExtDumpForFunctionGroup(FunctionGroup *funcGroup)
 		extDumpCtls(pcmDevice, NULL, 0);
 		dumpExtMsg("\n");
 	}
-	
+
 }
 
 void VoodooHDADevice::extDumpAmp(UInt32 cap, const char *banner)
@@ -5247,7 +4856,7 @@ void VoodooHDADevice::extDumpAmp(UInt32 cap, const char *banner)
 void VoodooHDADevice::extDumpNodes(FunctionGroup *funcGroup)
 {
 	static const char * const ossname[] = SOUND_DEVICE_NAMES;
-	
+
 	dumpExtMsg("\n");
 	dumpExtMsg("Default Parameter\n");
 	dumpExtMsg("-----------------\n");
@@ -5312,19 +4921,19 @@ void VoodooHDADevice::extDumpNodes(FunctionGroup *funcGroup)
 				dumpExtMsg(" (%s)", ossname[widget->ossdev]);
 			dumpExtMsg("\n");
 		}
-		
+
 		if ((widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_OUTPUT) ||
 			(widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_INPUT)) {
 			//dumpAudioFormats(widget->params.supStreamFormats, widget->params.supPcmSizeRates);
 		} else if (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX) {
 			extDumpPin(widget);
 		}
-		
+
 		if (widget->params.eapdBtl != HDAC_INVALID)
 			dumpExtMsg("           EAPD: 0x%08lx\n",(long unsigned int) widget->params.eapdBtl);
 		if (HDA_PARAM_AUDIO_WIDGET_CAP_OUT_AMP(widget->params.widgetCap) && (widget->params.outAmpCap != 0)) {
 			extDumpAmp(widget->params.outAmpCap, "Output");
-			
+
 			int left, right;
 			int lmute, rmute;
 			audioCtlAmpGetInternal(funcGroup->codec->cad, widget->nid, 0, &lmute, &rmute, &left, &right, 0);
@@ -5334,7 +4943,7 @@ void VoodooHDADevice::extDumpNodes(FunctionGroup *funcGroup)
 			extDumpAmp(widget->params.inAmpCap, " Input");
 			int left, right;
 			int lmute, rmute;
-		
+
 			int last = (widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_MIXER ||
 						widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_SELECTOR) ? widget->nconns : 1;
 			dumpExtMsg("      Input val: ");
@@ -5362,26 +4971,26 @@ void VoodooHDADevice::extDumpNodes(FunctionGroup *funcGroup)
 			dumpExtMsg("\n");
 		}
 	}
-	
+
 }
 
 void VoodooHDADevice::extDumpCtls(PcmDevice *pcmDevice, const char *banner, UInt32 flag)
 {
 	FunctionGroup *funcGroup = pcmDevice->funcGroup;
-	
+
 	if (flag == 0) {
 		flag = ~(SOUND_MASK_VOLUME | SOUND_MASK_PCM | SOUND_MASK_CD | SOUND_MASK_LINE |
 				 SOUND_MASK_RECLEV | SOUND_MASK_MIC | SOUND_MASK_SPEAKER | SOUND_MASK_OGAIN |
 				 SOUND_MASK_IMIX | SOUND_MASK_MONITOR);
 	}
-	
+
 	for (int j = 0; j < SOUND_MIXER_NRDEVICES; j++) {
 		AudioControl *control;
 		int printed;
 		if ((flag & (1 << j)) == 0)
 			continue;
 		printed = 0;
-		for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
+		for (int i = 0; (control = audioCtlEach(funcGroup, &i)); ) {
 			if ((control->enable == 0) || (control->widget->enable == 0))
 				continue;
 			if (!(((pcmDevice->playChanId >= 0) &&
@@ -5392,7 +5001,7 @@ void VoodooHDADevice::extDumpCtls(PcmDevice *pcmDevice, const char *banner, UInt
 				continue;
 			if ((control->ossmask & (1 << j)) == 0)
 				continue;
-			
+
 			if (printed == 0) {
 				char buf[64];
 				dumpExtMsg("\n");
@@ -5424,10 +5033,10 @@ void VoodooHDADevice::extDumpPin(Widget *widget)
 {
 	UInt32 pincap;
 	UInt32 ctrl;
-	
+
 	//pincap = widgetPinGetCaps(widget);
 	pincap = widget->pin.cap;
-	
+
 	dumpExtMsg("        Pin cap: 0x%08lx\n", (long unsigned int)pincap);
 	dumpExtMsg("                ");
 	if (HDA_PARAM_PIN_CAP_IMP_SENSE_CAP(pincap))
@@ -5462,14 +5071,14 @@ void VoodooHDADevice::extDumpPin(Widget *widget)
 		dumpExtMsg(" EAPD");
 	dumpExtMsg("\n");
 	dumpExtMsg("     Pin config: 0x%08lx\n", (long unsigned int)widget->pin.config);
-	
+
 	/*
 	nid_t cad = widget->funcGroup->codec->cad;
 	nid_t nid = widget->nid;
 	ctrl = sendCommand(HDA_CMD_GET_PIN_WIDGET_CTRL(cad, nid), cad);
 	*/
 	ctrl = widget->pin.ctrl;
-	
+
 	dumpExtMsg("    Pin control: 0x%08lx",(long unsigned int) ctrl);
 	if (ctrl & HDA_CMD_SET_PIN_WIDGET_CTRL_HPHN_ENABLE)
 		dumpExtMsg(" HP");

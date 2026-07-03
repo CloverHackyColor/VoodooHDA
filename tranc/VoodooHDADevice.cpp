@@ -1,15 +1,12 @@
 #include "License.h"
 
-#include "GitCommit.h"
 #include "VoodooHDADevice.h"
-#include "VoodooHDAFramebufferNotifier.h"
 #include "VoodooHDAEngine.h"
 #include "Tables.h"
 #include "Models.h"
 #include "Common.h"
 #include "Verbs.h"
 #include "OssCompat.h"
-#include "AppleALCPinConfigs.h"
 
 #include "Shared.h"
 
@@ -55,18 +52,11 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 	OSBoolean *osBool;
 	extern kmod_info_t kmod_info;
 	mVerbose = 0;
-	mFBNotifier = NULL;
-	mNumHDMIEngines = 0;
-	bzero(mHDMIEngines, sizeof(mHDMIEngines));
-	IOLog("VoodooHDA DBG: init() called, dict=%p\n", dict);
-	if (!super::init(dict)) {
-		IOLog("VoodooHDA DBG: super::init() FAILED\n");
+	if (!super::init(dict))
 		return false;
-	}
-	IOLog("VoodooHDA DBG: super::init() OK, version=%s commit=" VOODOO_HDA_GIT_COMMIT "\n", kmod_info.version);
 
 	dumpMsg("Loading VoodooHDA %s (based on hdac version " HDAC_REVISION ")\n", kmod_info.version);
-	
+
 //	ASSERT(dict);
 	verboseLevelNum = OSDynamicCast(OSNumber, dict->getObject(kVoodooHDAVerboseLevelKey));
 	if (verboseLevelNum)
@@ -87,7 +77,7 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 	} else {
 		mEnableVolumeChangeFix = false;
 	}
-	
+
 	// Half volume slider fix
 	osBool = OSDynamicCast(OSBoolean, dict->getObject(kVoodooHDAEnableHalfVolumeFixKey));
 	if (osBool) {
@@ -95,7 +85,7 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 	} else {
 		mEnableHalfVolumeFix = false;
 	}
-    
+
     // VertexBZ: Half Mic volume slider fix
     osBool = OSDynamicCast(OSBoolean, dict->getObject(kVoodooHDAEnableHalfMicVolumeFixKey));
 	if (osBool) {
@@ -103,14 +93,14 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 	} else {
 		mEnableHalfMicVolumeFix = false;
 	}
-    
+
     // VertexBZ: Mute fix
     osBool = OSDynamicCast(OSBoolean, dict->getObject(kVoodooHDAEnableMuteFixKey));
 	if (osBool) {
 		mEnableMuteFix = (bool)osBool->getValue();
 	} else {
 		mEnableMuteFix = false;
-	} 
+	}
 
 //Slice - some chipsets needed Inhibit Cache
 	osBool = OSDynamicCast(OSBoolean, dict->getObject("InhibitCache"));
@@ -157,7 +147,6 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 
 	mActionHandler = (IOCommandGate::Action) &VoodooHDADevice::handleAction;
 	if (!mActionHandler) {
-		IOLog("VoodooHDA DBG: mActionHandler is NULL\n");
 		errorMsg("error: couldn't cast command gate action handler\n");
 		return false;
 	}
@@ -166,7 +155,6 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 	mPrefPanelMemoryBufSize = 0;
 	mPrefPanelMemoryBuf = 0;
 
-	IOLog("VoodooHDA DBG: init() returning true\n");
 	return true;
 }
 
@@ -181,14 +169,14 @@ void VoodooHDADevice::initMixerDefaultValues(void)
 	int index;
 	OSString *tmpString = 0;
 //	int MixValueCount = sizeof(MixerValueNamesBind) / sizeof(MixerValueName);
-	
+
 	MixerValues = OSDynamicCast(OSDictionary, getProperty("MixerValues"));
 
 	for(int i=0; i<SOUND_MIXER_NRDEVICES; i++){
-						
+
 		tmpUI16 = MixerValueNamesBind[i].initValue;
-	
-		
+
+
 		if(MixerValues && MixerValueNamesBind[i].name != 0 && MixerValueNamesBind[i].name[0] != 0) {
 			tmpNumber = OSDynamicCast(OSNumber, MixerValues->getObject(MixerValueNamesBind[i].name));
 			if (tmpNumber) {
@@ -207,10 +195,10 @@ void VoodooHDADevice::initMixerDefaultValues(void)
 			}
 		}
 		//logMsg("Item %d init %d, index %d\n", i , tmpUI16, MixerValueNamesBind[i].index);
-	
-		
+
+
 		index = MixerValueNamesBind[i].index;
-		if(index >= 0 && index < SOUND_MIXER_NRDEVICES) 
+		if(index >= 0 && index < SOUND_MIXER_NRDEVICES)
 			mMixerDefaults[index] = tmpUI16;
 	}
 }
@@ -224,18 +212,16 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 //	bool contIsGeneric = false;
 	int n;
 
-	IOLog("VoodooHDA DBG: probe() called, provider=%p score=%d\n", provider, score ? *score : -1);
+	//logMsg("VoodooHDADevice[%p]::probe\n", this);
+//	IOLog("HDA: MixerInfoSize=%d ChannelInfoSize=%d\n", (int)sizeof(mixerDeviceInfo), (int)sizeof(ChannelInfo));
 
 	result = super::probe(provider, score);
-	if (result != static_cast<IOService*>(this)) {
-		IOLog("VoodooHDA DBG: super::probe() FAILED, result=%p this=%p\n", result, this);
+	if (result != static_cast<IOService*>(this))
 		return result;
-	}
-	IOLog("VoodooHDA DBG: super::probe() OK\n");
-	
+
 	initMixerDefaultValues();
-	
-//Slice	
+
+//Slice
 	OSDictionary *tmpDict = 0;
 	OSIterator *iter = 0;
 	const OSSymbol *dictKey = 0;
@@ -246,14 +232,14 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 	UInt32 tmpUIArray[HDA_MAX_CONNS];
 	UInt32 nArrayCount = 0;
 //	UInt32 j = 0;
-	
+
 	NodesToPatch = OSDynamicCast(OSArray, getProperty("NodesToPatch"));
 	if(NodesToPatch){
 		NumNodes = NodesToPatch->getCount();
 		for(int i=0; i<NumNodes; i++){
 			NodesToPatchArray[i].Enable = 0;
 			NodesToPatchArray[i].cad = 0;
-			tmpDict = OSDynamicCast(OSDictionary, NodesToPatch->getObject(i)); 
+			tmpDict = OSDynamicCast(OSDictionary, NodesToPatch->getObject(i));
 			iter = OSCollectionIterator::withCollection(tmpDict);
 			if (iter) {
 				while ((dictKey = (const OSSymbol *)iter->getNextObject())) {
@@ -279,12 +265,12 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 							}
 							tmpUIArray[nArrayCount]= tmpUI32;
 							nArrayCount++;
-							
+
 							//logMsg("%d ", tmpUI32);
 						}
 						//logMsg("\n");
 					}else{
-					
+
 						tmpNumber = OSDynamicCast(OSNumber, tmpDict->getObject(dictKey));
 						if (tmpNumber) {
 							tmpUI32 = tmpNumber->unsigned32BitValue();
@@ -302,7 +288,7 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 					}
 					tmpString = OSString::withCString(dictKey->getCStringNoCopy());
 					if(tmpString->isEqualTo("Node")){
-						if(tmpUI32 == 0) 
+						if(tmpUI32 == 0)
 							break;
 						NodesToPatchArray[i].Node = tmpUI32;
 					} else if (tmpString->isEqualTo("Config")){
@@ -339,7 +325,7 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 						//Меняем левый канал на правый для входных данных
 						mSwitchCh = true;
 					}
-					
+
 				}
 			}
 		}
@@ -349,7 +335,7 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 #if __LP64__
     for(int i=0; i<NumNodes; i++){
         dumpMsg("VHD Codec=%d Node=%d Config=%08lx Conns=%ld Type=%d\n", NodesToPatchArray[i].cad, NodesToPatchArray[i].Node,
-                (long unsigned int)NodesToPatchArray[i].Config, (long int)NodesToPatchArray[i].Conns, 
+                (long unsigned int)NodesToPatchArray[i].Config, (long int)NodesToPatchArray[i].Conns,
 				(int)NodesToPatchArray[i].Type);
     }
 #else
@@ -357,21 +343,17 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
         dumpMsg("VHD Codec=%d Node=%d Config=%08lx Conns=%d Type=%d\n", (int)NodesToPatchArray[i].cad, (int)NodesToPatchArray[i].Node,
                 NodesToPatchArray[i].Config, (int)NodesToPatchArray[i].Conns, (int)NodesToPatchArray[i].Type);
     }
-#endif//	
+#endif//
 	mPciNub = OSDynamicCast(IOPCIDevice, provider);
 	if (!mPciNub) {
-		IOLog("VoodooHDA DBG: cast to IOPCIDevice FAILED\n");
 		errorMsg("error: couldn't cast provider to IOPCIDevice\n");
 		return NULL;
 	}
-	IOLog("VoodooHDA DBG: mPciNub=%p, opening...\n", mPciNub);
 	if (!mPciNub->open(this)) {
-		IOLog("VoodooHDA DBG: mPciNub->open() FAILED\n");
 		errorMsg("error: couldn't open PCI device\n");
 		mPciNub = NULL;
 		return NULL;
 	}
-	IOLog("VoodooHDA DBG: PCI device opened OK\n");
 /*
 	classCode = mPciNub->configRead32(kIOPCIConfigClassCode & 0xfc) >> 8;
 	subClass = (classCode >> 8) & 0xff;
@@ -396,13 +378,7 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 	if (!mControllerName)
 		mControllerName = "Generic";
 
-	IOLog("VoodooHDA DBG: Controller: %s (vendor=%04x device=%04x)\n", mControllerName, vendorId, deviceId);
 	errorMsg("Controller: %s (vendor ID: %04x, device ID: %04x)\n", mControllerName, vendorId, deviceId);
-
-	/* Beat AppleGFXHDA for AMD/ATI HDMI audio — VoodooHDA programs
-	 * GPU AZ registers directly via MMIO to enable audio pipeline. */
-	if (vendorId == 0x1002 && score)
-		*score = 5000000;
 
 	subVendorId = mPciNub->configRead16(kIOPCIConfigSubSystemVendorID);
 	subDeviceId = mPciNub->configRead16(kIOPCIConfigSubSystemID);
@@ -410,33 +386,9 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 	if (mSubDeviceId == HP_NX6325_SUBVENDORX)
 		mSubDeviceId = HP_NX6325_SUBVENDOR;
 
-	mLayoutId = 0;
-	/* voodoo-layout-id is set by bootloader (OpenCore DeviceProperties);
-	   layout-id on the PCI device may be overwritten by AppleHDA or the system */
-	OSData *layoutData = OSDynamicCast(OSData, mPciNub->getProperty("voodoo-layout-id"));
-	if (layoutData && layoutData->getLength() >= sizeof(UInt32))
-		mLayoutId = *(const UInt32 *)layoutData->getBytesNoCopy();
-	IOLog("VoodooHDA DBG: voodoo-layout-id -> mLayoutId=%u\n", (unsigned)mLayoutId);
-	if (mLayoutId == 0) {
-		layoutData = OSDynamicCast(OSData, mPciNub->getProperty("layout-id"));
-		if (layoutData && layoutData->getLength() >= sizeof(UInt32))
-			mLayoutId = *(const UInt32 *)layoutData->getBytesNoCopy();
-		IOLog("VoodooHDA DBG: layout-id -> mLayoutId=%u\n", (unsigned)mLayoutId);
-	}
-	if (mLayoutId == 0) {
-		OSNumber *layoutNum = OSDynamicCast(OSNumber, getProperty("LayoutId"));
-		if (layoutNum)
-			mLayoutId = layoutNum->unsigned32BitValue();
-		IOLog("VoodooHDA DBG: LayoutId plist -> mLayoutId=%u\n", (unsigned)mLayoutId);
-	}
-	IOLog("VoodooHDA DBG: final mLayoutId=%u\n", (unsigned)mLayoutId);
-	if (mLayoutId)
-		errorMsg("AppleALC: layout-id=%u\n", (unsigned int)mLayoutId);
-
 //done:
 	mPciNub->close(this);
 
-	IOLog("VoodooHDA DBG: probe() returning result=%p\n", result);
 	return result;
 }
 
@@ -477,31 +429,29 @@ bool VoodooHDADevice::initHardware(IOService *provider)
 	UInt32 gCtl;
 	UInt16 msiCtl;
 
-	IOLog("VoodooHDA DBG: initHardware() called\n");
-
 //moved here from init ----------
   mMsgBufferEnabled = false;
 	mMsgBufferSize = MSG_BUFFER_SIZE;
 	mMsgBufferPos = 0;
-	
+
 	mSwitchCh = false;
 	mMsgBuffer = (char *) allocMem(mMsgBufferSize);
 	if (!mMsgBuffer) {
 		errorMsg("error: couldn't allocate message buffer (%ld bytes)\n", mMsgBufferSize);
 		return false;
 	}
-	
+
 	mExtMessageLock = IOLockAlloc();
 	mExtMsgBufferSize = MSG_BUFFER_SIZE;
 	mExtMsgBufferPos = 0;
-	
+
 	mExtMsgBuffer = (char *) allocMem(mExtMsgBufferSize);
 	if (!mExtMsgBuffer) {
 		errorMsg("error: couldn't allocate ext message buffer (%ld bytes)\n", mExtMsgBufferSize);
 		return false;
 	}
-//--------------  
-  
+//--------------
+
 	//logMsg("VoodooHDADevice[%p]::initHardware\n", this);
 
 	oldConfig = UINT16_MAX;
@@ -523,7 +473,7 @@ bool VoodooHDADevice::initHardware(IOService *provider)
 	// Note: kIOMapInhibitCache is the default for PCI bars... - Zenith432
 	mBarMap = mPciNub->mapDeviceMemoryWithIndex(0U);
 	if (!mBarMap) {
-		errorMsg("error: mapDeviceMemoryWith for BAR0 failed\n");
+		errorMsg("error: mapDeviceMemoryWithRegister for BAR0 failed\n");
 		goto done;
 	}
 	mRegBase = mBarMap->getVirtualAddress();
@@ -553,7 +503,7 @@ bool VoodooHDADevice::initHardware(IOService *provider)
 	}
 	disablePCIeNoSnoop(vendorId);
 	if (vendorId == NVIDIA_VENDORID &&
-      !OSDynamicCast(OSBoolean, getProperty(kVoodooHDAAllowMSI))) {
+	!OSDynamicCast(OSBoolean, getProperty(kVoodooHDAAllowMSI))) {
 		/*
 		 * Disable MSI for NVIDIA controller if not in Info.plist.
 		 *   Known to have problems with MSI (Quirk from HDAC)
@@ -563,18 +513,14 @@ bool VoodooHDADevice::initHardware(IOService *provider)
 	msiCtl = mPciNub->configRead16(0x62);
 	logMsg("MSI_CTL=0x%04x\n", msiCtl);
 
-	/*
-	 * Reset controller BEFORE reading capabilities.
-	 * AMD Radeon GPUs report invalid CORB/RIRB size (0) unless
-	 * the controller is reset first (FreeBSD commit dab9ef544868).
-	 */
-	if (!resetController(true)) {
-		errorMsg("error: resetController failed\n");
+	if (!getCapabilities()) {
+		errorMsg("error: getCapabilities failed\n");
 		goto done;
 	}
 
-	if (!getCapabilities()) {
-		errorMsg("error: getCapabilities failed\n");
+//	logMsg("Resetting controller...\n");
+	if (!resetController(true)) {
+		errorMsg("error: resetController failed\n");
 		goto done;
 	}
 
@@ -627,36 +573,6 @@ bool VoodooHDADevice::initHardware(IOService *provider)
 				codec->vendorId, codec->deviceId);
 	}
 
-	/* Create framebuffer notifier for ATI HDMI codecs */
-	for (int n = 0; n < HDAC_CODEC_MAX; n++) {
-		Codec *codec = mCodecs[n];
-		if (!codec || !isAtiHdmiCodec(codec))
-			continue;
-		if (!mFBNotifier)
-			mFBNotifier = VoodooHDAFramebufferNotifier::withDevice(this);
-		if (mFBNotifier) {
-			nid_t pins[VHDA_FB_MAX_PINS];
-			int pinCount = 0;
-			for (int fg = 0; fg < codec->numFuncGroups; fg++) {
-				FunctionGroup *funcGroup = &codec->funcGroups[fg];
-				if (funcGroup->nodeType != HDA_PARAM_FCT_GRP_TYPE_NODE_TYPE_AUDIO)
-					continue;
-				for (int w = 0; w < funcGroup->numNodes; w++) {
-					Widget *widget = &funcGroup->widgets[w];
-					if (widget->enable && widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX &&
-						(HDA_PARAM_PIN_CAP_HDMI(widget->pin.cap) || HDA_PARAM_PIN_CAP_DP(widget->pin.cap)) &&
-						pinCount < VHDA_FB_MAX_PINS)
-						pins[pinCount++] = widget->nid;
-				}
-			}
-			if (pinCount > 0) {
-				mFBNotifier->registerATIPins(codec->cad, pins, pinCount);
-				mFBNotifier->startMatching();
-				IOLog("VoodooHDA HDMI: framebuffer notifier started for %d ATI pins\n", pinCount);
-			}
-		}
-	}
-
 	if (!mNumChannels) {
 		errorMsg("error: no PCM channels found\n");
 		goto done;
@@ -668,7 +584,7 @@ bool VoodooHDADevice::initHardware(IOService *provider)
 			goto done;
 		}
 	}
-	if ((!audioEngines || (audioEngines->getCount() == 0)) && mNumHDMIEngines == 0) {
+	if (!audioEngines || (audioEngines->getCount() == 0)) {
 		errorMsg("error: no audio engines were created\n");
 		goto done;
 	}
@@ -681,7 +597,7 @@ bool VoodooHDADevice::initHardware(IOService *provider)
 			FunctionGroup *funcGroup = &codec->funcGroups[funcGroupNum];
 			if (!funcGroup) continue;
 			if (funcGroup->nodeType != HDA_PARAM_FCT_GRP_TYPE_NODE_TYPE_AUDIO)
-				continue;	
+				continue;
 			if (funcGroup->mSwitchEnable)
 				switchHandler(funcGroup, true);
 		}
@@ -699,12 +615,6 @@ done:
 void VoodooHDADevice::stop(IOService *provider)
 {
 	logMsg("VoodooHDADevice[%p]::stop\n", this);
-
-	if (mFBNotifier) {
-		mFBNotifier->stopMatching();
-		mFBNotifier->release();
-		mFBNotifier = NULL;
-	}
 
 	disableEventSources();
 
@@ -735,10 +645,10 @@ void VoodooHDADevice::stop(IOService *provider)
 		(mPciNub->isOpen(this) || mPciNub->open(this))) {
 		if (oldConfig != UINT16_MAX)
 			mPciNub->configWrite16(kIOPCIConfigCommand, oldConfig); //Slice
-			mPciNub->enablePCIPowerManagement(kPCIPMCSPowerStateD0);
+		mPciNub->enablePCIPowerManagement(kPCIPMCSPowerStateD0);
 		mPciNub->close(this);
 	}
-	
+
 	super::stop(provider);
 }
 
@@ -747,7 +657,6 @@ void VoodooHDADevice::stop(IOService *provider)
 
 void VoodooHDADevice::free()
 {
-	IOLog("VoodooHDA DBG: free() called\n");
 	logMsg("VoodooHDADevice[%p]::free\n", this);
 
 	// if probe or initHardware (called by super start) fails, we end up here - stop is not called
@@ -755,7 +664,7 @@ void VoodooHDADevice::free()
 	mMsgBufferEnabled = false;
 	FREE(mMsgBuffer);
 	FREE_LOCK(mMessageLock);
-	
+
 	FREE(mExtMsgBuffer);
 	FREE_LOCK(mExtMessageLock);
 
@@ -808,20 +717,6 @@ void VoodooHDADevice::free()
 	super::free();
 }
 
-nid_t VoodooHDADevice::getHDMIPinForChannel(Channel *channel)
-{
-	if (!channel || !channel->funcGroup || channel->assocNum < 0)
-		return (nid_t)-1;
-	AudioAssoc *assoc = &channel->funcGroup->audio.assocs[channel->assocNum];
-	for (int j = 0; j < 16; j++) {
-		if (assoc->pins[j] <= 0) continue;
-		Widget *w = widgetGet(channel->funcGroup, assoc->pins[j]);
-		if (w && (HDA_PARAM_PIN_CAP_HDMI(w->pin.cap) || HDA_PARAM_PIN_CAP_DP(w->pin.cap)))
-			return assoc->pins[j];
-	}
-	return (nid_t)-1;
-}
-
 bool VoodooHDADevice::createAudioEngine(Channel *channel)
 {
 	VoodooHDAEngine *audioEngine = NULL;
@@ -830,59 +725,28 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
 	//logMsg("VoodooHDADevice[%p]::createAudioEngine\n", this);
 
 	audioEngine = new VoodooHDAEngine;
-  if (!audioEngine) return false;
 	if (!audioEngine->initWithChannel(channel)) {
 		errorMsg("error: VoodooHDAEngine::init failed\n");
-  } else {
+		goto done;
+	}
 
-    // cue8chalk: set volume change fix on the engine
-    audioEngine->mEnableVolumeChangeFix = mEnableVolumeChangeFix;
+	// cue8chalk: set volume change fix on the engine
+	audioEngine->mEnableVolumeChangeFix = mEnableVolumeChangeFix;
     // VertexBZ: set Mute fix on the engine
-    audioEngine->mEnableMuteFix = mEnableMuteFix;
+	audioEngine->mEnableMuteFix = mEnableMuteFix;
 
-    //  audioEngine->mDisableInputMonitor = mDisableInputMonitor;
-    audioEngine->Boost = Boost;
+//  audioEngine->mDisableInputMonitor = mDisableInputMonitor;
+	audioEngine->Boost = Boost;
+	// Active the audio engine - this will cause the audio engine to have start() and
+	// initHardware() called on it. After this function returns, that audio engine should
+	// be ready to begin vending audio services to the system.
+	if (activateAudioEngine(audioEngine) != kIOReturnSuccess) {
+		errorMsg("error: activateAudioEngine failed\n");
+		goto done;
+	}
 
-    /*
-     * For HDMI/DP engines, only activate if the pin has a connected display.
-     * Inactive engines are stored for dynamic activation on hot-plug.
-     */
-    bool isHDMI = (channel->pcmDevice && channel->pcmDevice->digital >= 2);
-    nid_t hdmiPin = isHDMI ? getHDMIPinForChannel(channel) : (nid_t)-1;
-    bool hasPresence = false;
-
-    if (isHDMI && hdmiPin != (nid_t)-1 && mNumHDMIEngines < 16) {
-      UInt32 pinSense = sendCommand(HDA_CMD_GET_PIN_SENSE(channel->funcGroup->codec->cad, hdmiPin),
-                                     channel->funcGroup->codec->cad);
-      hasPresence = (pinSense & (1U << 31)) != 0;
-
-      HDMIEngineSlot *slot = &mHDMIEngines[mNumHDMIEngines++];
-      slot->engine = audioEngine;
-      slot->channel = channel;
-      slot->pinNid = hdmiPin;
-      slot->cad = channel->funcGroup->codec->cad;
-      slot->activated = false;
-      audioEngine->retain(); /* keep alive past RELEASE below */
-
-      /* Always activate HDMI engines at init — presence is unknown at
-       * this point (unsolicited responses arrive later).  Dynamic
-       * deactivation on hot-unplug will hide unused engines. */
-      if (activateAudioEngine(audioEngine) == kIOReturnSuccess) {
-        slot->activated = true;
-        result = true;
-      }
-      IOLog("VoodooHDA DBG: HDMI engine pin=%d presence=%d activated=%d\n",
-            hdmiPin, hasPresence, slot->activated);
-    } else {
-      /* Non-HDMI: always activate */
-      if (activateAudioEngine(audioEngine) != kIOReturnSuccess) {
-        errorMsg("error: activateAudioEngine failed\n");
-      } else {
-        result = true;
-      }
-    }
-  }
-
+	result = true;
+done:
 	RELEASE(audioEngine);
 
 	return result;
@@ -891,22 +755,24 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
 IOReturn VoodooHDADevice::performPowerStateChange(IOAudioDevicePowerState oldPowerState,
 		IOAudioDevicePowerState newPowerState, __unused UInt32 *microsecondsUntilComplete)
 {
-	IOReturn result = kIOReturnSuccess;
+	IOReturn result = kIOReturnError;
 
 	//logMsg("VoodooHDADevice[%p]::performPowerStateChange(%d, %d)\n", this, oldPowerState, newPowerState);
 
 	if (oldPowerState == kIOAudioDeviceSleep) {
 		if (!resume()) {
 			errorMsg("error: resume action failed\n");
-			result = kIOReturnError;
+			goto done;
 		}
 	} else if (newPowerState == kIOAudioDeviceSleep) {
 		if (!suspend()) {
 			errorMsg("error: suspend action failed\n");
-			result = kIOReturnError;
+			goto done;
 		}
 	}
 
+	result = kIOReturnSuccess;
+done:
 	return result;
 }
 
@@ -924,7 +790,7 @@ bool VoodooHDADevice::suspend()
 			logMsg("(%02x)=%08x   ",(unsigned int)(i+j), (unsigned int)mPciNub->configRead32(i+j));  //for trace
 		logMsg("\n");
 	}*/
-		//	
+		//
 	for (int i = 0; i < mNumChannels; i++) {
 		if (mChannels[i].flags & HDAC_CHN_RUNNING) {
 			errorMsg("warning: found active channel during suspend action\n");
@@ -1021,7 +887,6 @@ bool VoodooHDADevice::resume()
 
 //			logMsg("Power up audio FG cad=%d nid=%d...\n", funcGroup->codec->cad, funcGroup->nid);
 			powerup(funcGroup);
-			applyAppleALCWakeVerbs(funcGroup);
 //			logMsg("AFG commit...\n");
 			audioCommit(funcGroup);
 //			logMsg("HP switch init...\n");
@@ -1030,6 +895,8 @@ bool VoodooHDADevice::resume()
 //				logMsg("OSS mixer reinitialization...\n");
 				mixerResume(&funcGroup->audio.pcmDevices[i]);
 			}
+			/* Enable EAPD after volumes are restored (pop prevention on wake). */
+			audioCommitEapd(funcGroup);
 
 			LOCK(); // xxx
 
@@ -1150,9 +1017,6 @@ bool VoodooHDADevice::getCapabilities()
 	mOutStreamsSup = HDAC_GCAP_OSS(globalCap);
 	mBiStreamsSup = HDAC_GCAP_BSS(globalCap);
 	mSDO = HDAC_GCAP_NSDO(globalCap);
-	IOLog("VoodooHDA DBG: GCAP=0x%04x ISS=%d OSS=%d BSS=%d NSDO=%d 64bit=%d\n",
-		  globalCap, mInStreamsSup, mOutStreamsSup, mBiStreamsSup, mSDO,
-		  (int)HDA_FLAG_MATCH(globalCap, HDAC_GCAP_64OK));
 
 	mSupports64Bit = HDA_FLAG_MATCH(globalCap, HDAC_GCAP_64OK);
 	if ((mDeviceId & ~0x30000U) == HDA_NVIDIA_MCP78_1)	// Quirk from HDAC
@@ -1166,11 +1030,8 @@ bool VoodooHDADevice::getCapabilities()
 	else if ((corbSizeReg & HDAC_CORBSIZE_CORBSZCAP_2) == HDAC_CORBSIZE_CORBSZCAP_2)
 		mCorbSize = 2;
 	else {
-		/* Hardware reports invalid CORB size (e.g. AMD Radeon GPUs).
-		 * Default to 256 and write back to register (FreeBSD PR 289284). */
-		errorMsg("warning: invalid CORB size (%02x), defaulting to 256\n", corbSizeReg);
-		mCorbSize = 256;
-		writeData8(HDAC_CORBSIZE, HDAC_CORBSIZE_CORBSIZE(HDAC_CORBSIZE_CORBSIZE_256));
+		errorMsg("error: invalid CORB size: %02x\n", corbSizeReg);
+		goto done;
 	}
 
 	rirbSizeReg = readData8(HDAC_RIRBSIZE);
@@ -1181,11 +1042,8 @@ bool VoodooHDADevice::getCapabilities()
 	else if ((rirbSizeReg & HDAC_RIRBSIZE_RIRBSZCAP_2) == HDAC_RIRBSIZE_RIRBSZCAP_2)
 		mRirbSize = 2;
 	else {
-		/* Hardware reports invalid RIRB size (e.g. AMD Radeon GPUs).
-		 * Default to 256 and write back to register (FreeBSD PR 289284). */
-		errorMsg("warning: invalid RIRB size (%02x), defaulting to 256\n", rirbSizeReg);
-		mRirbSize = 256;
-		writeData8(HDAC_RIRBSIZE, HDAC_RIRBSIZE_RIRBSIZE(HDAC_RIRBSIZE_RIRBSIZE_256));
+		errorMsg("error: invalid RIRB size: %02x\n", rirbSizeReg);
+		goto done;
 	}
 
 //	logMsg("    CORB size: %d\n", mCorbSize);
@@ -1196,6 +1054,7 @@ bool VoodooHDADevice::getCapabilities()
 	ASSERT(mRirbSize);
 
 	result = true;
+done:
 	return result;
 }
 
@@ -1414,15 +1273,15 @@ IOReturn VoodooHDADevice::handleAction(OSObject *owner, void *arg0, void *arg1, 
 		*outSize = 0;
 		*outData = NULL;
 
-		return result;		
+		return result;
 		}
 
-	//Команда от моей версии getDump для обновления данных об усилении
+	//Команда от моей версии getDump для обновления данных о усилении
 	if((action & 0xFF)  == kVoodooHDAActionGetMixers) {
 
-//		device->LOCK();
+		device->LOCK();
 		device->updateExtDump();
-//		device->UNLOCK();
+		device->UNLOCK();
 
 		*outSize = 0;
 		*outData = NULL;
@@ -1452,7 +1311,7 @@ ChannelInfo *VoodooHDADevice::getChannelInfo() {
 	ChannelInfo *info = (ChannelInfo*)allocMem(sizeof(ChannelInfo) * mNumChannels);
 	VoodooHDAEngine *engine;
 	const char *pName;
-	
+
 	for(; i < mNumChannels; i++) {
 		engine = lookupEngine(i);
 		if (!engine)
@@ -1468,16 +1327,16 @@ ChannelInfo *VoodooHDADevice::getChannelInfo() {
 			UInt32 ossMask;
 			//name = engine->getOssDevName(ossDev);
 			name = engine->mPortName;
-			
+
 			if (engine->getEngineDirection() == kIOAudioStreamDirectionOutput)
 				ossMask = engine->mChannel->pcmDevice->devMask;
 			else
 				ossMask = engine->mChannel->pcmDevice->recDevMask;
-			
-			info[i].mixerValues[ossDev-1].enabled = false;			
+
+			info[i].mixerValues[ossDev-1].enabled = false;
 			if ((ossMask & (1 << ossDev)) == 0)
 				continue;
-			
+
 			info[i].mixerValues[ossDev-1].mixId = ossDev;
 			info[i].mixerValues[ossDev-1].enabled = true;
 			info[i].mixerValues[ossDev-1].value = engine->mChannel->pcmDevice->left[ossDev];// mMixerDefaults[ossDev];
@@ -1491,7 +1350,7 @@ ChannelInfo *VoodooHDADevice::getChannelInfo() {
 		info[i].useStereo = engine->mChannel->useStereo;
 		info[i].StereoBase = engine->mChannel->StereoBase;
 	}
-	
+
 	return info;
 }
 
@@ -1667,7 +1526,7 @@ void VoodooHDADevice::lock(const char *callerName)
 {
 	if (mVerbose >= 4)
 		logMsg("VoodooHDADevice[%p]::lock(%s)\n", this, callerName);
-	//ASSERT(mLock);
+	ASSERT(mLock);
 	IOLockLock(mLock);
 }
 
@@ -1675,7 +1534,7 @@ void VoodooHDADevice::unlock(const char *callerName)
 {
 	if (mVerbose >= 4)
 		logMsg("VoodooHDADevice[%p]::unlock(%s)\n", this, callerName);
-	//ASSERT(mLock);
+	ASSERT(mLock);
 	IOLockUnlock(mLock);
 }
 
@@ -1686,7 +1545,7 @@ void VoodooHDADevice::assertLock(IOLock *lock, UInt32 type)
 	ASSERT(type); // type can be either LCK_MTX_ASSERT_OWNED or LCK_MTX_ASSERT_NOTOWNED
 	mutex = IOLockGetMachLock(lock);
 	ASSERT(mutex);
-//	lck_mtx_assert(mutex, type);
+	lck_mtx_assert(mutex, type);
 }
 
 extern "C" {
@@ -1737,12 +1596,11 @@ DmaMemory *VoodooHDADevice::allocateDmaMemory(mach_vm_size_t size, const char *d
 	else
 		physMask = -HDAC_DMA_ALIGNMENT & UINT32_MAX;
 	cacheOption &= kIOMapCacheMask;
-	if (!cacheOption) {
+	if (!cacheOption)
 		cacheOption = mInhibitCache ? kIOMapInhibitCache : kIOMapDefaultCache;
-    }
 	memDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task,
 			kIOMemoryPhysicallyContiguous | kIODirectionInOut | cacheOption, size, physMask);
-	
+
 	if (!memDesc) {
 		errorMsg("error: IOBufferMemoryDescriptor::inTaskWithPhysicalMask failed\n");
 		goto failed;
@@ -2036,12 +1894,7 @@ int VoodooHDADevice::rirbFlush()
 		codec = mCodecs[cad];
 		commands = codec->commands;
 		if (rirb->response_ex & HDAC_RIRB_RESPONSE_EX_UNSOLICITED) {
-			/* Store both the tag (bits [31:26]) and the full response
-			 * so HDMI/DP flag bits [1:0] are available to handleUnsolicited().
-			 * Queue format: even slot = (cad << 16) | tag, odd slot = resp */
 			mUnsolq[mUnsolqWritePtr++] = (cad << 16) | ((resp >> 26) & 0xffff);
-			mUnsolqWritePtr %= HDAC_UNSOLQ_MAX;
-			mUnsolq[mUnsolqWritePtr++] = resp;
 			mUnsolqWritePtr %= HDAC_UNSOLQ_MAX;
 		} else if (commands && (commands->numCommands > 0) &&
 				(codec->numRespReceived < commands->numCommands))
@@ -2053,7 +1906,7 @@ int VoodooHDADevice::rirbFlush()
 	rirbCtl = readData8(HDAC_GCTL);
 	rirbCtl |= HDAC_GCTL_FCNTRL;
 	writeData8(HDAC_GCTL, rirbCtl);
-	
+
 	return ret;
 }
 
@@ -2065,13 +1918,11 @@ int VoodooHDADevice::unsolqFlush()
 		mUnsolqState = HDAC_UNSOLQ_BUSY;
 		while (mUnsolqReadPtr != mUnsolqWritePtr) {
 			nid_t cad;
-			UInt32 tag, resp;
+			UInt32 tag;
 			cad = mUnsolq[mUnsolqReadPtr] >> 16;
 			tag = mUnsolq[mUnsolqReadPtr++] & 0xffff;
 			mUnsolqReadPtr %= HDAC_UNSOLQ_MAX;
-			resp = mUnsolq[mUnsolqReadPtr++];
-			mUnsolqReadPtr %= HDAC_UNSOLQ_MAX;
-			handleUnsolicited(mCodecs[cad], tag, resp);
+			handleUnsolicited(mCodecs[cad], tag);
 			ret++;
 		}
 		mUnsolqState = HDAC_UNSOLQ_READY;
@@ -2082,77 +1933,15 @@ int VoodooHDADevice::unsolqFlush()
 
 /*
  * Unsolicited messages handler.
- * For HDMI/DP pins, resp bits [1:0] carry flags:
- *   bit 0 = presence change, bit 1 = ELD/status change.
- * For analog pins, only presence (bit 0) is meaningful.
- * (Based on FreeBSD hdaa_unsol_intr)
  */
-void VoodooHDADevice::updateHDMIEnginePresence()
-{
-	/* Retry enableAudioPipe on framebuffers that returned timeout at
-	 * handleFBMatched time.  By the time unsolicited responses arrive,
-	 * all framebuffers should be fully initialized. */
-	if (mFBNotifier)
-		mFBNotifier->retryEnableAudioPipeAll();
-
-	/* First pass: read pin sense for all engines and find which have presence.
-	 * ATI codecs may report stale presence on previously-connected pins,
-	 * so count total presence to detect the "cable moved" scenario. */
-	bool presence[16] = {};
-	int presenceCount = 0;
-	int lastPresenceIdx = -1;
-
-	for (int i = 0; i < mNumHDMIEngines; i++) {
-		HDMIEngineSlot *slot = &mHDMIEngines[i];
-		if (!slot->engine) continue;
-		UInt32 pinSense = sendCommand(HDA_CMD_GET_PIN_SENSE(slot->cad, slot->pinNid), slot->cad);
-		presence[i] = (pinSense & (1U << 31)) != 0;
-		if (presence[i]) {
-			presenceCount++;
-			lastPresenceIdx = i;
-		}
-	}
-
-	/* Second pass: update status and inject ELD */
-	for (int i = 0; i < mNumHDMIEngines; i++) {
-		HDMIEngineSlot *slot = &mHDMIEngines[i];
-		if (!slot->engine) continue;
-
-		bool hasPresence = presence[i];
-
-		if (hasPresence && !slot->activated) {
-			IOLog("VoodooHDA DBG: HDMI hot-plug: activating engine for pin=%d\n", slot->pinNid);
-			IOReturn ret = activateAudioEngine(slot->engine);
-			IOLog("VoodooHDA DBG: HDMI hot-plug: activateAudioEngine ret=0x%x\n", ret);
-			if (ret == kIOReturnSuccess)
-				slot->activated = true;
-		}
-
-		if (hasPresence && mFBNotifier)
-			mFBNotifier->injectELDIntoPinIfReady(slot->cad, slot->pinNid);
-
-		/* Update engine description.  If multiple pins report presence
-		 * (stale ATI pin sense), only the most recently detected one
-		 * is shown as "connected" — the rest get "no display". */
-		bool showConnected = hasPresence;
-		if (presenceCount > 1 && hasPresence && i != lastPresenceIdx)
-			showConnected = false;
-
-		char desc[80];
-		snprintf(desc, sizeof(desc), "%s: HDMI %d (%s)",
-		         mControllerName ? mControllerName : "GPU",
-		         slot->pinNid,
-		         showConnected ? "connected" : "no display");
-		slot->engine->setProperty("IOAudioEngineDescription", desc);
-	}
-}
-
-void VoodooHDADevice::handleUnsolicited(Codec *codec, UInt32 tag, UInt32 resp)
+void VoodooHDADevice::handleUnsolicited(Codec *codec, UInt32 tag)
 {
 	FunctionGroup *funcGroup = NULL;
 
 	if (!codec)
 		return;
+
+//	logMsg("Unsol Tag: 0x%08lx\n", tag);
 
 	for (int i = 0; i < codec->numFuncGroups; i++) {
 		if (codec->funcGroups[i].nodeType == HDA_PARAM_FCT_GRP_TYPE_NODE_TYPE_AUDIO) {
@@ -2166,48 +1955,8 @@ void VoodooHDADevice::handleUnsolicited(Codec *codec, UInt32 tag, UInt32 resp)
 
 	switch (tag) {
 	case HDAC_UNSOLTAG_EVENT_HP:
-	{
-		/*
-		 * Determine flags based on pin type (FreeBSD pattern).
-		 * HDMI/DP: flags = resp & 0x03 (presence + ELD change)
-		 * Analog:  flags = 0x01 (presence only)
-		 */
-		int flags = 0x01; /* default: presence only */
-
-		/* Check if any HDMI/DP pin uses this tag — if so, extract both flags */
-		for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
-			Widget *w = widgetGet(funcGroup, j);
-			if (!w || w->enable == 0 || w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
-				continue;
-			if (HDA_PARAM_PIN_CAP_DP(w->pin.cap) || HDA_PARAM_PIN_CAP_HDMI(w->pin.cap)) {
-				flags = resp & 0x03;
-				break;
-			}
-		}
-
-		IOLog("VoodooHDA DBG: unsol tag=0x%x resp=0x%08x flags=0x%x\n",
-			  (unsigned)tag, (unsigned)resp, flags);
-
-		/* Presence change — standard jack switching */
-		if (flags & 0x01) {
-			switchHandler(funcGroup, false);
-			updateHDMIEnginePresence();
-		}
-
-		/* ELD change — re-read ELD for HDMI/DP pins */
-		if (flags & 0x02) {
-			for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
-				Widget *w = widgetGet(funcGroup, j);
-				if (!w || w->enable == 0 || w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
-					continue;
-				if (!HDA_PARAM_PIN_CAP_DP(w->pin.cap) && !HDA_PARAM_PIN_CAP_HDMI(w->pin.cap))
-					continue;
-				IOLog("VoodooHDA DBG: ELD change event, re-reading ELD for nid=%d\n", w->nid);
-				hdaa_eld_handler(w);
-			}
-		}
+		switchHandler(funcGroup, false);
 		break;
-	}
 	default:
 		errorMsg("Unknown unsol tag: 0x%08lx!\n", (long unsigned int)tag);
 		break;
@@ -2258,7 +2007,7 @@ void VoodooHDADevice::handleInterrupt()
 	while (HDA_FLAG_MATCH(status, HDAC_INTSTS_GIS)) {
 
 		trigger = 0;
-		
+
 		LOCK();
 
 		/* Was this a controller interrupt? */
@@ -2276,7 +2025,7 @@ void VoodooHDADevice::handleInterrupt()
 		if (status & HDAC_INTSTS_SIS_MASK) {
 			for (int i = 0; i < mNumChannels; i++) {
 				if ((status & (1 << (mChannels[i].off >> 5))) &&
-				    (handleStreamInterrupt(&mChannels[i]) != 0))
+						(handleStreamInterrupt(&mChannels[i]) != 0))
 					trigger |= (1 << i);
 			}
 		}
@@ -2313,7 +2062,7 @@ int VoodooHDADevice::audioCtlOssMixerInit(PcmDevice *pcmDevice)
 {
 	FunctionGroup *funcGroup = pcmDevice->funcGroup;
 	AudioControl *control;
-  UInt32 mask, recmask; //, id;
+	UInt32 mask, recmask, id;
 	int softpcmvol;
 
 //	logMsg("VoodooHDADevice[%p]::audioCtlOssMixerInit(%p)\n", this, pcmDevice);
@@ -2326,7 +2075,7 @@ int VoodooHDADevice::audioCtlOssMixerInit(PcmDevice *pcmDevice)
 
 	mask = 0;
 	recmask = 0;
-	/*id = CODEC_ID(funcGroup->codec); */
+	id = CODEC_ID(funcGroup->codec);
 
 	/* Declare EAPD as ogain control. */
 	if (pcmDevice->playChanId >= 0) {
@@ -2345,7 +2094,7 @@ int VoodooHDADevice::audioCtlOssMixerInit(PcmDevice *pcmDevice)
 
 	/* Declare volume controls assigned to this association. */
 	control = NULL;
-	for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
+	for (int i = 0; (control = audioCtlEach(funcGroup, &i)); ) {
 		if (control->enable == 0)
 			continue;
 		if (((pcmDevice->playChanId >= 0) &&
@@ -2387,7 +2136,7 @@ int VoodooHDADevice::audioCtlOssMixerInit(PcmDevice *pcmDevice)
 			mask |= SOUND_MASK_PCM;
 		} else {
 			softpcmvol = 0;
-			for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
+			for (int i = 0; (control = audioCtlEach(funcGroup, &i)); ) {
 				if (control->enable == 0)
 					continue;
 				if ((control->widget->bindAssoc != mChannels[pcmDevice->playChanId].assocNum) &&
@@ -2439,22 +2188,22 @@ int VoodooHDADevice::audioCtlOssMixerSet(PcmDevice *pcmDevice, UInt32 dev, UInt3
 	FunctionGroup *funcGroup = pcmDevice->funcGroup;
 	AudioControl *control;
 	UInt32 mask = 0;
-	
+
 	LOCK();
-	
+
 	//logMsg("VoodooHDADevice[%p]::audioCtlOssMixerSet(%p, %ld, %ld, %ld)\n", this, pcmDevice, dev, left, right);
 
-	// Save new values. 
+	// Save new values.
 	pcmDevice->left[dev] = left;
 	pcmDevice->right[dev] = right;
 
-	
+
 	// 'ogain' is the special case implemented with EAPD.
 	if (dev == SOUND_MIXER_OGAIN) {
 		Widget *widget = NULL;
 		int i;
 		UInt32 orig;
-	
+
 		for (i = funcGroup->startNode; i < funcGroup->endNode; i++) {
 			widget = widgetGet(funcGroup, i);
 			if (!widget || (widget->enable == 0))
@@ -2464,7 +2213,7 @@ int VoodooHDADevice::audioCtlOssMixerSet(PcmDevice *pcmDevice, UInt32 dev, UInt3
 				continue;
 			break;
 		}
-		
+
 		if (i >= funcGroup->endNode) {
 			UNLOCK();
 			return -1;
@@ -2489,7 +2238,7 @@ int VoodooHDADevice::audioCtlOssMixerSet(PcmDevice *pcmDevice, UInt32 dev, UInt3
 /*	if(dev == SOUND_MIXER_MIC)
 		mask |= SOUND_MASK_MONITOR;*/
 	// Recalculate all controls related to this OSS device.
-	for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
+	for (int i = 0; (control = audioCtlEach(funcGroup, &i)); ) {
 		UInt32 mute;
 		int lvol, rvol;
 		if ((control->enable == 0) || !(control->ossmask & mask))
@@ -2523,7 +2272,7 @@ int VoodooHDADevice::audioCtlOssMixerSet(PcmDevice *pcmDevice, UInt32 dev, UInt3
 			lvol = (lvol * control->step + 50) / 100;
 			rvol = (rvol * control->step + 50) / 100;
 		}
-        
+
 		audioCtlAmpSet(control, mute, lvol, rvol);
 	}
 
@@ -2542,10 +2291,8 @@ UInt32 VoodooHDADevice::audioCtlOssMixerSetRecSrc(PcmDevice *pcmDevice, UInt32 s
 	Channel *channel;
 	UInt32 ret = 0xffffffff;
 
-//		logMsg("VoodooHDADevice[%p]::audioCtlOssMixerSetRecSrc(%p, 0x%lx)\n", this, pcmDevice, src);
 
-	if (pcmDevice->recChanId < 0 || pcmDevice->recChanId >= mNumChannels)
-		return 0;
+//		logMsg("VoodooHDADevice[%p]::audioCtlOssMixerSetRecSrc(%p, 0x%lx)\n", this, pcmDevice, src);
 
 	LOCK();
 
@@ -2572,13 +2319,13 @@ int VoodooHDADevice::audioCtlOssMixerGet(PcmDevice *pcmDevice, UInt32 dev, UInt3
 //	int controlIndex;
 	//Slice
 	UInt32 mask = (1 << dev);
- 
-	
+
+
 	LOCK();
-	
-	
+
+
 	/* Recalculate all controls related to this OSS device. */
-	for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
+	for (int i = 0; (control = audioCtlEach(funcGroup, &i)); ) {
 		if ((control->enable == 0) || !(control->ossmask & mask))
 			continue;
 		if (!(((pcmDevice->playChanId >= 0) &&
@@ -2587,25 +2334,25 @@ int VoodooHDADevice::audioCtlOssMixerGet(PcmDevice *pcmDevice, UInt32 dev, UInt3
 			   (control->widget->bindAssoc == mChannels[pcmDevice->recChanId].assocNum)) ||
 			  (control->widget->bindAssoc == -2)))
 			continue;
-	
+
 		audioCtlAmpGetGain(control);
-	
+
 		if(control->step != 0) {
 //			bFound = true;
 //			controlIndex = i;
 			lvol = 100 * control->left / control->step;
 			rvol = 100 * control->right / control->step;
-			
+
 			pcmDevice->left[dev] = lvol;
 			pcmDevice->right[dev] = rvol;
 		}
 	}
-	
+
 	UNLOCK();
-	
+
 	if(left != 0) (*left) = lvol;
 	if(right != 0) (*right) = rvol;
-	
+
 	return (lvol | (rvol << 8));
 }
 
@@ -2618,7 +2365,7 @@ void VoodooHDADevice::mixerSetDefaults(PcmDevice *pcmDevice)
 			def = 100;
 		audioCtlOssMixerSet(pcmDevice, n, def, def);
 	}
-//Slice - attention!	
+//Slice - attention!
 //	if (audioCtlOssMixerSetRecSrc(pcmDevice, SOUND_MASK_INPUT) == 0)
 		//errorMsg("warning: couldn't set recording source to input\n");
 		return;
@@ -2727,14 +2474,6 @@ void VoodooHDADevice::channelStop(Channel *channel, const bool shouldLock)
 	if (shouldLock)
 		LOCK();
 
-	if (channel->pcmDevice && channel->pcmDevice->digital >= 2) {
-		nid_t pin = getHDMIPinForChannel(channel);
-		IOLog("VoodooHDA DBG: channelStop HDMI pin=%d streamId=%d\n",
-		      pin, channel->streamId);
-		if (pin != (nid_t)-1 && mFBNotifier)
-			mFBNotifier->notifyStreamingState(cad, pin, false);
-	}
-
 	streamStop(channel);
 
 	for (int i = 0; channel->io[i] != -1; i++) {
@@ -2755,24 +2494,12 @@ void VoodooHDADevice::channelStart(Channel *channel, const bool shouldLock)
 	if (shouldLock)
 		LOCK();
 
-	if (channel->pcmDevice && channel->pcmDevice->digital >= 2) {
-		nid_t pin = getHDMIPinForChannel(channel);
-		IOLog("VoodooHDA DBG: channelStart HDMI pin=%d streamId=%d speed=%d\n",
-		      pin, channel->streamId, (int)channel->speed);
-	}
-
 	streamStop(channel);
 	streamReset(channel);
 	bdlSetup(channel);
 	streamSetId(channel);
 	streamSetup(channel);
 	streamStart(channel);
-
-	if (channel->pcmDevice && channel->pcmDevice->digital >= 2 && mFBNotifier) {
-		nid_t pin = getHDMIPinForChannel(channel);
-		if (pin != (nid_t)-1)
-			mFBNotifier->notifyStreamingState(channel->funcGroup->codec->cad, pin, true);
-	}
 
 	if (shouldLock)
 		UNLOCK();
@@ -2857,16 +2584,14 @@ void VoodooHDADevice::streamSetup(Channel *channel)
 {
 	AudioAssoc *assoc = &channel->funcGroup->audio.assocs[channel->assocNum];
 	int totalchn;
-  int totalextchn;
 	nid_t cad = channel->funcGroup->codec->cad;
 	UInt16 format, digFormat;
 	const static
 	UInt16 chmap[2][5] = {{ 0x0010, 0x0001, 0x0201, 0x0321, 0x0321 }, /* 5.1 */
-                        { 0x0010, 0x0001, 0x2201, 0x3321, 0x4321 }};/* 7.1 */
+			{ 0x0010, 0x0001, 0x2201, 0x3321, 0x4321 }};/* 7.1 */
 	int map = -1;
-	
+
 	totalchn = AFMT_CHANNEL(channel->format);
-  totalextchn = AFMT_EXTCHANNEL(channel->format);
 	if (!totalchn) {
 		if (channel->format & (AFMT_STEREO | AFMT_AC3)) { //Slice - AC3 supports more then Stereo, but here we force 2
 			totalchn = 2;
@@ -2894,25 +2619,18 @@ void VoodooHDADevice::streamSetup(Channel *channel)
 	format |= (totalchn - 1);
 	//Slice - from BSD
 	/* Set channel mapping for known speaker setups. */
-	if (assoc->pinset == 0x0007 || assoc->pinset == 0x0013) // Standard 5.1 
+	if (assoc->pinset == 0x0007 || assoc->pinset == 0x0013) // Standard 5.1
 		map = 0;
-	 else if (assoc->pinset == 0x0017) // Standard 7.1 
+	 else if (assoc->pinset == 0x0017) // Standard 7.1
 		map = 1;
-	
+
 	digFormat = HDA_CMD_SET_DIGITAL_CONV_FMT1_DIGEN | HDA_CMD_SET_DIGITAL_CONV_FMT1_COPY;
 	if (channel->format & AFMT_AC3)
 		digFormat |= HDA_CMD_SET_DIGITAL_CONV_FMT1_NAUDIO;
-	
+
 	writeData16(channel->off + HDAC_SDFMT, format);
-    
-	/* AppleGFXHDA never uses stripe mode for HDMI audio.  Stripe causes
-	 * FIFO errors (SDSTS_FIFOE) on AMD/ATI GPU HDA controllers, producing
-	 * distorted / crackling audio.  Disable stripe for digital (HDMI/DP)
-	 * outputs; keep it only for analog multi-channel on Intel PCH. */
-	if (assoc->digital)
-		channel->stripectl = 0;
-	else
-		channel->stripectl = calculateStripectl(static_cast<UInt8>(mSDO), channel->stripecap, format);
+
+	channel->stripectl = calculateStripectl(static_cast<UInt8>(mSDO), channel->stripecap, format);
 
 	for (int i = 0, chn = 0; channel->io[i] != -1; i++) {
 		Widget *widget;
@@ -2922,80 +2640,73 @@ void VoodooHDADevice::streamSetup(Channel *channel)
 		if (!widget)
 			continue;
 
-//		if ((assoc->hpredir >= 0) && (i == assoc->pincnt))
-//			chn = 0;
 		/* If HP redirection is enabled, but failed to use same DAC make last DAC one to duplicate first one. */
 		if (assoc->fakeredir && i == (assoc->pincnt - 1)) {
 			c = (channel->streamId << 4);
 			chn = 0;
 		} else {
 			if (map >= 0) /* Map known speaker setups. */
-				chn = (((chmap[map][totalchn / 2] >> i * 4) & 0xf) - 1) * 2;
+				chn = (((chmap[map][totalchn / 2] >> i * 4) &
+						0xf) - 1) * 2;
 			if (chn < 0 || chn >= totalchn) {
 				/* This is until OSS will support multichannel. Should be: c = 0; to disable unused DAC */
 				c = 0;
 			} else {
 				c = (channel->streamId << 4) | chn;
-			}			
-		}		
+			}
+		}
 		if(mVerbose >= 2)
 			logMsg("PCMDIR_%s: Stream setup nid=%d format=%08lx speed=%ld , dfmt=0x%04x, chan=0x%04x, stripe=%d\n",
-				   (channel->direction == PCMDIR_PLAY) ?"PLAY" : "REC", channel->io[i], 
+				   (channel->direction == PCMDIR_PLAY) ?"PLAY" : "REC", channel->io[i],
 				   (long unsigned int)channel->format, (long int)channel->speed, digFormat, c, channel->stripectl);
-		
-		
+
+
 //		logMsg("PCMDIR_%s: Stream setup nid=%d: format=0x%04x, digFormat=0x%04x\n",
 //				(channel->direction == PCMDIR_PLAY) ? "PLAY" : "REC", channel->io[i], format, digFormat);
 		sendCommand(HDA_CMD_SET_CONV_FMT(cad, channel->io[i], format), cad);
-		if (HDA_PARAM_AUDIO_WIDGET_CAP_DIGITAL(widget->params.widgetCap)) {
-			/* Send BOTH digital converter verbs matching AppleGFXHDA:
-			 * 0x70e (FMT2/IEC60958 category) FIRST, then 0x70d (FMT1/enable) */
-			UInt8 digFmt2 = (channel->format & AFMT_AC3) ? 0x19 : 0x01; /* category code */
-			sendCommand(HDA_CMD_12BIT(cad, channel->io[i], 0x70e, digFmt2), cad);
+		if (HDA_PARAM_AUDIO_WIDGET_CAP_DIGITAL(widget->params.widgetCap))
 			sendCommand(HDA_CMD_SET_DIGITAL_CONV_FMT1(cad, channel->io[i], digFormat), cad);
-		}
 		sendCommand(HDA_CMD_SET_CONV_STREAM_CHAN(cad, channel->io[i], c), cad);
 		if (!c)
 			continue;
 		if (HDA_PARAM_AUDIO_WIDGET_CAP_STRIPE(widget->params.widgetCap))
 			sendCommand(HDA_CMD_SET_STRIPE_CONTROL(cad, channel->io[i], channel->stripectl), cad);
 		cchn = HDA_PARAM_AUDIO_WIDGET_CAP_CC(widget->params.widgetCap);
-		if (cchn > 1 && chn < totalchn) {
+		if (cchn > 1) {
 			cchn = min(cchn, totalchn - chn - 1);
 			sendCommand(HDA_CMD_SET_CONV_CHAN_COUNT(cad, channel->io[i], cchn), cad);
 		}
 		if (HDA_PARAM_AUDIO_WIDGET_CAP_DIGITAL(widget->params.widgetCap))
-			streamHDMIorDPExtraSetup(channel, channel->io[i], assoc, totalchn, totalextchn);
+			streamHDMIorDPExtraSetup(channel->funcGroup, channel->io[i], assoc, cchn + 1);
 
 		chn += cchn + 1;
 	}
 }
 
-void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, AudioAssoc *assoc, int totalchn, int totalext)
+void VoodooHDADevice::streamHDMIorDPExtraSetup(FunctionGroup* funcGroup, nid_t dac, AudioAssoc *assoc, int hdmi_totalchn)
 {
-  FunctionGroup* funcGroup = channel->funcGroup;
-	UInt8 csum;
+	UInt8 csum = 0;
 	UInt16 AudioInfopacketBufferSize = 0xFFFFU;
 	nid_t cad = funcGroup->codec->cad;
 	nid_t nid_pin;
 	Widget *widget_pin;
-	bool atiCodec = isAtiHdmiCodec(funcGroup->codec);
-	IOLog("VoodooHDA HDMI: streamSetup dac=%d ati=%d totalchn=%d totalext=%d codec=0x%04x:0x%04x\n",
-		  dac, atiCodec, totalchn, totalext, funcGroup->codec->vendorId, funcGroup->codec->deviceId);
-
-  /* Mapping formats to HDMI channel allocations. */
-  const static UInt8 hdmica[2][8] =
-  /*  1     2     3     4     5     6     7     8  */
-  {{ 0x02, 0x00, 0x04, 0x08, 0x0a, 0x0e, 0x12, 0x12 }, /* x.0 */
-   { 0x01, 0x03, 0x01, 0x03, 0x09, 0x0b, 0x0f, 0x13 }}; /* x.1 */
-  /* Mapping formats to HDMI channels order. */
-  const static UInt32 hdmich[2][8] =
-  /*  1  /  5     2  /  6     3  /  7     4  /  8  */
-  {{ 0xFFFF0F00, 0xFFFFFF10, 0xFFF2FF10, 0xFF32FF10,
-     0xFF324F10, 0xF5324F10, 0x54326F10, 0x54326F10 }, /* x.0 */
-   { 0xFFFFF000, 0xFFFF0100, 0xFFFFF210, 0xFFFF2310,
-     0xFF32F410, 0xFF324510, 0xF6324510, 0x76325410 }}; /* x.1 */
-
+	/*
+	 * EIA-CEA 861-D speaker mappings (section 6.6.2)
+	 * ASP Channels 8-7-6-5-4-3-2-1
+	 */
+	const static
+	UInt8  hdmica[8] = {
+		0x00, /*  -   -   -  -  -  -  FR FL */
+		0x00, /*  -   -   -  -  -  -  FR FL */
+		0x04, /*  -   -   - RC  -  -  FR FL */
+		0x08, /*  -   -  RR RL  -  -  FR FL */
+		0x0A, /*  -   -  RR RL FC  -  FR FL */
+		0x0B, /*  -   -  RR RL FC LFE FR FL */
+		0x12, /* RRC RLC RR RL FC  -  FR FL */
+		0x13  /* RRC RLC RR RL FC LFE FR FL */
+	};
+	const static
+	UInt32 hdmich[8] = { 0xFFFFFF00, 0xFFFFFF10, 0xFFF2FF10, 0xFF32FF10, 0xFF432F10, 0xFF542310, 0x65432F10, 0x76542310 };
 
 	for (int j = 0; j < 16; j++) {
 		if (assoc->dacs[j] != dac)
@@ -3016,137 +2727,10 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 		 *   ch 1 - FL, ch 2 - FR, ch 3 - LFE, ch 4 - FC, ch 5 - RL, ch 6 - RR, ch 7 - RLC, ch 8 - RRC
 		 */
 
-		/*
-		 * Ensure GPU audio pipe is enabled and re-read ELD at stream start.
-		 * GPU driver may have programmed ELD after our initial read at boot.
-		 */
-		if (atiCodec && mFBNotifier)
-			mFBNotifier->ensureAudioPipeEnabled(cad, nid_pin);
-
-		IOLog("VoodooHDA HDMI: streamSetup nid_pin=%d dac=%d eld_len=%d (before re-read) pinCap=0x%08x\n",
-			  nid_pin, dac, widget_pin->eld_len, (unsigned)widget_pin->pin.cap);
-		hdaa_eld_handler(widget_pin);
-		IOLog("VoodooHDA HDMI: streamSetup nid_pin=%d eld_len=%d (after re-read)\n",
-			  nid_pin, widget_pin->eld_len);
-
-		/*
-		 * Determine which path to use:
-		 *  - If standard DIP_SIZE works → use standard HDA path (chan_slot + infoframe)
-		 *  - Else if ATI codec → use ATI verbs (multichannel + channel_allocation)
-		 *
-		 * On macOS, Apple GPU drivers often program standard HDA ELD even for ATI codecs,
-		 * so we try standard first. This is critical for DP→HDMI adapters.
-		 */
-		UInt32 dipSizeTest = sendCommand(HDA_CMD_GET_HDMI_DIP_SIZE(cad, nid_pin, 0x00), cad);
-		bool useStandardPath = (dipSizeTest != HDA_INVALID) && ((dipSizeTest & 0xff) > 0);
-
-		IOLog("VoodooHDA HDMI: streamSetup nid_pin=%d DIP_SIZE(0x00)=0x%08x -> useStandard=%d ati=%d\n",
-			  nid_pin, (unsigned)dipSizeTest, useStandardPath, atiCodec);
-
-		if (atiCodec && !useStandardPath) {
-			/*
-			 * ATI/AMD HDMI channel mapping via vendor-specific verbs.
-			 * Used when standard HDA DIP infoframe is not available.
-			 */
-			int ca = hdmica[totalext == 0 ? 0 : 1][totalchn - 1];
-			IOLog("VoodooHDA HDMI: ATI verb path nid_pin=%d ca=0x%02x totalchn=%d\n",
-				  nid_pin, ca, totalchn);
-
-			/* Set multichannel slots using ATI paired-mode verbs.
-			 * Format (matching AppleGFXHDA): data = (base_slot << 4) | enable_bit
-			 * enable_bit = 1 if this channel pair is active, 0 if not. */
-			static const UInt16 ati_paired_verbs[4] = {
-				ATI_VERB_SET_MULTICHANNEL_01,
-				ATI_VERB_SET_MULTICHANNEL_23,
-				ATI_VERB_SET_MULTICHANNEL_45,
-				ATI_VERB_SET_MULTICHANNEL_67
-			};
-
-			for (int k = 0; k < 4; k++) {
-				int base_slot = k * 2;
-				int enable = (base_slot < totalchn) ? 1 : 0;
-				UInt32 val = (base_slot << 4) | enable;
-				sendCommand(ATI_CMD_12BIT(cad, nid_pin, ati_paired_verbs[k], val), cad);
-				IOLog("VoodooHDA HDMI: ATI MC%d%d=0x%02x\n", base_slot, base_slot+1, val);
-			}
-
-			sendCommand(ATI_CMD_12BIT(cad, nid_pin, ATI_VERB_SET_CHANNEL_ALLOCATION, ca), cad);
-			IOLog("VoodooHDA HDMI: ATI CA=0x%02x pinCtrl=0x%02x\n", ca, widget_pin->pin.ctrl);
-
-			if (HDA_PARAM_PIN_CAP_HDMI(widget_pin->pin.cap) &&
-				HDA_PARAM_PIN_CAP_HBR(widget_pin->pin.cap)) {
-				UInt32 hbr = ((channel->format & AFMT_AC3) && (totalchn == 8)) ? ATI_HBR_ENABLE : 0;
-				sendCommand(ATI_CMD_12BIT(cad, nid_pin, ATI_VERB_SET_HBR_CONTROL, hbr), cad);
-			}
-
-			logMsg("ATI HDMI verb path: nid=%d ca=0x%02x totalchn=%d\n", nid_pin, ca, totalchn);
-
-			/*
-			 * Ensure pin OUT is enabled.  AppleGFXHDA always sends
-			 * SET_PIN_WIDGET_CTRL via Path::enable.  ATI pin caps may
-			 * not report HDMI/HBR bits, so the standard HBR block
-			 * (below) never fires — we must do it explicitly.
-			 */
-			widget_pin->pin.ctrl |= 0x40; /* OUT_ENABLE */
-			sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, nid_pin, widget_pin->pin.ctrl), cad);
-
-			/*
-			 * AppleGFXHDA always sends standard HDA channel slots (0x734) and
-			 * enables DIP transmission (0x732=0xc0) even on ATI codecs with
-			 * DIP_SIZE=0.  Without DIP_XMIT the monitor never sees the Audio
-			 * InfoFrame and won't decode audio.
-			 */
-			for (int k = 0; k < 8; k++) {
-				UInt16 slotVerb;
-				if (k < totalchn) {
-					slotVerb = (((hdmich[totalext == 0 ? 0 : 1][totalchn - 1] >> (k * 4)) & 0xf) << 4) | k;
-				} else {
-					slotVerb = 0xf0 | k;  /* unused slot: slot=0xf, channel=k */
-				}
-				sendCommand(HDA_CMD_SET_HDMI_CHAN_SLOT(cad, nid_pin, slotVerb), cad);
-			}
-
-			/*
-			 * Write Audio InfoFrame via DIP verbs even with DIP_SIZE=0.
-			 * ATI codecs may still accept DIP_DATA writes; without the
-			 * InfoFrame content the monitor sees an empty packet and
-			 * won't decode audio.  Matches standard HDA path (lines below).
-			 */
-			{
-				int ca = hdmica[totalext == 0 ? 0 : 1][totalchn - 1];
-				UInt8 csum = -(0x84 + 0x01 + 0x0a + (totalchn - 1) + ca);
-
-				/* Stop transmission */
-				sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
-				sendCommand(HDA_CMD_SET_HDMI_DIP_XMIT(cad, nid_pin, 0x00), cad);
-
-				/* Write Audio InfoFrame header + data */
-				sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
-				sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x84), cad);  /* type: Audio */
-				sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x01), cad);  /* version */
-				sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x0a), cad);  /* length */
-				sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, csum), cad);  /* checksum */
-				sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, totalchn - 1), cad); /* CC */
-				sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);  /* CT/SF/SS */
-				sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);  /* format */
-				sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, ca), cad);    /* CA */
-
-				/* Start transmission */
-				sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
-				sendCommand(HDA_CMD_SET_HDMI_DIP_XMIT(cad, nid_pin, 0xc0), cad);
-			}
-			IOLog("VoodooHDA HDMI: ATI path + CHAN_SLOT + InfoFrame + DIP_XMIT=0xc0 nid=%d ca=0x%02x chn=%d\n",
-				  nid_pin, hdmica[totalext == 0 ? 0 : 1][totalchn - 1], totalchn);
-			continue;
-		}
-
-		/* === Standard HDA path (Intel, Nvidia, ATI with macOS GPU driver) === */
-		IOLog("VoodooHDA HDMI: standard HDA path nid_pin=%d\n", nid_pin);
-
-		/* Set channel mapping (standard HDA). */
+		/* Set channel mapping. */
 		for (int k = 0; k < 8; k++)
 			sendCommand(HDA_CMD_SET_HDMI_CHAN_SLOT(cad, nid_pin,
-												   (((hdmich[totalext == 0 ? 0 : 1][totalchn - 1]>> (k * 4)) & 0xf) << 4) | k), cad);
+												   (((hdmich[hdmi_totalchn - 1] >> (k * 4)) & 0xf) << 4) | k), cad);
 
 		/*
 		 * Note on HBR (High Bit Rate)
@@ -3155,18 +2739,6 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 		 *   At present, VoodooHDA supportes AFMT_AC3 with
 		 *     frame rates 32 - 48 KHz, 16 bits/sample, 2 channels.  So HBR is not needed.
 		 */
-    /*
-     * Enable High Bit Rate (HBR) Encoded Packet Type
-     * (EPT), if supported and needed (8ch data).
-     */
-    if (HDA_PARAM_PIN_CAP_HDMI(widget_pin->pin.cap) &&
-        HDA_PARAM_PIN_CAP_HBR(widget_pin->pin.cap)) {
-      widget_pin->pin.ctrl &= ~HDA_CMD_SET_PIN_WIDGET_CTRL_VREF_ENABLE_MASK;
-      if ((channel->format & AFMT_AC3) && (totalchn == 8))
-        widget_pin->pin.ctrl |= 0x03;
-      sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, nid_pin, widget_pin->pin.ctrl), cad);
-    }
-
 
 		/*
 		 * Find size of Audio Infoframe buffer to see if it can be used.
@@ -3174,14 +2746,12 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 		 *   the Infoframe buffer has zero length.
 		 */
 		if (AudioInfopacketBufferSize == 0xFFFFU) {
+			/* do this once */
 			AudioInfopacketBufferSize = static_cast<UInt16>(sendCommand(HDA_CMD_GET_HDMI_DIP_SIZE(cad, nid_pin, 0x00), cad)) + 1U;
-			IOLog("VoodooHDA HDMI: nid_pin=%d AudioInfopacketBufferSize=%u\n", nid_pin, AudioInfopacketBufferSize);
 		}
 
-		if (AudioInfopacketBufferSize < 10U) {
-			IOLog("VoodooHDA HDMI: nid_pin=%d infoframe buffer too small (%u), skipping\n", nid_pin, AudioInfopacketBufferSize);
+		if (AudioInfopacketBufferSize < 10U)
 			continue;
-		}
 
 		/*
 		 * Send Audio Infoframe
@@ -3195,40 +2765,33 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 		sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
 		for (int k = 0; k < static_cast<int>(AudioInfopacketBufferSize); k++)
 			sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
-		
+
 		/* Write HDMI/DisplayPort audio infoframe. */
 		sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
 		/*
 		 * Need Valid ELD to tell between DP or HDMI
 		 */
-		bool isDP_conn = widget_pin->eld != NULL && widget_pin->eld_len >= 6 && ((widget_pin->eld[5] >> 2) & 0x3) == 1;
-		IOLog("VoodooHDA HDMI: nid_pin=%d infoframe: eld_len=%d conn_type=%s ca=0x%02x totalchn=%d\n",
-			  nid_pin, widget_pin->eld_len, isDP_conn ? "DP" : "HDMI",
-			  hdmica[totalext == 0 ? 0 : 1][totalchn - 1], totalchn);
-#if DP_AUDIO
-		if (isDP_conn) { /* DisplayPort */
+
+		if (eld != NULL && eld_len >= 6 && ((eld[5] >> 2) & 0x3) == 1) { /* DisplayPort */
 			sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x84), cad);
 			sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x1b), cad);
 			sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x44), cad);
-			logMsg("DP Audio infoframe\n");
-		} else {
-#endif
-      /* HDMI */
+			csum -= 0x84 + 0x1b + 0x44 + (hdmi_totalchn - 1) + hdmica[hdmi_totalchn - 1];
+		}
+		else {
+			/* HDMI */
 			sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x84), cad);
 			sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x01), cad);
 			sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x0a), cad);
-			logMsg("HDMI Audio infoframe\n");
-
-			csum = 0;
-			csum -= 0x84 + 0x01 + 0x0a + (totalchn - 1) + hdmica[totalext == 0 ? 0 : 1][totalchn - 1];
-			sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, csum), cad);
-#if DP_AUDIO
+			csum -= 0x84 + 0x01 + 0x0a + (hdmi_totalchn - 1) + hdmica[hdmi_totalchn - 1];
 		}
-#endif
-		sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, totalchn - 1), cad);
+		sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, csum), cad);
+		
+
+		sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, hdmi_totalchn - 1), cad);
 		sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
 		sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
-		sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, hdmica[totalext == 0 ? 0 : 1][totalchn - 1]), cad);
+		sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, hdmica[hdmi_totalchn - 1]), cad);
 
 		/* Start audio infoframe transmission. */
 		sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
@@ -3260,7 +2823,7 @@ void VoodooHDADevice::streamStart(Channel *channel)
 	ctl = readData32(HDAC_INTCTL);
 	ctl |= 1 << (channel->off >> 5);
 	writeData32(HDAC_INTCTL, ctl);
-  
+
   //FreeBSD update
 //  HDAC_WRITE_1(&sc->mem, off + HDAC_SDSTS, HDAC_SDSTS_DESE | HDAC_SDSTS_FIFOE | HDAC_SDSTS_BCIS);
   writeData8(channel->off + HDAC_SDSTS, HDAC_SDSTS_DESE | HDAC_SDSTS_FIFOE | HDAC_SDSTS_BCIS);
@@ -3418,11 +2981,11 @@ int VoodooHDADevice::pcmAttach(PcmDevice *pcmDevice)
 	dumpMsg("\n");
 
 	dumpMsg("OSS mixer initialization...\n");
-	
+
 	if (audioCtlOssMixerInit(pcmDevice) != 0) {
 		errorMsg("warning: mixer initialization failed\n");
 	}
-	
+
 	//logMsg("VoodooHDADevice::mixerSetDefaults begin\n");
 	UNLOCK(); // xxx
 	//logMsg("VoodooHDADevice::mixerSetDefaults mid\n");
@@ -3455,7 +3018,7 @@ void VoodooHDADevice::createPrefPanelMemoryBuf(FunctionGroup *funcGroup)
 		//mPrefPanelMemoryBufSize = nSliderTabsCount*sizeof(sliders);
 		mPrefPanelMemoryBufSize = SOUND_MIXER_NRDEVICES*sizeof(ChannelInfo);
 		mPrefPanelMemoryBuf = (ChannelInfo*)allocMem(mPrefPanelMemoryBufSize);
-		bzero(mPrefPanelMemoryBuf, mPrefPanelMemoryBufSize); 
+		bzero(mPrefPanelMemoryBuf, mPrefPanelMemoryBufSize);
 
 		mPrefPanelMemoryBufLock = IOLockAlloc();
 		mPrefPanelMemoryBufEnabled = false;
@@ -3465,7 +3028,7 @@ void VoodooHDADevice::createPrefPanelMemoryBuf(FunctionGroup *funcGroup)
 		strlcpy(mPrefPanelMemoryBuf[i].name, sliderTabs[i].name, MAX_SLIDER_TAB_NAME_LENGTH);
 		mPrefPanelMemoryBuf[i].numChannels = nSliderTabsCount;
 		for(int j = 1; j < 25; j++) {
-			if(sliderTabs[i].volSliders[j].enabled == 0) 
+			if(sliderTabs[i].volSliders[j].enabled == 0)
 				continue;
 
 			mPrefPanelMemoryBuf[i].mixerValues[j - 1].mixId = j;
@@ -3488,7 +3051,7 @@ void VoodooHDADevice::createPrefPanelMemoryBuf(FunctionGroup *funcGroup)
 void VoodooHDADevice::createPrefPanelStruct(FunctionGroup *funcGroup)
 {
 	//logMsg("createPrefPanelStruct: codec %d have %d assocNum\n", funcGroup->codec->cad, funcGroup->audio.numAssocs);
-	
+
 	//Перебираем все ассоциации которые были созданы ранее
 	for(int i = 0; i < funcGroup->audio.numAssocs; i++) {
 		//Получаем ноду которая является главной в ассоциации - это, как правило, устройство к которому или от которого приходит сигнал
@@ -3496,7 +3059,7 @@ void VoodooHDADevice::createPrefPanelStruct(FunctionGroup *funcGroup)
 		Widget *mainWidget = widgetGet(funcGroup, mainNid);
 		if(mainWidget) {
 			//logMsg("createPrefPanelStruct:    Assoc %d have main nid 0x%X %s\n", i, mainNid, mainWidget->name);
-			//logMsg("createPrefPanelStruct:    ctrl = %d  ossmask = 0x%08X\n", mainWidget->pin.ctrl, mainWidget->ossmask); 
+			//logMsg("createPrefPanelStruct:    ctrl = %d  ossmask = 0x%08X\n", mainWidget->pin.ctrl, mainWidget->ossmask);
 			 //В соответствии с названием устройства называем вкладку
 			//catPinName(mainWidget); //->pin.config, sliderTabs[nSliderTabsCount].name, MAX_SLIDER_TAB_NAME_LENGTH);
 			//sliderTabs[nSliderTabsCount].name = (char *)&mainWidget->name[5];
@@ -3509,18 +3072,18 @@ void VoodooHDADevice::createPrefPanelStruct(FunctionGroup *funcGroup)
 		PcmDevice* curPCMDevice = 0;
 		char buf[255];
 		//Теперь ищем OSS устройства которые влияют на сигнал проходящий по всем нодам текущей ассоциации
-		for(int j = 0; (control = audioCtlEach(funcGroup, j)); j++) {
+		for(int j = 0; (control = audioCtlEach(funcGroup, &j));) {
 			if((control->enable == 0) || (control->widget->enable == 0))
 				continue;
-			
+
 			if(control->widget->bindAssoc == i) {
 				ossmask |= control->ossmask;
-				//Slice - dangerous mode
-				if(control->ossmask & SOUND_MASK_MONITOR)
-					ossmask |= SOUND_MASK_MIC;
-				
+				//Slice
+				/*if(control->ossmask && SOUND_MASK_MONITOR)
+					ossmask |= SOUND_MASK_MIC; */
+
 				//logMsg("createPrefPanelStruct:        audioControl %d ossmask = 0x%08lx\n", j, (long unsigned int)ossmask);
-				
+
 			}
 			//Ищем PCM устройство к которому принадлежит OSS устройство
 			for(int pcmDeviceIndex = 0; pcmDeviceIndex < funcGroup->audio.numPcmDevices; pcmDeviceIndex++) {
@@ -3532,10 +3095,10 @@ void VoodooHDADevice::createPrefPanelStruct(FunctionGroup *funcGroup)
 			}
 		}
 		//logMsg("createPrefPanelStruct:         ossdev %s, pcmDev = %d\n", audioCtlMixerMaskToString(ossmask, buf, sizeof(buf)), pcmDeviceNum);
-		
+
 		if(ossmask & SOUND_MASK_PCM)
 			ossmask |= SOUND_MASK_IMIX;
-		
+
 		sliderTabs[nSliderTabsCount].pcmDevice = pcmDevice;
 		//Создаем регуляторы на текущей вкладке
 		for(int j = 0; j < 32; j++) {
@@ -3597,7 +3160,7 @@ void VoodooHDADevice::setMath(UInt8 tabNum, UInt8 sliderNum, UInt8 newValue)
 	engine->mChannel->useStereo = s;
 	engine->mChannel->noiseLevel = n;
 	engine->mChannel->StereoBase = b;
-	
+
 }
 
 void VoodooHDADevice::freePrefPanelMemoryBuf(void)
@@ -3605,7 +3168,7 @@ void VoodooHDADevice::freePrefPanelMemoryBuf(void)
 	IOLockLock(mPrefPanelMemoryBufLock);
 	IOLockFree(mPrefPanelMemoryBufLock);
 	mPrefPanelMemoryBufEnabled = false;
-	
+
 	freeMem(mPrefPanelMemoryBuf);
 	mPrefPanelMemoryBuf = 0;
 }
@@ -3640,11 +3203,11 @@ void VoodooHDADevice::dumpExtMsg(const char *format, ...)
 	va_start(args, format);
 	bool lockExists;
 	int length;
-	
+
 	lockExists = (!isInactive() && mExtMessageLock);
 	if (lockExists)
 		lockExtMsgBuffer(); // utilize message buffer lock for console logging as well
-	
+
 	//ASSERT(mExtMsgBufferPos < (mExtMsgBufferSize - 1));
 	if (mExtMsgBufferPos != (mExtMsgBufferSize - 2)) {
 		length = vsnprintf(mExtMsgBuffer + mExtMsgBufferPos, mExtMsgBufferSize - mExtMsgBufferPos,
@@ -3654,9 +3217,9 @@ void VoodooHDADevice::dumpExtMsg(const char *format, ...)
 		else if (length < 0)
 			IOLog("warning: vsnprintf in dumpMsg failed\n");
 	}
-	
+
 	if (lockExists)
 		unlockExtMsgBuffer();
-	
+
 	va_end(args);
 }

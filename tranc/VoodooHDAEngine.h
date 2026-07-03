@@ -34,11 +34,10 @@ public:
 	bool emptyStream;
 
 	const char *mPortName;
-	char mPortNameBuf[64];
 	UInt32 mPortType;
 
 	IOAudioSelectorControl *mSelControl;
-	
+
 	UInt32					oldOutVolumeLeft;
 	UInt32					oldOutVolumeRight;
 	UInt32					oldInputGain;
@@ -47,7 +46,7 @@ public:
 	bool mEnableVolumeChangeFix;
     // VertexBZ: flag for mute fix
 	bool mEnableMuteFix;
-	
+
 	void messageHandler(UInt32 type, const char *format, ...) __attribute__ ((format (printf, 3, 4)));
 
 	void setPinName(UInt32 pinConfig, const char* name);
@@ -65,7 +64,7 @@ public:
 	bool createAudioStream();
 
 	bool createAudioControls();
-	
+
 	static IOReturn volumeChangeHandler(IOService *target, IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue);
 	static IOReturn muteChangeHandler(IOService *target, IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
 
@@ -73,23 +72,22 @@ public:
 	IOReturn muteChanged(IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
 
 	virtual bool initWithChannel(Channel *channel);
-	virtual void free() override;
-	virtual bool initHardware(IOService *provider) override;
+	virtual void free();
+	virtual bool initHardware(IOService *provider);
 
-	virtual IOReturn performAudioEngineStart() override;
-	virtual IOReturn performAudioEngineStop() override;
+	virtual IOReturn performAudioEngineStart();
+	virtual IOReturn performAudioEngineStop();
 
-	virtual UInt32 getCurrentSampleFrame() override;
+	virtual UInt32 getCurrentSampleFrame();
 
 	virtual IOReturn performFormatChange(IOAudioStream *audioStream, const IOAudioStreamFormat *newFormat,
-			const IOAudioSampleRate *newSampleRate) override;
+			const IOAudioSampleRate *newSampleRate);
 
 	virtual IOReturn clipOutputSamples(const void *mixBuf, void *sampleBuf, UInt32 firstSampleFrame,
-			UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream) override;
+			UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream);
 	virtual IOReturn convertInputSamples(const void *sampleBuf, void *destBuf, UInt32 firstSampleFrame,
-			UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream) override;
-	virtual OSString *getLocalUniqueID() override;
-    virtual bool driverDesiresHiResSampleIntervals(void);
+			UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream);
+	virtual OSString *getLocalUniqueID();
 };
 
 #endif

@@ -15,11 +15,11 @@
 	<key>CFBundlePackageType</key>
 	<string>KEXT</string>
 	<key>CFBundleShortVersionString</key>
-	<string>$(MARKETING_VERSION)</string>
+	<string>$(MODULE_VERSION)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<string>$(MODULE_VERSION)</string>
 	<key>IOKitPersonalities</key>
 	<dict>
 		<key>VoodooHDA</key>
@@ -31,7 +31,7 @@
 			<key>CFBundleIdentifier</key>
 			<string>org.voodoo.driver.VoodooHDA</string>
 			<key>DisableInputMonitor</key>
-			<true/>
+			<false/>
 			<key>IOClass</key>
 			<string>VoodooHDADevice</string>
 			<key>IOPCIClassMatch</key>
@@ -40,72 +40,18 @@
 			<string>IOPCIDevice</string>
 			<key>IOUserClientClass</key>
 			<string>VoodooHDAUserClient</string>
-			<key>LayoutId</key>
-			<integer>80</integer>
 			<key>InhibitCache</key>
 			<false/>
 			<key>MixerValues</key>
 			<dict>
-				<key>PCM</key>
-				<integer>95</integer>
 				<key>Rec</key>
-				<integer>95</integer>
-				<key>iGain</key>
-				<integer>95</integer>
-				<key>iMix</key>
-				<integer>95</integer>
-			</dict>
-			<key>NodesToPatch</key>
-			<array/>
-			<key>Noise</key>
-			<integer>0</integer>
-			<key>Vectorize</key>
-			<true/>
-			<key>VoodooHDAEnableHalfMicVolumeFix</key>
-			<false/>
-			<key>VoodooHDAEnableHalfVolumeFix</key>
-			<false/>
-			<key>VoodooHDAEnableMuteFix</key>
-			<false/>
-			<key>VoodooHDAEnableVolumeChangeFix</key>
-			<false/>
-			<key>VoodooHDAVerboseLevel</key>
-			<integer>0</integer>
-		</dict>
-		<key>VoodooHDA-HDMI</key>
-		<dict>
-			<key>AllowMSI</key>
-			<true/>
-			<key>Boost</key>
-			<integer>0</integer>
-			<key>CFBundleIdentifier</key>
-			<string>org.voodoo.driver.VoodooHDA</string>
-			<key>DisableInputMonitor</key>
-			<true/>
-			<key>IOClass</key>
-			<string>VoodooHDADevice</string>
-			<key>IOPCIClassMatch</key>
-			<string>0x04000000&amp;0xfffc0000</string>
-			<key>IOPCIMatch</key>
-			<string>0xAAF81002 0xAAF01002 0xABF81002 0xAB201002 0xAAE01002 0xAB381002 0xAB281002</string>
-			<key>IOProbeScore</key>
-			<integer>100000</integer>
-			<key>IOProviderClass</key>
-			<string>IOPCIDevice</string>
-			<key>IOUserClientClass</key>
-			<string>VoodooHDAUserClient</string>
-			<key>InhibitCache</key>
-			<false/>
-			<key>MixerValues</key>
-			<dict>
+				<integer>70</integer>
 				<key>PCM</key>
-				<integer>95</integer>
-				<key>Rec</key>
-				<integer>95</integer>
-				<key>iGain</key>
-				<integer>95</integer>
+				<integer>100</integer>
 				<key>iMix</key>
-				<integer>95</integer>
+				<integer>0</integer>
+				<key>iGain</key>
+				<integer>0</integer>
 			</dict>
 			<key>NodesToPatch</key>
 			<array/>
@@ -129,8 +75,6 @@
 	<dict>
 		<key>com.apple.iokit.IOAudioFamily</key>
 		<string>1.1fc9</string>
-		<key>com.apple.iokit.IOGraphicsFamily</key>
-		<string>2.0</string>
 		<key>com.apple.iokit.IOPCIFamily</key>
 		<string>2.1</string>
 		<key>com.apple.kpi.iokit</key>

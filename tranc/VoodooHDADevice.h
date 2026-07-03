@@ -26,7 +26,7 @@ typedef struct {
 	UInt32 Node;
 	UInt32 Config;
 	UInt32 Type;
-	UInt32 nConns; //Число соединений 
+	UInt32 nConns; //Число соединений
 	UInt32 Conns[HDA_MAX_CONNS];
 	UInt32 Cap;
 	UInt32 Control;
@@ -45,7 +45,7 @@ typedef struct _volSlider{
 	UInt8 pcmDev; //к какому устройству PCM принадлежит регулятор
 	AudioControl *audioCtls[MAX_AUDIO_CTLS]; //Здесь перечислены какие AudioControl'ы затрагивает этот регулятор
 	UInt8 nAudioCtlsCount; //Здесь храниться число AudioControl в массиве audioCtls
-	
+
 	_volSlider() { //Конструктор по умолчанию
 		bzero(name, sizeof(name));
 		enabled = false;
@@ -60,7 +60,7 @@ typedef struct _sliderTab{
 	PcmDevice *pcmDevice; //Указатель на устройство PCM к которому принадлежат OSS Dev регуляторов на данной вкладке
 	volSlider volSliders[25]; //Регуляторы на вкладке
 	ChannelInfo *sliderChan;
-	
+
 	_sliderTab() {
 		pcmDevice = 0;
 		sliderChan = NULL;
@@ -69,7 +69,6 @@ typedef struct _sliderTab{
 }sliderTab;
 
 class VoodooHDAEngine;
-class VoodooHDAFramebufferNotifier;
 
 class IOPCIDevice;
 class IOFilterInterruptEventSource;
@@ -88,7 +87,7 @@ public:
 	IOWorkLoop *mWorkLoop;
 
 	IOCommandGate::Action mActionHandler;
-//Slice	
+//Slice
 	OSArray *NodesToPatch;
 	int NumNodes;
 	PatchArray NodesToPatchArray[MAX_NODES];
@@ -96,10 +95,9 @@ public:
 //
 	bool mSwitchCh;
 	UInt32 Boost;
-	
+
 	const char *mControllerName;
 	UInt32 mDeviceId, mSubDeviceId;
-	UInt32 mLayoutId;
 
 	IOPCIDevice *mPciNub;
 	IOMemoryMap *mBarMap;
@@ -160,7 +158,7 @@ public:
 	size_t mMsgBufferSize;
 	size_t mMsgBufferPos;
 	IOLock *mMessageLock;
-	
+
 	bool mSwitchEnable;
 	bool mInhibitCache;
 	bool mDisableInputMonitor;
@@ -189,15 +187,15 @@ public:
 	void writeData16(UInt32 offset, UInt16 value);
 	void writeData32(UInt32 offset, UInt32 value);
 
-	virtual bool init(OSDictionary *dictionary = 0) override;
-	virtual IOService *probe(IOService *provider, SInt32 *score) override;
-	virtual bool initHardware(IOService *provider) override;
+	virtual bool init(OSDictionary *dictionary = 0);
+	virtual IOService *probe(IOService *provider, SInt32 *score);
+	virtual bool initHardware(IOService *provider);
 	virtual bool createAudioEngine(Channel *channel);
-	virtual void stop(IOService *provider) override;
-	virtual void free() override;
+	virtual void stop(IOService *provider);
+	virtual void free();
 
 	virtual IOReturn performPowerStateChange(IOAudioDevicePowerState oldPowerState,
-			IOAudioDevicePowerState newPowerState, UInt32 *microsecondsUntilComplete) override;
+			IOAudioDevicePowerState newPowerState, UInt32 *microsecondsUntilComplete);
 	bool suspend();
 	bool resume();
 
@@ -261,22 +259,23 @@ public:
 	void probeFunction(Codec *codec, nid_t nid);
 
 	int unsolqFlush();
-	void handleUnsolicited(Codec *codec, UInt32 tag, UInt32 resp);
+	void handleUnsolicited(Codec *codec, UInt32 tag);
 	void micSwitchHandlerEnableWidget(FunctionGroup *funcGroup, nid_t widget, int connNum, bool Enabled);
 	void SwitchHandlerRename(FunctionGroup *funcGroup, int assocsNum, nid_t nid, UInt32 res);
 	void micSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 res);
 	void hpSwitchHandler(FunctionGroup *funcGroup, int nid, UInt32 res);
 	void switchHandler(FunctionGroup *funcGroup, bool first);
 	void switchInit(FunctionGroup *funcGroup);
+	void audioCommitEapd(FunctionGroup *funcGroup);
 
 	char *audioCtlMixerMaskToString(UInt32 mask, char *buf, size_t len);
 
-	AudioControl *audioCtlEach(FunctionGroup *funcGroup, int index);
+	AudioControl *audioCtlEach(FunctionGroup *funcGroup, int *index);
 	AudioControl *audioCtlAmpGet(FunctionGroup *funcGroup, nid_t nid, int direction, int index, int cnt);
 	void audioCtlAmpSetInternal(nid_t cad, nid_t nid, int index, int lmute, int rmute, int left, int right,
 			int direction);
 	void audioCtlAmpSet(AudioControl *ctl, UInt32 mute, int left, int right);
-	void audioCtlAmpGetInternal(nid_t cad, nid_t nid, int index, int *lmute, int *rmute, int *left, int *right, 
+	void audioCtlAmpGetInternal(nid_t cad, nid_t nid, int index, int *lmute, int *rmute, int *left, int *right,
 								int direction);
 	void audioCtlAmpGetGain(AudioControl *control);
 	void widgetConnectionSelect(Widget *widget, UInt8 index);
@@ -310,14 +309,11 @@ public:
 	void dumpPcmChannels(PcmDevice *pcmDevice);
 
 	void powerup(FunctionGroup *funcGroup);
-	void applyAppleALCExtraVerbs(FunctionGroup *funcGroup);
-	void applyAppleALCWakeVerbs(FunctionGroup *funcGroup);
 	void audioParse(FunctionGroup *funcGroup);
 	void audioCtlParse(FunctionGroup *funcGroup);
 	void vendorPatchParse(FunctionGroup *funcGroup);
 	void audioDisableNonAudio(FunctionGroup *funcGroup);
 	void audioDisableUseless(FunctionGroup *funcGroup);
-	void adjustPinAssociationsForSwitching(FunctionGroup *funcGroup);
 	void audioAssociationParse(FunctionGroup *funcGroup);
 	void audioBuildTree(FunctionGroup *funcGroup);
 	void audioDisableUnassociated(FunctionGroup *funcGroup);
@@ -360,7 +356,7 @@ public:
 	int channelGetPosition(Channel *channel);
 
 	void streamSetup(Channel *channel);
-	void streamHDMIorDPExtraSetup(Channel *channel, nid_t, AudioAssoc*, int, int);
+	void streamHDMIorDPExtraSetup(FunctionGroup*, nid_t, AudioAssoc*, int);
 	void streamStop(Channel *channel);
 	void streamStart(Channel *channel);
 	void streamReset(Channel *channel);
@@ -370,25 +366,24 @@ public:
 	int bdlAlloc(Channel *channel);
 
 	int pcmAttach(PcmDevice *pcmDevice);
-//AutumnRain	
+//AutumnRain
 /***************/
-	
+
 	sliderTab sliderTabs[25];
 	UInt8 nSliderTabsCount;
-	
+
 	ChannelInfo *mPrefPanelMemoryBuf;
 	bool mPrefPanelMemoryBufEnabled;
 	size_t mPrefPanelMemoryBufSize;
 	IOLock *mPrefPanelMemoryBufLock;
 	void lockPrefPanelMemoryBuf();
 	void unlockPrefPanelMemoryBuf();
-	
-  void hdaa_eld_handler(Widget *widget);
+
 	void catPinName(Widget *widget); //UInt32 config, char *buf, size_t size);
-	
+
 	void changeSliderValue(UInt8 tabNum, UInt8 sliderNum, UInt8 newValue);
 	void setMath(UInt8 tabNum, UInt8 sliderNum, UInt8 newValue);
-	
+
 	//Создаем разделяемую область памяти, откуда будет брать информацию PrefPanel
 	void createPrefPanelMemoryBuf(FunctionGroup *funcGroup);
 	//Создаем структуру в которой запомним какие объекты AudioControl каким регуляторам на панели PrefPanel соотвествуют
@@ -396,21 +391,21 @@ public:
 	//Считываем текущее настройки усиления и сохраняем их в разделяемой памяти
 	void updatePrefPanelMemoryBuf(void);
 	void freePrefPanelMemoryBuf(void);
-	
+
 	/*********************/
-	
+
 	struct assocTree{
 		nid_t nid[MAX_TREE_LENGHT];
 		int count;
 	} treePin[16];
-	
+
 	/*********************/
-	
+
 	char *mExtMsgBuffer;
 	size_t mExtMsgBufferSize;
 	size_t mExtMsgBufferPos;
 	IOLock *mExtMessageLock;
-	
+
 	void lockExtMsgBuffer();
 	void unlockExtMsgBuffer();
 	void dumpExtMsg(const char *format, ...) __attribute__ ((format (printf, 2, 3)));
@@ -421,26 +416,10 @@ public:
 	void extDumpNodes(FunctionGroup *funcGroup);
 	void extDumpCtls(PcmDevice *pcmDevice, const char *banner, UInt32 flag);
 	void extDumpPin(Widget *widget);
-	
+
 	/*********************/
 	void initMixerDefaultValues(void);
 	void disablePCIeNoSnoop(UInt16 vendorId);
-
-	/* Framebuffer notifier for AMD HDMI audio */
-	VoodooHDAFramebufferNotifier *mFBNotifier;
-
-	/* Dynamic HDMI engine management */
-	struct HDMIEngineSlot {
-		VoodooHDAEngine *engine;
-		Channel *channel;
-		nid_t pinNid;
-		int cad;
-		bool activated;
-	};
-	HDMIEngineSlot mHDMIEngines[16];
-	int mNumHDMIEngines;
-	nid_t getHDMIPinForChannel(Channel *channel);
-	void updateHDMIEnginePresence();
 };
 
 #endif

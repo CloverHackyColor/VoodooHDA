@@ -36,7 +36,7 @@ void Float32ToNativeInt16_X86(const Float32 *src, SInt16 *dst, unsigned int numT
 	const float *src0 = src;
 	int16_t *dst0 = dst;
 	unsigned int count = numToConvert;
-	
+
 	if (count >= 8) {
 		// vector -- requires 8+ samples
 		ROUNDMODE_NEG_INF
@@ -46,7 +46,7 @@ void Float32ToNativeInt16_X86(const Float32 *src, SInt16 *dst, unsigned int numT
 		const __m128 vscale = (const __m128) { 32768.0f, 32768.0f, 32768.0f, 32768.0f  };
 		__m128 vf0, vf1;
 		__m128i vi0, vi1, vpack0;
-	
+
 #define F32TOLE16 \
 		vf0 = _mm_mul_ps(vf0, vscale);			\
 		vf1 = _mm_mul_ps(vf1, vscale);			\
@@ -62,14 +62,14 @@ void Float32ToNativeInt16_X86(const Float32 *src, SInt16 *dst, unsigned int numT
 
 		int falign = (uintptr_t)src & 0xF;
 		int ialign = (uintptr_t)dst & 0xF;
-	
+
 		if (falign != 0 || ialign != 0) {
 			// do one unaligned conversion
 			vf0 = _mm_loadu_ps(src);
 			vf1 = _mm_loadu_ps(src+4);
 			F32TOLE16
 			_mm_storeu_si128((__m128i *)dst, vpack0);
-			
+
 			// advance such that the destination ints are aligned
 			unsigned int n = (16 - ialign) / 2;
 			src += n;
@@ -91,14 +91,14 @@ void Float32ToNativeInt16_X86(const Float32 *src, SInt16 *dst, unsigned int numT
 				goto VectorCleanup;
 			}
 		}
-	
+
 		// aligned loads, aligned stores
 		while (count >= 8) {
 			vf0 = _mm_load_ps(src);
 			vf1 = _mm_load_ps(src+4);
 			F32TOLE16
 			_mm_store_si128((__m128i *)dst, vpack0);
-			
+
 			src += 8;
 			dst += 8;
 			count -= 8;
@@ -116,12 +116,12 @@ VectorCleanup:
 		RESTORE_ROUNDMODE
 		return;
 	}
-	
+
 	// scalar for small numbers of samples
 	if (count > 0) {
 		double scale = 2147483648.0, round = 32768.0, max32 = 2147483648.0 - 1.0 - 32768.0, min32 = 0.;
 		ROUNDMODE_NEG_INF
-		
+
 		while (count-- > 0) {
 			double f0 = *src++;
 			f0 = f0 * scale + round;
@@ -140,7 +140,7 @@ void Float32ToSwapInt16_X86(const Float32 *src, SInt16 *dst, unsigned int numToC
 	const float *src0 = src;
 	int16_t *dst0 = dst;
 	unsigned int count = numToConvert;
-	
+
 	if (count >= 8) {
 		// vector -- requires 8+ samples
 		ROUNDMODE_NEG_INF
@@ -150,7 +150,7 @@ void Float32ToSwapInt16_X86(const Float32 *src, SInt16 *dst, unsigned int numToC
 		const __m128 vscale = (const __m128) { 32768.0f, 32768.0f, 32768.0f, 32768.0f  };
 		__m128 vf0, vf1;
 		__m128i vi0, vi1, vpack0;
-	
+
 #define F32TOBE16 \
 		vf0 = _mm_mul_ps(vf0, vscale);			\
 		vf1 = _mm_mul_ps(vf1, vscale);			\
@@ -167,7 +167,7 @@ void Float32ToSwapInt16_X86(const Float32 *src, SInt16 *dst, unsigned int numToC
 
 		int falign = (uintptr_t)src & 0xF;
 		int ialign = (uintptr_t)dst & 0xF;
-	
+
 		if (falign != 0 || ialign != 0) {
 			// do one unaligned conversion
 			vf0 = _mm_loadu_ps(src);
@@ -196,14 +196,14 @@ void Float32ToSwapInt16_X86(const Float32 *src, SInt16 *dst, unsigned int numToC
 				goto VectorCleanup;
 			}
 		}
-	
+
 		// aligned loads, aligned stores
 		while (count >= 8) {
 			vf0 = _mm_load_ps(src);
 			vf1 = _mm_load_ps(src+4);
 			F32TOBE16
 			_mm_store_si128((__m128i *)dst, vpack0);
-			
+
 			src += 8;
 			dst += 8;
 			count -= 8;
@@ -221,12 +221,12 @@ VectorCleanup:
 		RESTORE_ROUNDMODE
 		return;
 	}
-	
+
 	// scalar for small numbers of samples
 	if (count > 0) {
 		double scale = 2147483648.0, round = 32768.0, max32 = 2147483648.0 - 1.0 - 32768.0, min32 = 0.;
 		ROUNDMODE_NEG_INF
-		
+
 		while (count-- > 0) {
 			double f0 = *src++;
 			f0 = f0 * scale + round;
@@ -245,7 +245,7 @@ void Float32ToNativeInt32_X86(const Float32 *src, SInt32 *dst, unsigned int numT
 	const float *src0 = src;
 	SInt32 *dst0 = dst;
 	unsigned int count = numToConvert;
-	
+
 	if (count >= 4) {
 		// vector -- requires 4+ samples
 		ROUNDMODE_NEG_INF
@@ -255,7 +255,7 @@ void Float32ToNativeInt32_X86(const Float32 *src, SInt32 *dst, unsigned int numT
 		const __m128 vscale = (const __m128) { 2147483648.0f, 2147483648.0f, 2147483648.0f, 2147483648.0f  };
 		__m128 vf0;
 		__m128i vi0;
-	
+
 #define F32TOLE32(x) \
 		vf##x = _mm_mul_ps(vf##x, vscale);			\
 		vf##x = _mm_add_ps(vf##x, vround);			\
@@ -265,13 +265,13 @@ void Float32ToNativeInt32_X86(const Float32 *src, SInt32 *dst, unsigned int numT
 
 		int falign = (uintptr_t)src & 0xF;
 		int ialign = (uintptr_t)dst & 0xF;
-	
+
 		if (falign != 0 || ialign != 0) {
 			// do one unaligned conversion
 			vf0 = _mm_loadu_ps(src);
 			F32TOLE32(0)
 			_mm_storeu_si128((__m128i *)dst, vi0);
-			
+
 			// and advance such that the destination ints are aligned
 			unsigned int n = (16 - ialign) / 4;
 			src += n;
@@ -292,12 +292,12 @@ void Float32ToNativeInt32_X86(const Float32 *src, SInt32 *dst, unsigned int numT
 				goto VectorCleanup;
 			}
 		}
-	
+
 		while (count >= 4) {
 			vf0 = _mm_load_ps(src);
 			F32TOLE32(0)
 			_mm_store_si128((__m128i *)dst, vi0);
-			
+
 			src += 4;
 			dst += 4;
 			count -= 4;
@@ -314,12 +314,12 @@ VectorCleanup:
 		RESTORE_ROUNDMODE
 		return;
 	}
-	
+
 	// scalar for small numbers of samples
 	if (count > 0) {
 		double scale = 2147483648.0, round = 0.5, max32 = 2147483648.0 - 1.0 - 0.5, min32 = 0.;
 		ROUNDMODE_NEG_INF
-		
+
 		while (count-- > 0) {
 			double f0 = *src++;
 			f0 = f0 * scale + round;
@@ -337,7 +337,7 @@ void Float32ToSwapInt32_X86(const Float32 *src, SInt32 *dst, unsigned int numToC
 	const float *src0 = src;
 	SInt32 *dst0 = dst;
 	unsigned int count = numToConvert;
-	
+
 	if (count >= 4) {
 		// vector -- requires 4+ samples
 		ROUNDMODE_NEG_INF
@@ -347,7 +347,7 @@ void Float32ToSwapInt32_X86(const Float32 *src, SInt32 *dst, unsigned int numToC
 		const __m128 vscale = (const __m128) { 2147483648.0f, 2147483648.0f, 2147483648.0f, 2147483648.0f  };
 		__m128 vf0;
 		__m128i vi0;
-	
+
 #define F32TOBE32(x) \
 		vf##x = _mm_mul_ps(vf##x, vscale);			\
 		vf##x = _mm_add_ps(vf##x, vround);			\
@@ -358,13 +358,13 @@ void Float32ToSwapInt32_X86(const Float32 *src, SInt32 *dst, unsigned int numToC
 
 		int falign = (uintptr_t)src & 0xF;
 		int ialign = (uintptr_t)dst & 0xF;
-	
+
 		if (falign != 0 || ialign != 0) {
 			// do one unaligned conversion
 			vf0 = _mm_loadu_ps(src);
 			F32TOBE32(0)
 			_mm_storeu_si128((__m128i *)dst, vi0);
-			
+
 			// and advance such that the destination ints are aligned
 			unsigned int n = (16 - ialign) / 4;
 			src += n;
@@ -385,12 +385,12 @@ void Float32ToSwapInt32_X86(const Float32 *src, SInt32 *dst, unsigned int numToC
 				goto VectorCleanup;
 			}
 		}
-	
+
 		while (count >= 4) {
 			vf0 = _mm_load_ps(src);
 			F32TOBE32(0)
 			_mm_store_si128((__m128i *)dst, vi0);
-			
+
 			src += 4;
 			dst += 4;
 			count -= 4;
@@ -407,12 +407,12 @@ VectorCleanup:
 		RESTORE_ROUNDMODE
 		return;
 	}
-	
+
 	// scalar for small numbers of samples
 	if (count > 0) {
 		double scale = 2147483648.0, round = 0.5, max32 = 2147483648.0 - 1.0 - 0.5, min32 = 0.;
 		ROUNDMODE_NEG_INF
-		
+
 		while (count-- > 0) {
 			double f0 = *src++;
 			f0 = f0 * scale + round;
@@ -452,7 +452,7 @@ void Float32ToNativeInt24_X86(const Float32 *src, UInt8 *dst, unsigned int numTo
 	const Float32 *src0 = src;
 	UInt8 *dst0 = dst;
 	unsigned int count = numToConvert;
-	
+
 	if (count >= 6) {
 		// vector -- requires 6+ samples
 		ROUNDMODE_NEG_INF
@@ -473,7 +473,7 @@ void Float32ToNativeInt24_X86(const Float32 *src, UInt8 *dst, unsigned int numTo
 		__m128i vi0;
 
 		int falign = (uintptr_t)src & 0xF;
-	
+
 		if (falign != 0) {
 			// do one unaligned conversion
 			vf0 = _mm_loadu_ps(src);
@@ -487,19 +487,19 @@ void Float32ToNativeInt24_X86(const Float32 *src, UInt8 *dst, unsigned int numTo
 			dst += 3*n;	// bytes
 			count -= n;
 		}
-	
+
 		while (count >= 6) {
 			vf0 = _mm_load_ps(src);
 			F32TOLE32(0)
 			store = Pack32ToLE24(vi0, mask);
 			_mm_storeu_si128((__m128i *)dst, store);	// destination always unaligned
-			
+
 			src += 4;
 			dst += 12;	// bytes
 			count -= 4;
 		}
-		
-		
+
+
 		if (count >= 4) {
 			vf0 = _mm_load_ps(src);
 			F32TOLE32(0)
@@ -507,7 +507,7 @@ void Float32ToNativeInt24_X86(const Float32 *src, UInt8 *dst, unsigned int numTo
 			((UInt32 *)dst)[0] = u.i[0];
 			((UInt32 *)dst)[1] = u.i[1];
 			((UInt32 *)dst)[2] = u.i[2];
-			
+
 			src += 4;
 			dst += 12;	// bytes
 			count -= 4;
@@ -527,12 +527,12 @@ void Float32ToNativeInt24_X86(const Float32 *src, UInt8 *dst, unsigned int numTo
 		RESTORE_ROUNDMODE
 		return;
 	}
-	
+
 	// scalar for small numbers of samples
 	if (count > 0) {
 		double scale = 2147483648.0, round = 0.5, max32 = 2147483648.0 - 1.0 - 0.5, min32 = 0.;
 		ROUNDMODE_NEG_INF
-		
+
 		while (count-- > 0) {
 			double f0 = *src++;
 			f0 = f0 * scale + round;
@@ -567,7 +567,7 @@ void NativeInt16ToFloat32_X86(const SInt16 *src, Float32 *dst, unsigned int numT
 	vf##y = _mm_cvtepi32_ps(vi##y); \
 	vf##x = _mm_mul_ps(vf##x, vscale); \
 	vf##y = _mm_mul_ps(vf##y, vscale);
-		
+
 		const __m128 vscale = (const __m128) { 1.0/2147483648.0f, 1.0/2147483648.0f, 1.0/2147483648.0f, 1.0/2147483648.0f  };
 		const __m128i zero = _mm_setzero_si128();
 		__m128 vf0, vf1;
@@ -575,14 +575,14 @@ void NativeInt16ToFloat32_X86(const SInt16 *src, Float32 *dst, unsigned int numT
 
 		int ialign = (uintptr_t)src & 0xF;
 		int falign = (uintptr_t)dst & 0xF;
-	
+
 		if (falign != 0 || ialign != 0) {
 			// do one unaligned conversion
 			vpack0 = _mm_loadu_si128((__m128i const *)src);
 			LEI16TOF32(0, 1)
 			_mm_storeu_ps(dst, vf0);
 			_mm_storeu_ps(dst+4, vf1);
-			
+
 			// and advance such that the destination floats are aligned
 			unsigned int n = (16 - falign) / 4;
 			src += n;
@@ -604,7 +604,7 @@ void NativeInt16ToFloat32_X86(const SInt16 *src, Float32 *dst, unsigned int numT
 				goto VectorCleanup;
 			}
 		}
-	
+
 		// aligned loads, aligned stores
 		while (count >= 8) {
 			vpack0 = _mm_load_si128((__m128i const *)src);
@@ -615,7 +615,7 @@ void NativeInt16ToFloat32_X86(const SInt16 *src, Float32 *dst, unsigned int numT
 			dst += 8;
 			count -= 8;
 		}
-		
+
 VectorCleanup:
 		if (count > 0) {
 			// unaligned cleanup -- just do one unaligned vector at the end
@@ -658,7 +658,7 @@ void SwapInt16ToFloat32_X86(const SInt16 *src, Float32 *dst, unsigned int numToC
 	vf1 = _mm_cvtepi32_ps(vi1); \
 	vf0 = _mm_mul_ps(vf0, vscale); \
 	vf1 = _mm_mul_ps(vf1, vscale);
-		
+
 		const __m128 vscale = (const __m128) { 1.0/2147483648.0f, 1.0/2147483648.0f, 1.0/2147483648.0f, 1.0/2147483648.0f  };
 		const __m128i zero = _mm_setzero_si128();
 		__m128 vf0, vf1;
@@ -666,7 +666,7 @@ void SwapInt16ToFloat32_X86(const SInt16 *src, Float32 *dst, unsigned int numToC
 
 		int ialign = (uintptr_t)src & 0xF;
 		int falign = (uintptr_t)dst & 0xF;
-	
+
 		if (falign != 0 || ialign != 0) {
 			// do one unaligned conversion
 			vpack0 = _mm_loadu_si128((__m128i const *)src);
@@ -695,7 +695,7 @@ void SwapInt16ToFloat32_X86(const SInt16 *src, Float32 *dst, unsigned int numToC
 				goto VectorCleanup;
 			}
 		}
-	
+
 		// aligned loads, aligned stores
 		while (count >= 8) {
 			vpack0 = _mm_load_si128((__m128i const *)src);
@@ -706,7 +706,7 @@ void SwapInt16ToFloat32_X86(const SInt16 *src, Float32 *dst, unsigned int numToC
 			dst += 8;
 			count -= 8;
 		}
-		
+
 VectorCleanup:
 		if (count > 0) {
 			// unaligned cleanup -- just do one unaligned vector at the end
@@ -744,20 +744,20 @@ void NativeInt32ToFloat32_X86(const SInt32 *src, Float32 *dst, unsigned int numT
 #define LEI32TOF32(x) \
 	vf##x = _mm_cvtepi32_ps(vi##x); \
 	vf##x = _mm_mul_ps(vf##x, vscale); \
-		
+
 		const __m128 vscale = (const __m128) { 1.0/2147483648.0f, 1.0/2147483648.0f, 1.0/2147483648.0f, 1.0/2147483648.0f  };
 		__m128 vf0;
 		__m128i vi0;
 
 		int ialign = (uintptr_t)src & 0xF;
 		int falign = (uintptr_t)dst & 0xF;
-	
+
 		if (falign != 0 || ialign != 0) {
 			// do one unaligned conversion
 			vi0 = _mm_loadu_si128((__m128i const *)src);
 			LEI32TOF32(0)
 			_mm_storeu_ps(dst, vf0);
-			
+
 			// and advance such that the destination floats are aligned
 			unsigned int n = (16 - falign) / 4;
 			src += n;
@@ -778,7 +778,7 @@ void NativeInt32ToFloat32_X86(const SInt32 *src, Float32 *dst, unsigned int numT
 				goto VectorCleanup;
 			}
 		}
-	
+
 		// aligned loads, aligned stores
 		while (count >= 4) {
 			vi0 = _mm_load_si128((__m128i const *)src);
@@ -788,7 +788,7 @@ void NativeInt32ToFloat32_X86(const SInt32 *src, Float32 *dst, unsigned int numT
 			dst += 4;
 			count -= 4;
 		}
-		
+
 VectorCleanup:
 		if (count > 0) {
 			// unaligned cleanup -- just do one unaligned vector at the end
@@ -825,20 +825,20 @@ void SwapInt32ToFloat32_X86(const SInt32 *src, Float32 *dst, unsigned int numToC
 	vi##x = byteswap32(vi##x); \
 	vf##x = _mm_cvtepi32_ps(vi##x); \
 	vf##x = _mm_mul_ps(vf##x, vscale); \
-		
+
 		const __m128 vscale = (const __m128) { 1.0/2147483648.0f, 1.0/2147483648.0f, 1.0/2147483648.0f, 1.0/2147483648.0f  };
 		__m128 vf0;
 		__m128i vi0;
 
 		int ialign = (uintptr_t)src & 0xF;
 		int falign = (uintptr_t)dst & 0xF;
-	
+
 		if (falign != 0 || ialign != 0) {
 			// do one unaligned conversion
 			vi0 = _mm_loadu_si128((__m128i const *)src);
 			BEI32TOF32(0)
 			_mm_storeu_ps(dst, vf0);
-			
+
 			// and advance such that the destination floats are aligned
 			unsigned int n = (16 - falign) / 4;
 			src += n;
@@ -859,7 +859,7 @@ void SwapInt32ToFloat32_X86(const SInt32 *src, Float32 *dst, unsigned int numToC
 				goto VectorCleanup;
 			}
 		}
-	
+
 		// aligned loads, aligned stores
 		while (count >= 4) {
 			vi0 = _mm_load_si128((__m128i const *)src);
@@ -869,7 +869,7 @@ void SwapInt32ToFloat32_X86(const SInt32 *src, Float32 *dst, unsigned int numToC
 			dst += 4;
 			count -= 4;
 		}
-		
+
 VectorCleanup:
 		if (count > 0) {
 			// unaligned cleanup -- just do one unaligned vector at the end

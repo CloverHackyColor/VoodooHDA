@@ -10,7 +10,7 @@ typedef double	Float64;
 
 // ============================================================================
 //
-// N.B. These functions should not be called directly; use the interfaces in 
+// N.B. These functions should not be called directly; use the interfaces in
 //	PCMBlitterLibDispatch.h.
 //
 // ============================================================================
@@ -60,7 +60,7 @@ public:
 class PCMFloat32 {
 public:
 	typedef Float32 value_type;
-	
+
 	static value_type load(const value_type *p) { return *p; }
 	static void store(value_type *p, float val)	{ *p = val; }
 };
@@ -68,7 +68,7 @@ public:
 class PCMFloat64 {
 public:
 	typedef Float64 value_type;
-	
+
 	static value_type load(const value_type *p) { return *p; }
 	static void store(value_type *p, value_type val) { *p = val; }
 };
@@ -76,7 +76,7 @@ public:
 class PCMSInt8 {
 public:
 	typedef SInt8 value_type;
-	
+
 	static value_type load(const value_type *p) { return *p; }
 	static void store(value_type *p, int val)	{ *p = val; }
 };
@@ -84,7 +84,7 @@ public:
 class PCMUInt8 {
 public:
 	typedef SInt8 value_type;	// signed so that sign-extending works right
-	
+
 	static value_type load(const value_type *p) { return *p ^ 0x80; }
 	static void store(value_type *p, int val)	{ *p = val ^ 0x80; }
 };
@@ -92,7 +92,7 @@ public:
 class PCMSInt16Native {
 public:
 	typedef SInt16 value_type;
-	
+
 	static value_type load(const value_type *p) { return *p; }
 	static void store(value_type *p, int val)	{ *p = val; }
 };
@@ -100,7 +100,7 @@ public:
 class PCMSInt16Swap {
 public:
 	typedef SInt16 value_type;
-	
+
 	static value_type load(const value_type *p)
 	{
 		return OSReadSwapInt16(p, 0);
@@ -114,7 +114,7 @@ public:
 class PCMSInt32Native {
 public:
 	typedef SInt32 value_type;
-	
+
 	static value_type load(const value_type *p) { return *p; }
 	static void store(value_type *p, int val)	{ *p = val; }
 };
@@ -122,7 +122,7 @@ public:
 class PCMSInt32Swap {
 public:
 	typedef UInt32 value_type;
-	
+
 	static value_type load(const value_type *p)
 	{
 		return OSReadSwapInt32(p, 0);
@@ -137,7 +137,7 @@ public:
 class PCMFloat64Swap {
 public:
 	typedef Float64 value_type;
-	
+
 	static value_type load(const value_type *vp) {
 		union {
 			Float64 d;
@@ -202,53 +202,53 @@ public:
 		int i1, i2, i3, i4;
 
 		SET_ROUNDMODE
-		
+
 		if (nSamples >= 8) {
 			f1 = FloatType::load(src + 0);
-			
+
 			f2 = FloatType::load(src + 1);
 			f1 = f1 * maxInt32 + round;
-			
+
 			f3 = FloatType::load(src + 2);
 			f2 = f2 * maxInt32 + round;
 			i1 = FloatToInt(f1, min32, max32);
-			
+
 			src += 3;
-			
+
 			nSamples -= 4;
 			count = nSamples >> 2;
 			nSamples &= 3;
-			
+
 			while (count--) {
 				f4 = FloatType::load(src + 0);
 				f3 = f3 * maxInt32 + round;
 				i2 = FloatToInt(f2, min32, max32);
 				IntType::store(dest + 0, i1 >> shift);
-	
+
 				f1 = FloatType::load(src + 1);
 				f4 = f4 * maxInt32 + round;
 				i3 = FloatToInt(f3, min32, max32);
 				IntType::store(dest + 1, i2 >> shift);
-	
+
 				f2 = FloatType::load(src + 2);
 				f1 = f1 * maxInt32 + round;
 				i4 = FloatToInt(f4, min32, max32);
 				IntType::store(dest + 2, i3 >> shift);
-				
+
 				f3 = FloatType::load(src + 3);
 				f2 = f2 * maxInt32 + round;
 				i1 = FloatToInt(f1, min32, max32);
 				IntType::store(dest + 3, i4 >> shift);
-				
+
 				src += 4;
 				dest += 4;
 			}
-			
+
 			f4 = FloatType::load(src);
 			f3 = f3 * maxInt32 + round;
 			i2 = FloatToInt(f2, min32, max32);
 			IntType::store(dest + 0, i1 >> shift);
-		
+
 			f4 = f4 * maxInt32 + round;
 			i3 = FloatToInt(f3, min32, max32);
 			IntType::store(dest + 1, i2 >> shift);
@@ -257,7 +257,7 @@ public:
 			IntType::store(dest + 2, i3 >> shift);
 
 			IntType::store(dest + 3, i4 >> shift);
-			
+
 			src += 1;
 			dest += 4;
 		}
@@ -284,7 +284,7 @@ public:
 	{
 		mScale = static_cast<Float32>(1.0 / float(1UL << (bitDepth - 1)));
 	}
-	
+
 	Float32		mScale;
 	UInt32		mBitDepth;
 };
@@ -309,7 +309,7 @@ public:
 		Float32 scale = mScale;
 		int_val i0, i1, i2, i3;
 		float_val f0, f1, f2, f3;
-		
+
 		/*
 			$i = IntType::load(src); ++src;
 			$f = $i;

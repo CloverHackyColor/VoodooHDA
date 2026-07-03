@@ -73,8 +73,8 @@ IOReturn VoodooHDAUserClient::clientClose()
 	return kIOReturnSuccess;
 }
 
-// getTargetAndMethodForIndex looks up the external methods - supply a description of the parameters 
-// available to be called 
+// getTargetAndMethodForIndex looks up the external methods - supply a description of the parameters
+// available to be called
 IOExternalMethod *VoodooHDAUserClient::getTargetAndMethodForIndex(IOService **targetP, UInt32 index)
 {
 	//logMsg("VoodooHDAUserClient[%p]::getTargetAndMethodForIndex(%ld)\n", this, index);
@@ -210,7 +210,7 @@ IOReturn VoodooHDAUserClient::clientMemoryForType(UInt32 type, IOOptionBits *opt
 					 mDevice->mExtMsgBufferSize);
 			mDevice->unlockExtMsgBuffer();
 			result = kIOReturnVMError;
-     		RELEASE(memDesc);
+			RELEASE(memDesc);
 			break;
 		}
 		memDesc->writeBytes(0U, mDevice->mExtMsgBuffer, mDevice->mExtMsgBufferSize);

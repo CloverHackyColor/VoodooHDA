@@ -14,18 +14,18 @@ extern "C" {
 
 	These are the high-level interfaces which dispatch to (often processor-specific) optimized routines.
 	Avoid calling the lower-level routines directly; they are subject to renaming etc.
-	
+
 	There are two sets of interfaces:
 	[1] integer formats are either "native" or "swap"
 	[2] integer formats are "BE" or "LE", signifying big or little endian. These are simply macros for the other functions.
-	
+
 	All floating point numbers are 32-bit native-endian.
 	Supports 16, 24, and 32-bit integers, big and little endian.
-	
+
 	32-bit floats and ints must be 4-byte aligned.
 	24-bit samples have no alignment requirements.
 	16-bit ints must be 2-byte aligned.
-	
+
 	On Intel, some implementations assume SSE2.
 */
 
