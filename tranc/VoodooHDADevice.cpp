@@ -1196,7 +1196,6 @@ bool VoodooHDADevice::getCapabilities()
 	ASSERT(mRirbSize);
 
 	result = true;
-done:
 	return result;
 }
 
@@ -2314,7 +2313,7 @@ int VoodooHDADevice::audioCtlOssMixerInit(PcmDevice *pcmDevice)
 {
 	FunctionGroup *funcGroup = pcmDevice->funcGroup;
 	AudioControl *control;
-	UInt32 mask, recmask, id;
+  UInt32 mask, recmask; //, id;
 	int softpcmvol;
 
 //	logMsg("VoodooHDADevice[%p]::audioCtlOssMixerInit(%p)\n", this, pcmDevice);
@@ -2327,7 +2326,7 @@ int VoodooHDADevice::audioCtlOssMixerInit(PcmDevice *pcmDevice)
 
 	mask = 0;
 	recmask = 0;
-	id = CODEC_ID(funcGroup->codec);
+	/*id = CODEC_ID(funcGroup->codec); */
 
 	/* Declare EAPD as ogain control. */
 	if (pcmDevice->playChanId >= 0) {
