@@ -49,9 +49,8 @@
 #define HDA_BLK_ALIGN			(~(HDA_BLK_MIN - 1))
 
 #define HDA_BUFSZ_MIN			4096
-#define HDA_BUFSZ_MAX			65536
- //#define HDA_BUFSZ_MAX			262144
-//#define HDA_BUFSZ_MAX      32768
+	//#define HDA_BUFSZ_MAX			65536
+#define HDA_BUFSZ_MAX			262144
 #define HDA_BUFSZ_DEFAULT		HDA_BUFSZ_MAX
 
 #define HDA_GPIO_MAX    8
@@ -196,7 +195,6 @@ typedef struct _Widget {
 		UInt32 cap;
 		UInt32 ctrl;
 	} pin; /* wclass */
-  bool needELDUpdate;  // Нужно ли обновить ELD после получения EDID
 } Widget;
 
 typedef struct _AudioControl {

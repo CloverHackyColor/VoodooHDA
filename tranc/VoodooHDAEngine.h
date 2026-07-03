@@ -65,8 +65,6 @@ public:
 	bool createAudioStream();
 
 	bool createAudioControls();
-  
-  void forceResetHDMIState();
 	
 	static IOReturn volumeChangeHandler(IOService *target, IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue);
 	static IOReturn muteChangeHandler(IOService *target, IOAudioControl *muteControl, SInt32 oldValue, SInt32 newValue);
