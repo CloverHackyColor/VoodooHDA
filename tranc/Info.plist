@@ -27,23 +27,23 @@
 			<key>AllowMSI</key>
 			<true/>
 			<key>Boost</key>
-			<integer>0</integer>
+			<integer>1</integer>
 			<key>CFBundleIdentifier</key>
 			<string>org.voodoo.driver.VoodooHDA</string>
 			<key>DisableInputMonitor</key>
 			<true/>
 			<key>IOClass</key>
 			<string>VoodooHDADevice</string>
-			<key>IOPCIClassMatch</key>
-			<string>0x04000000&amp;0xfffc0000</string>
+			<key>IONameMatch</key>
+			<string>HDAS</string>
 			<key>IOProviderClass</key>
 			<string>IOPCIDevice</string>
 			<key>IOUserClientClass</key>
 			<string>VoodooHDAUserClient</string>
 			<key>LayoutId</key>
-			<integer>80</integer>
+			<integer>0</integer>
 			<key>InhibitCache</key>
-			<false/>
+			<true/>
 			<key>MixerValues</key>
 			<dict>
 				<key>PCM</key>
@@ -51,7 +51,7 @@
 				<key>Rec</key>
 				<integer>95</integer>
 				<key>iGain</key>
-				<integer>95</integer>
+				<integer>0</integer>
 				<key>iMix</key>
 				<integer>95</integer>
 			</dict>
@@ -70,7 +70,7 @@
 			<key>VoodooHDAEnableVolumeChangeFix</key>
 			<false/>
 			<key>VoodooHDAVerboseLevel</key>
-			<integer>0</integer>
+			<integer>3</integer>
 		</dict>
 		<key>VoodooHDA-HDMI</key>
 		<dict>
@@ -87,7 +87,7 @@
 			<key>IOPCIClassMatch</key>
 			<string>0x04000000&amp;0xfffc0000</string>
 			<key>IOPCIMatch</key>
-			<string>0xAAF81002 0xAAF01002 0xABF81002 0xAB201002 0xAAE01002 0xAB381002 0xAB281002</string>
+			<string>0xAA001002&amp;0xfe00ffff</string>
 			<key>IOProbeScore</key>
 			<integer>100000</integer>
 			<key>IOProviderClass</key>
@@ -103,7 +103,7 @@
 				<key>Rec</key>
 				<integer>95</integer>
 				<key>iGain</key>
-				<integer>95</integer>
+				<integer>0</integer>
 				<key>iMix</key>
 				<integer>95</integer>
 			</dict>
@@ -122,7 +122,7 @@
 			<key>VoodooHDAEnableVolumeChangeFix</key>
 			<false/>
 			<key>VoodooHDAVerboseLevel</key>
-			<integer>0</integer>
+			<integer>3</integer>
 		</dict>
 	</dict>
 	<key>OSBundleLibraries</key>

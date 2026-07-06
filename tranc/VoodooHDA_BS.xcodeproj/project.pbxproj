@@ -12,6 +12,8 @@
 		12F24FCC12860D9600B294D6 /* PCMBlitterLib.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEF7C0A40EF74C2700A14C68 /* PCMBlitterLib.cpp */; settings = {COMPILER_FLAGS = "-fvisibility=hidden"; }; };
 		A5C595DF2F577496007DC9D3 /* AppleALCPinConfigs.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5C595DE2F577496007DC9D3 /* AppleALCPinConfigs.cpp */; };
 		A5C595E02F577496007DC9D3 /* AppleALCPinConfigs.h in Headers */ = {isa = PBXBuildFile; fileRef = A5C595DD2F577496007DC9D3 /* AppleALCPinConfigs.h */; };
+		A5C8134D2FF84541004C3CAC /* VoodooHDAFramebufferNotifier.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5C8134C2FF84541004C3CAC /* VoodooHDAFramebufferNotifier.cpp */; };
+		A5C8134E2FF84541004C3CAC /* VoodooHDAFramebufferNotifier.h in Headers */ = {isa = PBXBuildFile; fileRef = A5C8134B2FF84541004C3CAC /* VoodooHDAFramebufferNotifier.h */; };
 		CE5D398B0EF4784000140715 /* Parser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE5D398A0EF4784000140715 /* Parser.cpp */; };
 		CE6725A40EF078B100FAFBED /* VoodooHDADevice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE6725A00EF078B100FAFBED /* VoodooHDADevice.cpp */; };
 		CE6725A60EF078B100FAFBED /* VoodooHDAEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CE6725A20EF078B100FAFBED /* VoodooHDAEngine.cpp */; };
@@ -30,6 +32,8 @@
 		32D94FD00562CBF700B6AF17 /* VoodooHDA.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoodooHDA.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		A5C595DD2F577496007DC9D3 /* AppleALCPinConfigs.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppleALCPinConfigs.h; sourceTree = "<group>"; };
 		A5C595DE2F577496007DC9D3 /* AppleALCPinConfigs.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = AppleALCPinConfigs.cpp; sourceTree = "<group>"; };
+		A5C8134B2FF84541004C3CAC /* VoodooHDAFramebufferNotifier.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VoodooHDAFramebufferNotifier.h; sourceTree = "<group>"; };
+		A5C8134C2FF84541004C3CAC /* VoodooHDAFramebufferNotifier.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VoodooHDAFramebufferNotifier.cpp; sourceTree = "<group>"; };
 		CE45220E0EF210FD00600B68 /* Models.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Models.h; sourceTree = "<group>"; };
 		CE45220F0EF210FD00600B68 /* Private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Private.h; sourceTree = "<group>"; };
 		CE4522100EF210FD00600B68 /* Registers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Registers.h; sourceTree = "<group>"; };
@@ -95,6 +99,8 @@
 		247142CAFF3F8F9811CA285C /* Source */ = {
 			isa = PBXGroup;
 			children = (
+				A5C8134B2FF84541004C3CAC /* VoodooHDAFramebufferNotifier.h */,
+				A5C8134C2FF84541004C3CAC /* VoodooHDAFramebufferNotifier.cpp */,
 				A5C595DD2F577496007DC9D3 /* AppleALCPinConfigs.h */,
 				A5C595DE2F577496007DC9D3 /* AppleALCPinConfigs.cpp */,
 				12BDC91012440B5D00B327AE /* AppleAudioClip.cpp */,
@@ -136,6 +142,7 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A5C8134E2FF84541004C3CAC /* VoodooHDAFramebufferNotifier.h in Headers */,
 				A5C595E02F577496007DC9D3 /* AppleALCPinConfigs.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -222,6 +229,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A5C8134D2FF84541004C3CAC /* VoodooHDAFramebufferNotifier.cpp in Sources */,
 				CE6725A40EF078B100FAFBED /* VoodooHDADevice.cpp in Sources */,
 				CE6725A60EF078B100FAFBED /* VoodooHDAEngine.cpp in Sources */,
 				CE9337FE0EF226E000776BCD /* Tables.c in Sources */,

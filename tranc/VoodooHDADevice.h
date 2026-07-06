@@ -11,6 +11,8 @@
 #include "Private.h"
 #include "Shared.h"
 
+#include "VoodooHDAFramebufferNotifier.h"
+
 #define MAX_TREE_LENGHT 15
 
 enum {
