@@ -738,6 +738,8 @@ IOReturn VoodooHDAEngine::performAudioEngineStop()
 
 //	logMsg("calling channelStop() for channel %d\n", getEngineId());
 	mDevice->channelStop(mChannel);
+  // Дренаж аппаратного FIFO перед выключением
+  IODelay(500);
 
 	return kIOReturnSuccess;
 }

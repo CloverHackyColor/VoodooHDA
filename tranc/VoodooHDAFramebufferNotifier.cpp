@@ -746,13 +746,13 @@ void VoodooHDAFramebufferNotifier::injectELDIntoWidget(FBConnectionState *conn)
             conn->mappedPinNid, w->eld_len, spkalloc);
       
       // Отладочный вывод первых 20 байт ELD для проверки
-      if (w->eld_len > 0) {
-        FBLOG("injectELD: ELD dump (first %d bytes):",
-              (w->eld_len < 20) ? w->eld_len : 20);
-        for (int i = 0; i < (w->eld_len < 20 ? w->eld_len : 20); i++) {
-          FBLOG("  eld[%d] = 0x%02x", i, w->eld[i]);
-        }
-      }
+//      if (w->eld_len > 0) {
+//        FBLOG("injectELD: ELD dump (first %d bytes):",
+//              (w->eld_len < 20) ? w->eld_len : 20);
+//        for (int i = 0; i < (w->eld_len < 20 ? w->eld_len : 20); i++) {
+//          FBLOG("  eld[%d] = 0x%02x", i, w->eld[i]);
+//        }
+//      }
       // КРИТИЧЕСКИ ВАЖНО: Если ELD был отложен, обновляем его сейчас
 //      if (w->needELDUpdate) {
 //        w->needELDUpdate = false;
@@ -1268,6 +1268,27 @@ bool VoodooHDAFramebufferNotifier::enableGPUAudioEngine(
 
 	return true;
 }
+
+/* Called from updateHDMIEnginePresence() when a pin loses presence (cable removed).
+ * Tells the GPU it can stop the audio pipe for that output → allows GPU power gating. */
+void VoodooHDAFramebufferNotifier::disableAudioPipeForPin(int cad, nid_t pinNid)
+{
+  IOLockLock(mLock);
+  for (int i = 0; i < mNumConnections; i++) {
+    FBConnectionState *conn = &mConnections[i];
+    if (conn->mappedCodecCad == cad && conn->mappedPinNid == pinNid) {
+      disableAudioPipe(conn);
+      /* Do NOT reset edidValid here: the EDID/ELD data must remain available
+       * so that injectELDIntoPinIfReady() can still serve other pins (e.g.
+       * the FB connector maps to nid=3 but the display is on nid=7).
+       * edidValid is cleared only when the display truly disconnects
+       * (handleFramebufferTerminated / kIOMessageServiceIsTerminated). */
+      break;
+    }
+  }
+  IOLockUnlock(mLock);
+}
+
 
 /* ---------- Auto-init: try all endpoints/DIGs ---------- */
 #if 0

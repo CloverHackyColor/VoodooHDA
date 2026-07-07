@@ -280,6 +280,7 @@ private:
 	void injectELDIntoAllPinsWithPresence(FBConnectionState *conn);
 public:
 	void injectELDIntoPinIfReady(int cad, nid_t pinNid);
+  void disableAudioPipeForPin(int cad, nid_t pinNid);
 private:
 	void clearWidgetELD(FBConnectionState *conn);
 

@@ -4173,7 +4173,7 @@ UInt32 VoodooHDADevice::audioCtlRecSelComm(PcmDevice *pcmDevice, UInt32 src, nid
 
 /**************************************************************************************/
 /**************************************************************************************/
-#if MULTICHANNEL
+
 int VoodooHDADevice::pcmChannelSetup(Channel *channel)
 {
 	FunctionGroup *funcGroup = channel->funcGroup;
@@ -4360,147 +4360,7 @@ int VoodooHDADevice::pcmChannelSetup(Channel *channel)
 
 	return ret;
 }
-#else
-#warning not multichannel
-int VoodooHDADevice::pcmChannelSetup(Channel *channel)
-{
-	FunctionGroup *funcGroup = channel->funcGroup;
-	AudioAssoc *assocs = funcGroup->audio.assocs;
-	UInt32 cap, fmtcap, pcmcap;
-	int ret, max;
 
-	channel->caps = gDefaultChanCaps;
-	channel->caps.formats = channel->formats;
-	channel->bit16 = 1;
-	channel->bit32 = 0;
-	channel->pcmRates[0] = 48000;
-	channel->pcmRates[1] = 0;
-	channel->stripecap = 0xff;
-
-	ret = 0;
-	fmtcap = funcGroup->audio.supStreamFormats;
-	pcmcap = funcGroup->audio.supPcmSizeRates;
-	max = (sizeof (channel->io) / sizeof (channel->io[0])) - 1;
-
-	for (int i = 0; (i < 16) && (ret < max); i++) {
-		int j;
-		Widget *widget;
-
-		/* Check as is correct */
-		if (channel->assocNum < 0)
-			break;
-		/* Count only present DACs */
-		if (assocs[channel->assocNum].dacs[i] <= 0)
-			continue;
-		/* Ignore duplicates */
-		for (j = 0; j < ret; j++) {
-			if (channel->io[j] == assocs[channel->assocNum].dacs[i])
-				break;
-		}
-		if (j < ret)
-			continue;
-
-		widget = widgetGet(funcGroup, assocs[channel->assocNum].dacs[i]);
-		if (!widget || (widget->enable == 0))
-			continue;
-		if (!HDA_PARAM_AUDIO_WIDGET_CAP_STEREO(widget->params.widgetCap))
-			continue;
-		cap = widget->params.supStreamFormats;
-		/* if (HDA_PARAM_SUPP_STREAM_FORMATS_FLOAT32(cap)) */
-		if (!HDA_PARAM_SUPP_STREAM_FORMATS_PCM(cap) && !HDA_PARAM_SUPP_STREAM_FORMATS_AC3(cap))
-			continue;
-		/* Many codecs do not declare AC3 support on SPDIF.
-		   I don't beleave that they don't support it! */
-		if (HDA_PARAM_AUDIO_WIDGET_CAP_DIGITAL(widget->params.widgetCap))
-			cap |= HDA_PARAM_SUPP_STREAM_FORMATS_AC3_MASK;
-		if (ret == 0) {
-			fmtcap = cap;
-			pcmcap = widget->params.supPcmSizeRates;
-		} else {
-			fmtcap &= cap;
-			pcmcap &= widget->params.supPcmSizeRates;
-		}
-		channel->io[ret++] = assocs[channel->assocNum].dacs[i];
-		channel->stripecap &= widget->stripecap;
-	}
-	channel->io[ret] = -1;
-
-	if (assocs[channel->assocNum].fakeredir)
-		ret--;
-	channel->supStreamFormats = fmtcap;
-	channel->supPcmSizeRates = pcmcap;
-
-	/*
-	 *  8bit = 0
-	 * 16bit = 1
-	 * 20bit = 2
-	 * 24bit = 3
-	 * 32bit = 4
-	 */
-	if (ret > 0) {
-		int i = 0;
-		if (HDA_PARAM_SUPP_STREAM_FORMATS_PCM(fmtcap)) {
-			if (HDA_PARAM_SUPP_PCM_SIZE_RATE_16BIT(pcmcap))
-				channel->bit16 = 1;
-			else if (HDA_PARAM_SUPP_PCM_SIZE_RATE_8BIT(pcmcap))
-				channel->bit16 = 0;
-			if (HDA_PARAM_SUPP_PCM_SIZE_RATE_32BIT(pcmcap))
-				channel->bit32 = 4;
-			else if (HDA_PARAM_SUPP_PCM_SIZE_RATE_24BIT(pcmcap))
-				channel->bit32 = 3;
-			else if (HDA_PARAM_SUPP_PCM_SIZE_RATE_20BIT(pcmcap))
-				channel->bit32 = 2;
-			if (!(funcGroup->audio.quirks & HDA_QUIRK_FORCESTEREO))
-				channel->formats[i++] = AFMT_S16_LE;
-			channel->formats[i++] = AFMT_S16_LE | AFMT_STEREO;
-			if (channel->bit32 == 4) {
-				if (!(funcGroup->audio.quirks & HDA_QUIRK_FORCESTEREO))
-					channel->formats[i++] = AFMT_S32_LE;
-				channel->formats[i++] = AFMT_S32_LE | AFMT_STEREO;
-			} else if (channel->bit32) {
-				if (!(funcGroup->audio.quirks & HDA_QUIRK_FORCESTEREO))
-					channel->formats[i++] = AFMT_S32_LE;
-				channel->formats[i++] = AFMT_S32_LE  | AFMT_STEREO;
-			}
-		}
-		if (HDA_PARAM_SUPP_STREAM_FORMATS_AC3(fmtcap))
-			channel->formats[i++] = AFMT_AC3;
-		channel->formats[i] = 0;
-		i = 0;
-		if (HDA_PARAM_SUPP_PCM_SIZE_RATE_8KHZ(pcmcap))
-			channel->pcmRates[i++] = 8000;
-		if (HDA_PARAM_SUPP_PCM_SIZE_RATE_11KHZ(pcmcap))
-			channel->pcmRates[i++] = 11025;
-		if (HDA_PARAM_SUPP_PCM_SIZE_RATE_16KHZ(pcmcap))
-			channel->pcmRates[i++] = 16000;
-		if (HDA_PARAM_SUPP_PCM_SIZE_RATE_22KHZ(pcmcap))
-			channel->pcmRates[i++] = 22050;
-		if (HDA_PARAM_SUPP_PCM_SIZE_RATE_32KHZ(pcmcap))
-			channel->pcmRates[i++] = 32000;
-		if (HDA_PARAM_SUPP_PCM_SIZE_RATE_44KHZ(pcmcap))
-			channel->pcmRates[i++] = 44100;
-		/* if (HDA_PARAM_SUPP_PCM_SIZE_RATE_48KHZ(pcmcap)) */
-		channel->pcmRates[i++] = 48000;
-		if (HDA_PARAM_SUPP_PCM_SIZE_RATE_88KHZ(pcmcap))
-			channel->pcmRates[i++] = 88200;
-		if (HDA_PARAM_SUPP_PCM_SIZE_RATE_96KHZ(pcmcap))
-			channel->pcmRates[i++] = 96000;
-		if (HDA_PARAM_SUPP_PCM_SIZE_RATE_176KHZ(pcmcap))
-			channel->pcmRates[i++] = 176400;
-		if (HDA_PARAM_SUPP_PCM_SIZE_RATE_192KHZ(pcmcap))
-			channel->pcmRates[i++] = 192000;
-		/* if (HDA_PARAM_SUPP_PCM_SIZE_RATE_384KHZ(pcmcap)) */
-		channel->pcmRates[i] = 0;
-		if (i > 0) {
-			channel->caps.minSpeed = channel->pcmRates[0];
-			channel->caps.maxSpeed = channel->pcmRates[i - 1];
-		}
-	}
-
-	return ret;
-}
-
-#endif
 void VoodooHDADevice::createPcms(FunctionGroup *funcGroup)
 {
 	AudioAssoc *assocs = funcGroup->audio.assocs;
@@ -4908,12 +4768,6 @@ void VoodooHDADevice::switchInit(FunctionGroup *funcGroup)
 			logMsg("Enabling input audio routing switching at node %d:\n", j);
 	}
 	funcGroup->mSwitchEnable = enable;
-/*	if (enable) {
-			//switchHandler(funcGroup, true);
-		
-		if (poll)
-			errorMsg("XXX\nXXX: poll based jack detection unimplemented\nXXX\n");
-	}*/
 }
 
 void VoodooHDADevice::hdaa_eld_handler(Widget *widget)
