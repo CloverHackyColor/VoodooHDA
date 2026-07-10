@@ -60,6 +60,7 @@
 #define HDA_PARSE_MAXDEPTH		10
 
 #define HDAC_UNSOLTAG_EVENT_HP	0x00
+#define HDAC_UNSOLTAG_EVENT_HDMI  0x04
 
 /* Helper Macros */
 

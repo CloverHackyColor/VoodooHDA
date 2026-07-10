@@ -70,6 +70,7 @@ typedef struct _sliderTab{
 	}
 }sliderTab;
 
+
 class VoodooHDAEngine;
 class VoodooHDAFramebufferNotifier;
 
@@ -77,6 +78,19 @@ class IOPCIDevice;
 class IOFilterInterruptEventSource;
 class IOInterruptEventSource;
 class IOTimerEventSource;
+
+
+struct HDMIPinState {
+  UInt8 codec;
+  UInt16 pinNID;
+  UInt8 unsolTag;           // Тег для Unsolicited Response
+  AudioAssoc *assoc;        // Связанная ассоциация
+  VoodooHDAEngine *engine;  // NULL, если движок ещё не создан
+  bool monitorConnected;    // Текущий статус подключения
+  bool edidValid;           // Прочитан ли валидный EDID
+};
+
+static const int MAX_HDMI_PINS = 8;
 
 class VoodooHDADevice : public IOAudioDevice
 {
@@ -178,8 +192,18 @@ public:
 	UInt16 mMixerDefaults[SOUND_MIXER_NRDEVICES];
 	bool mAllowMSI;
 	bool mDmaPosMemAllocated;
+  
+  //Qwen
+  HDMIPinState hdmiPins[MAX_HDMI_PINS];
+  int numHDMIPins;
 
 	/**************/
+  
+  //Qwen
+  IOReturn createHDMIEngineForPin(int hdmiIndex);
+  void handleHDMIHotPlug(int hdmiIndex, bool connected);
+  int findHDMIPinByTag(UInt8 tag);
+  int findHDMIPinByNID(UInt16 nid);
 
 	bool resetController(bool wakeup);
 	bool getCapabilities();
@@ -438,6 +462,7 @@ public:
 		nid_t pinNid;
 		int cad;
 		bool activated;
+    UInt32 unsolTag;
 	};
 	HDMIEngineSlot mHDMIEngines[16];
 	int mNumHDMIEngines;

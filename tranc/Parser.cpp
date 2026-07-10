@@ -4724,18 +4724,34 @@ void VoodooHDADevice::switchInit(FunctionGroup *funcGroup)
 			continue;
 		}
 		
-		/*
-		 * Register unsolicited response for ALL pins with the capability,
-		 * including HDMI/DP pins (FreeBSD hdaa_sense_init pattern).
-		 * HDMI/DP pins need unsolicited events for ELD change detection.
-		 */
-		if (HDA_PARAM_AUDIO_WIDGET_CAP_UNSOL_CAP(widget->params.widgetCap)) {
-			sendCommand(HDA_CMD_SET_UNSOLICITED_RESPONSE(cad, j,
-					HDA_CMD_SET_UNSOLICITED_RESPONSE_ENABLE | HDAC_UNSOLTAG_EVENT_HP), cad);
-			IOLog("VoodooHDA DBG: switchInit registered unsol response for nid=%d (HDMI=%d DP=%d)\n",
-				  j, HDA_PARAM_PIN_CAP_HDMI(widget->pin.cap) ? 1 : 0,
-				  HDA_PARAM_PIN_CAP_DP(widget->pin.cap) ? 1 : 0);
-		}
+//		/*
+//		 * Register unsolicited response for ALL pins with the capability,
+//		 * including HDMI/DP pins (FreeBSD hdaa_sense_init pattern).
+//		 * HDMI/DP pins need unsolicited events for ELD change detection.
+//		 */
+//		if (HDA_PARAM_AUDIO_WIDGET_CAP_UNSOL_CAP(widget->params.widgetCap)) {
+//			sendCommand(HDA_CMD_SET_UNSOLICITED_RESPONSE(cad, j,
+//					HDA_CMD_SET_UNSOLICITED_RESPONSE_ENABLE | HDAC_UNSOLTAG_EVENT_HP), cad);
+//			IOLog("VoodooHDA DBG: switchInit registered unsol response for nid=%d (HDMI=%d DP=%d)\n",
+//				  j, HDA_PARAM_PIN_CAP_HDMI(widget->pin.cap) ? 1 : 0,
+//				  HDA_PARAM_PIN_CAP_DP(widget->pin.cap) ? 1 : 0);
+//		}
+    
+    if (HDA_PARAM_AUDIO_WIDGET_CAP_UNSOL_CAP(widget->params.widgetCap)) {
+      // Определяем тип пина
+      bool isHDMI = HDA_PARAM_PIN_CAP_HDMI(widget->pin.cap) != 0;
+      bool isDP = HDA_PARAM_PIN_CAP_DP(widget->pin.cap) != 0;
+      bool isDigital = isHDMI || isDP;
+      
+      // Назначаем тег в зависимости от типа пина
+      UInt8 unsolTag = isDigital ? HDAC_UNSOLTAG_EVENT_HDMI : HDAC_UNSOLTAG_EVENT_HP;
+      
+      sendCommand(HDA_CMD_SET_UNSOLICITED_RESPONSE(cad, j,
+                                                   HDA_CMD_SET_UNSOLICITED_RESPONSE_ENABLE | unsolTag), cad);
+      
+      IOLog("VoodooHDA DBG: switchInit registered unsol response for nid=%d tag=0x%02x (HDMI=%d DP=%d)\n",
+            j, unsolTag, isHDMI ? 1 : 0, isDP ? 1 : 0);
+    }
 
 		/* Read initial presence state */
 		int res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, j), cad);

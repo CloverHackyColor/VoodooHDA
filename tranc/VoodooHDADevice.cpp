@@ -826,6 +826,7 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
 {
 	VoodooHDAEngine *audioEngine = NULL;
 	bool result = false;
+  auto codec = channel->funcGroup->codec;
 
 	//logMsg("VoodooHDADevice[%p]::createAudioEngine\n", this);
 
@@ -849,30 +850,55 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
      */
     bool isHDMI = (channel->pcmDevice && channel->pcmDevice->digital >= 2);
     nid_t hdmiPin = isHDMI ? getHDMIPinForChannel(channel) : (nid_t)-1;
-    bool hasPresence = false;
 
-    if (isHDMI && hdmiPin != (nid_t)-1 && mNumHDMIEngines < 16) {
-      UInt32 pinSense = sendCommand(HDA_CMD_GET_PIN_SENSE(channel->funcGroup->codec->cad, hdmiPin),
-                                     channel->funcGroup->codec->cad);
-      hasPresence = (pinSense & (1U << 31)) != 0;
-
-      HDMIEngineSlot *slot = &mHDMIEngines[mNumHDMIEngines++];
-      slot->engine = audioEngine;
-      slot->channel = channel;
-      slot->pinNid = hdmiPin;
-      slot->cad = channel->funcGroup->codec->cad;
-      slot->activated = false;
-      audioEngine->retain(); /* keep alive past RELEASE below */
-
-      /* Always activate HDMI engines at init — presence is unknown at
-       * this point (unsolicited responses arrive later).  Dynamic
-       * deactivation on hot-unplug will hide unused engines. */
-      if (activateAudioEngine(audioEngine) == kIOReturnSuccess) {
-        slot->activated = true;
-        result = true;
+    if (isHDMI) {
+      if (hdmiPin != (nid_t)-1 && mNumHDMIEngines < 16) {
+        HDMIEngineSlot *slot = &mHDMIEngines[mNumHDMIEngines++];
+        slot->engine = audioEngine;
+        slot->channel = channel;
+        slot->pinNid = hdmiPin;
+        slot->cad = codec->cad;
+        slot->activated = false;
+        slot->unsolTag = HDAC_UNSOLTAG_EVENT_HDMI; // Будет назначен позже при парсинге кодека
+        
+        audioEngine->retain(); // Удерживаем ссылку для нашего массива
+        
+        // 🔧 СТРОГАЯ ПРОВЕРКА: и presence, и валидный ELD
+        UInt32 pinSense = sendCommand(HDA_CMD_GET_PIN_SENSE(codec->cad, hdmiPin), codec->cad);
+        bool hasPresence = (pinSense & (1U << 31)) != 0;
+        bool eldValid = (pinSense & HDA_CMD_GET_PIN_SENSE_ELD_VALID) != 0;
+                
+        // Проверяем наличие ELD/EDID. В VoodooHDA данные монитора приходят как ELD.
+        Widget *w = widgetGet(channel->funcGroup, hdmiPin);
+        bool hasEdidEld = (w && w->eld && w->eld_len >= 20);
+        
+        IOLog("VoodooHDA DBG: HDMI pin=0x%x pinSense=0x%08x presence=%d eldValid=%d hasEdidEld=%d\n",
+              hdmiPin, (unsigned)pinSense, hasPresence, eldValid, hasEdidEld);
+        
+        // Активируем ТОЛЬКО если реально есть устройство И валидный ELD
+        bool shouldActivate = false;
+        if (isAtiHdmiCodec(codec)) {
+          // ATI: presence=0 даже при подключенном мониторе, используем ELD_VALID
+          shouldActivate = eldValid && hasEdidEld && w->eld[4] != 0;
+        } else {
+          // Intel/Nvidia: требуется presence
+          shouldActivate = hasPresence && hasEdidEld;
+        }
+        
+        if (shouldActivate) {
+          IOLog("VoodooHDA: HDMI pin 0x%x - VALID ELD (spkalloc=0x%02x), activating\n",
+                slot->pinNid, w->eld[4]);
+          activateAudioEngine(audioEngine);
+          slot->activated = true;
+        } else {
+          IOLog("VoodooHDA: HDMI pin 0x%x - NO ELD/EDID, deferring activation until hot-plug\n", slot->pinNid);
+          // Движок создан, но НЕ активирован. Он не появится в macOS, пока не подключат телевизор.
+        }
+        
+        // Балансируем retain от new VoodooHDAEngine.
+        // activateAudioEngine делает свой retain внутри, поэтому один release безопасен.
+        result = true; // Успешно обработали HDMI-канал
       }
-      IOLog("VoodooHDA DBG: HDMI engine pin=%d presence=%d activated=%d\n",
-            hdmiPin, hasPresence, slot->activated);
     } else {
       /* Non-HDMI: always activate */
       if (activateAudioEngine(audioEngine) != kIOReturnSuccess) {
@@ -2172,71 +2198,99 @@ void VoodooHDADevice::updateHDMIEnginePresence()
 
 void VoodooHDADevice::handleUnsolicited(Codec *codec, UInt32 tag, UInt32 resp)
 {
-	FunctionGroup *funcGroup = NULL;
-
-	if (!codec)
-		return;
-
-	for (int i = 0; i < codec->numFuncGroups; i++) {
-		if (codec->funcGroups[i].nodeType == HDA_PARAM_FCT_GRP_TYPE_NODE_TYPE_AUDIO) {
-			funcGroup = &codec->funcGroups[i];
-			break;
-		}
-	}
-
-	if (!funcGroup)
-		return;
-
-	switch (tag) {
-	case HDAC_UNSOLTAG_EVENT_HP:
-	{
-		/*
-		 * Determine flags based on pin type (FreeBSD pattern).
-		 * HDMI/DP: flags = resp & 0x03 (presence + ELD change)
-		 * Analog:  flags = 0x01 (presence only)
-		 */
-		int flags = 0x01; /* default: presence only */
-
-		/* Check if any HDMI/DP pin uses this tag — if so, extract both flags */
-		for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
-			Widget *w = widgetGet(funcGroup, j);
-			if (!w || w->enable == 0 || w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
-				continue;
-			if (HDA_PARAM_PIN_CAP_DP(w->pin.cap) || HDA_PARAM_PIN_CAP_HDMI(w->pin.cap)) {
-				flags = resp & 0x03;
-				break;
-			}
-		}
-
-		IOLog("VoodooHDA DBG: unsol tag=0x%x resp=0x%08x flags=0x%x\n",
-			  (unsigned)tag, (unsigned)resp, flags);
-    switchHandler(funcGroup, false);
-		/* Presence change — standard jack switching */
-		if (flags & 0x01) {
-			updateHDMIEnginePresence();
-		}
-
-		/* ELD change — re-read ELD for HDMI/DP pins */
-		if (flags & 0x02) {
-			for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
-				Widget *w = widgetGet(funcGroup, j);
-				if (!w || w->enable == 0 || w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
-					continue;
-				if (!HDA_PARAM_PIN_CAP_DP(w->pin.cap) && !HDA_PARAM_PIN_CAP_HDMI(w->pin.cap))
-					continue;
-				IOLog("VoodooHDA DBG: ELD change event, re-reading ELD for nid=%d\n", w->nid);
-				hdaa_eld_handler(w);
-			}
-		}
-		break;
-	}
-	default:
-		errorMsg("Unknown unsol tag: 0x%08lx!\n", (long unsigned int)tag);
-		break;
-	}
+  FunctionGroup *funcGroup = NULL;
+  
+  if (!codec)
+    return;
+  
+  for (int i = 0; i < codec->numFuncGroups; i++) {
+    if (codec->funcGroups[i].nodeType == HDA_PARAM_FCT_GRP_TYPE_NODE_TYPE_AUDIO) {
+      funcGroup = &codec->funcGroups[i];
+      break;
+    }
+  }
+  
+  if (!funcGroup)
+    return;
+  
+  switch (tag) {
+    case HDAC_UNSOLTAG_EVENT_HP:
+    {
+      /*
+       * Determine flags based on pin type (FreeBSD pattern).
+       * HDMI/DP: flags = resp & 0x03 (presence + ELD change)
+       * Analog:  flags = 0x01 (presence only)
+       */
+      int flags = 0x01; /* default: presence only */
+      
+      /* Check if any HDMI/DP pin uses this tag — if so, extract both flags */
+      for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
+        Widget *w = widgetGet(funcGroup, j);
+        if (!w || w->enable == 0 || w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
+          continue;
+        if (HDA_PARAM_PIN_CAP_DP(w->pin.cap) || HDA_PARAM_PIN_CAP_HDMI(w->pin.cap)) {
+          flags = resp & 0x03;
+          break;
+        }
+      }
+      
+      IOLog("VoodooHDA DBG: unsol tag=0x%x resp=0x%08x flags=0x%x\n",
+            (unsigned)tag, (unsigned)resp, flags);
+      switchHandler(funcGroup, false);
+      /* Presence change — standard jack switching */
+      if (flags & 0x01) {
+        updateHDMIEnginePresence();
+      }
+      
+      /* ELD change — re-read ELD for HDMI/DP pins */
+      if (flags & 0x02) {
+        for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
+          Widget *w = widgetGet(funcGroup, j);
+          if (!w || w->enable == 0 || w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
+            continue;
+          if (!HDA_PARAM_PIN_CAP_DP(w->pin.cap) && !HDA_PARAM_PIN_CAP_HDMI(w->pin.cap))
+            continue;
+          IOLog("VoodooHDA DBG: ELD change event, re-reading ELD for nid=%d\n", w->nid);
+          hdaa_eld_handler(w);
+        }
+      }
+      break;
+    }
+    case HDAC_UNSOLTAG_EVENT_HDMI:
+    {
+      // Обработка HDMI/DP событий
+      IOLog("VoodooHDA DBG: unsol tag=HDMI resp=0x%08x\n", (unsigned)resp);
+      
+      // Извлекаем флаги (bit 0 = presence change, bit 1 = ELD change)
+      int flags = resp & 0x03;
+      
+      // Presence change — обновляем состояние HDMI-движков
+      if (flags & 0x01) {
+        updateHDMIEnginePresence();
+      }
+      
+      // ELD change — перечитываем ELD для HDMI/DP пинов
+      if (flags & 0x02) {
+        for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
+          Widget *w = widgetGet(funcGroup, j);
+          if (!w || w->enable == 0 || w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
+            continue;
+          if (!HDA_PARAM_PIN_CAP_DP(w->pin.cap) && !HDA_PARAM_PIN_CAP_HDMI(w->pin.cap))
+            continue;
+          IOLog("VoodooHDA DBG: ELD change event, re-reading ELD for nid=%d\n", w->nid);
+          hdaa_eld_handler(w);
+        }
+      }
+      break;
+    }
+      
+    default:
+      errorMsg("Unknown unsol tag: 0x%08lx!\n", (long unsigned int)tag);
+      break;
+  }
 }
 
-/********************************************************************************************/
+
 /********************************************************************************************/
 
 int VoodooHDADevice::handleStreamInterrupt(Channel *channel)
