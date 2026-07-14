@@ -185,7 +185,7 @@ bool VoodooHDAFramebufferNotifier::detectedAMDGPUFamily(VoodooHDAAMDGPUFamily *o
   if (!mLock)
     return false;
   IOLockLock(mLock);
-  VoodooHDAAMDGPUFamily family = mAMDGPUFamily;
+  VoodooHDAAMDGPUFamily family = mAMDGPUFamily;  // not defined
   UInt16 deviceId = mAMDGPUDeviceId;
   IOLockUnlock(mLock);
   if (family == kVoodooHDAAMDGPUUnknown)
@@ -1104,7 +1104,7 @@ bool VoodooHDAFramebufferNotifier::getFramebufferELD(
 			*outLen = conn->eldLen;
 			IOLockUnlock(mLock);
       FBLOG("getFramebufferELD: SUCCESS cad=%d pin=%d eld_len=%d spkalloc=0x%02x",
-            cad, pinNid, conn->eldLen, conn->eldLen > 7 ? conn->eld[7] : 0);
+            cad, pinNid, conn->eldLen, conn->eldLen > 7 ? conn->eld[4] : 0);
 
 			return true;
 		}

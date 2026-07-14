@@ -4810,7 +4810,7 @@ void VoodooHDADevice::hdaa_eld_handler(Widget *widget)
         memcpy(widget->eld, fbELD, fbELDLen);
         widget->eld_len = fbELDLen;
         IOLog("VoodooHDA HDMI: nid=%d using FRAMEBUFFER ELD (%d bytes, spkalloc=0x%02x)\n",
-              nid, fbELDLen, (fbELDLen > 7) ? widget->eld[7] : 0);
+              nid, fbELDLen, (fbELDLen > 4) ? widget->eld[4] : 0);
         return;
       }
     }

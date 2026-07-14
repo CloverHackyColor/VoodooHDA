@@ -3751,7 +3751,7 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 				sendCommand(HDA_CMD_SET_HDMI_DIP_XMIT(cad, nid_pin, 0xc0), cad);
 			}
       logMsg("VoodooHDA HDMI: ATI path + CHAN_SLOT + InfoFrame + DIP_XMIT=0xc0 nid=%d ca=0x%02x chn=%d\n",
-				  nid_pin, hdmica[totalext == 0 ? 0 : 1][totalchn - 1], totalchn);
+				  nid_pin, ca, totalchn);
 			continue;
 		}
 
@@ -3819,7 +3819,7 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 //		bool isDP_conn = widget_pin->eld != NULL && widget_pin->eld_len >= 6 && ((widget_pin->eld[5] >> 2) & 0x3) == 1;
     logMsg("VoodooHDA HDMI: nid_pin=%d infoframe: eld_len=%d conn_type=%s ca=0x%02x totalchn=%d\n",
 			  nid_pin, widget_pin->eld_len, isDP_conn ? "DP" : "HDMI",
-			  hdmica[totalext == 0 ? 0 : 1][totalchn - 1], totalchn);
+			  ca, totalchn);
     
     UInt8 byte1 = 0x84;
     UInt8 byte2 = isDP_conn ? 0x1b : 0x01;
@@ -3830,12 +3830,12 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
     sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, byte3), cad);
 
     csum = 0;
-    csum -= byte1 + byte2 + byte3 + (totalchn - 1) + hdmica[totalext == 0 ? 0 : 1][totalchn - 1];
+    csum -= byte1 + byte2 + byte3 + (totalchn - 1) + ca;
     sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, csum), cad);
     sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, totalchn - 1), cad);
     sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
     sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
-    sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, hdmica[totalext == 0 ? 0 : 1][totalchn - 1]), cad);
+    sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, ca), cad);
     
     /* Start audio infoframe transmission. */
     sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
