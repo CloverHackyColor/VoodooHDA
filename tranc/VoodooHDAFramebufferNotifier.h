@@ -22,6 +22,15 @@
 #define VHDA_FB_MAX_PINS       16
 #define VHDA_FB_MAX_SADS       15
 
+enum VoodooHDAAMDGPUFamily {
+  kVoodooHDAAMDGPUUnknown = 0,
+  kVoodooHDAAMDGPUClassicPolaris,
+  kVoodooHDAAMDGPUVega,
+  kVoodooHDAAMDGPUVega20RadeonVII,
+  kVoodooHDAAMDGPUModernNavi,
+  kVoodooHDAAMDGPUGenericAMD
+};
+
 /* ========================================================================
  * GPU MMIO direct register access for AZ (Azalia) audio engine
  *
@@ -212,6 +221,14 @@ public:
 
 	/* Notify GPU that HDMI audio streaming started/stopped */
 	void notifyStreamingState(int cad, nid_t pinNid, bool streaming);
+  
+  /* Pick the HDMI pin that is actually backed by an online IOFramebuffer/IODisplay. */
+  bool getPreferredConnectedPin(int cad, const nid_t *pinNids, int pinCount, nid_t *outPin);
+  
+  /* Runtime AMD GPU family detected from the framebuffer GPU PCI function, not the HDA audio function. */
+  bool detectedAMDGPUFamily(VoodooHDAAMDGPUFamily *outFamily, UInt16 *outDeviceId);
+
+  const char *detectedAMDGPUFamilyName();
 
 private:
 	bool init(VoodooHDADevice *device);
@@ -239,6 +256,8 @@ private:
 	uint32_t                mGPUMMIOSize;
 	bool                    mGPUAudioInitDone;
 	const void             *mRegs;  /* -> AZRegOffsets, selected per GPU */
+  UInt16                  mAMDGPUDeviceId;
+  VoodooHDAAMDGPUFamily   mAMDGPUFamily;
 
 	bool mapGPUMMIO();
 	void unmapGPUMMIO();

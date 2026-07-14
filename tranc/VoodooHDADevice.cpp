@@ -49,6 +49,141 @@ OSDefineMetaClassAndStructors(VoodooHDADevice, IOAudioDevice)
 #define kVoodooHDAAllowMSI "AllowMSI"
 #define kDisableInputMonitor "DisableInputMonitor"
 
+/*
+ * AMD HDMI controller policy.
+ *
+ * Matching is dynamic: VoodooHDA-HDMI attaches to AMD/ATI PCI HDA functions
+ * by vendor 0x1002 + class 0x0403, then the runtime HDMI policy uses the
+ * *framebuffer GPU function* to decide the safest connector strategy.  Do not
+ * rely on marketing names or a short HDMI-audio IOPCIMatch list.
+ *
+ * Target families:
+ *   - Polaris RX4xx/RX5xx: RX460, RX470, RX480, RX550, RX560, RX570, RX580
+ *   - Vega: Vega56, Vega64, AMD Radeon VII/Vega20
+ *   - Navi/RDNA1: RX5500/XT, RX5600/XT, RX5700/XT
+ *   - Navi/RDNA2: RX6600/XT, RX6650/XT, RX6700/XT, RX6750/XT, RX6800/XT,
+ *                 RX6900/XT, RX6950/XT
+ *
+ * Polaris boards are the risky legacy group: they often report stale/cached
+ * ELD on several HDA pins and may black-screen if the framebuffer audio pipe
+ * is touched too early or disabled during runtime.  Do not trust one guessed
+ * physical pin on this group: keep one CoreAudio output visible, but mirror the
+ * stream setup to the other candidate pins so the real route is not hidden.
+ *
+ * Vega/Radeon VII/RDNA1/RDNA2 use the EDID/framebuffer-driven path.  The RX6600
+ * path is known-good and must be preserved.
+ */
+static inline bool isAmdLegacyPolarisHdaController(UInt32 packedControllerId)
+{
+  UInt16 vendor = packedControllerId & 0xffff;
+  UInt16 device = (packedControllerId >> 16) & 0xffff;
+  if (vendor != ATI_VENDORID)
+    return false;
+  switch (device) {
+    case 0xaae0: /* Baffin/Polaris-era HDMI/DP audio */
+    case 0xab00: /* Baffin/Polaris alternate HDMI/DP audio */
+    case 0xaaf0: /* Ellesmere/Polaris HDMI/DP audio */
+    case 0xaaf8: /* Ellesmere/Polaris alternate HDMI/DP audio */
+      return true;
+    default:
+      return false;
+  }
+}
+
+static inline VoodooHDAAMDGPUFamily classifyAmdGpuDeviceForHDAPolicy(UInt16 gpuDeviceId)
+{
+  if ((gpuDeviceId & 0xFF00) == 0x6700 ||
+      (gpuDeviceId & 0xFF00) == 0x6F00 ||
+      (gpuDeviceId & 0xFFF0) == 0x6980 ||
+      (gpuDeviceId & 0xFFF0) == 0x6990)
+    return kVoodooHDAAMDGPUClassicPolaris;
+  
+  if ((gpuDeviceId & 0xFFF0) == 0x6860 ||
+      (gpuDeviceId & 0xFFF0) == 0x6870 ||
+      (gpuDeviceId & 0xFFF0) == 0x69A0)
+    return kVoodooHDAAMDGPUVega;
+  
+  if ((gpuDeviceId & 0xFFF0) == 0x66A0)
+    return kVoodooHDAAMDGPUVega20RadeonVII;
+  
+  if ((gpuDeviceId & 0xFF00) == 0x7300 ||
+      (gpuDeviceId & 0xFF00) == 0x7400)
+    return kVoodooHDAAMDGPUModernNavi;
+  
+  return kVoodooHDAAMDGPUGenericAMD;
+}
+
+static inline const char *amdGpuFamilyNameForHDAPolicy(VoodooHDAAMDGPUFamily family)
+{
+  switch (family) {
+    case kVoodooHDAAMDGPUClassicPolaris: return "Polaris RX4xx/RX5xx";
+    case kVoodooHDAAMDGPUVega: return "Vega56/Vega64";
+    case kVoodooHDAAMDGPUVega20RadeonVII: return "AMD Radeon VII / Vega20";
+    case kVoodooHDAAMDGPUModernNavi: return "Navi/RDNA RX5xxx/RX6xxx";
+    case kVoodooHDAAMDGPUGenericAMD: return "Generic AMD HDMI";
+    default: return "Unknown AMD HDMI";
+  }
+}
+
+static const char *setHDMIEngineDisplayName(VoodooHDADevice::HDMIEngineSlot *slot, bool includePin)
+{
+  if (!slot || !slot->engine)
+    return "VoodooHDA HDMI/DP Audio";
+  
+  if (includePin && slot->pinNid >= 0) {
+    snprintf(slot->engine->mPortNameBuf, sizeof(slot->engine->mPortNameBuf),
+             "VoodooHDA HDMI/DP Audio P%d", slot->pinNid);
+    slot->engine->mPortName = slot->engine->mPortNameBuf;
+  } else {
+    slot->engine->mPortName = "VoodooHDA HDMI/DP Audio";
+  }
+  slot->engine->mPortType = kIOAudioSelectorControlSelectionValueExternalSpeaker;
+  return slot->engine->mPortName;
+}
+
+static bool detectSiblingAmdGpuForHDAPolicy(IOPCIDevice *hdaDevice,
+                                            VoodooHDAAMDGPUFamily *outFamily,
+                                            UInt16 *outDeviceId)
+{
+  if (outFamily)
+    *outFamily = kVoodooHDAAMDGPUUnknown;
+  if (outDeviceId)
+    *outDeviceId = 0;
+  if (!hdaDevice)
+    return false;
+  
+  IOService *parent = hdaDevice->getProvider();
+  if (!parent)
+    return false;
+  
+  OSIterator *iter = parent->getChildIterator(gIOServicePlane);
+  if (!iter)
+    return false;
+  
+  IOService *child;
+  while ((child = OSDynamicCast(IOService, iter->getNextObject()))) {
+    IOPCIDevice *pci = OSDynamicCast(IOPCIDevice, child);
+    if (!pci || pci == hdaDevice)
+      continue;
+    if (pci->configRead16(kIOPCIConfigVendorID) != ATI_VENDORID)
+      continue;
+    if (pci->getFunctionNumber() != 0)
+      continue;
+    
+    UInt16 gpuDeviceId = pci->configRead16(kIOPCIConfigDeviceID);
+    VoodooHDAAMDGPUFamily family = classifyAmdGpuDeviceForHDAPolicy(gpuDeviceId);
+    if (outFamily)
+      *outFamily = family;
+    if (outDeviceId)
+      *outDeviceId = gpuDeviceId;
+    iter->release();
+    return true;
+  }
+  
+  iter->release();
+  return false;
+}
+
 bool VoodooHDADevice::init(OSDictionary *dict)
 {
 	OSNumber *verboseLevelNum;
@@ -850,6 +985,9 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
      */
     bool isHDMI = (channel->pcmDevice && channel->pcmDevice->digital >= 2);
     nid_t hdmiPin = isHDMI ? getHDMIPinForChannel(channel) : (nid_t)-1;
+    
+    if (mNumHDMIEngines < 0)
+      mNumHDMIEngines = 0;
 
     if (isHDMI) {
       if (hdmiPin != (nid_t)-1 && mNumHDMIEngines < 16) {
@@ -860,6 +998,8 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
         slot->cad = codec->cad;
         slot->activated = false;
         slot->unsolTag = HDAC_UNSOLTAG_EVENT_HDMI; // Будет назначен позже при парсинге кодека
+        slot->mirrorCandidate = false;
+        slot->mirroredActive = false;
         
         audioEngine->retain(); // Удерживаем ссылку для нашего массива
         
@@ -875,29 +1015,37 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
         IOLog("VoodooHDA DBG: HDMI pin=0x%x pinSense=0x%08x presence=%d eldValid=%d hasEdidEld=%d\n",
               hdmiPin, (unsigned)pinSense, hasPresence, eldValid, hasEdidEld);
         
-        // Активируем ТОЛЬКО если реально есть устройство И валидный ELD
-        bool shouldActivate = false;
-        if (isAtiHdmiCodec(codec)) {
-          // ATI: presence=0 даже при подключенном мониторе, используем ELD_VALID
-          shouldActivate = eldValid && hasEdidEld && w->eld[4] != 0;
-        } else {
-          // Intel/Nvidia: требуется presence
-          shouldActivate = hasPresence && hasEdidEld;
-        }
+        /* RX5xx/Polaris HDMI safety: do not publish inactive/no-display
+         * HDMI engines at boot.  Keep the slot retained for later hot-plug/ELD
+         * activation, but only publish the IOAudioEngine when the pin reports
+         * real presence (or AMD cached ELD presence).  This keeps CoreAudio
+         * from creating "no display" HDMI outputs and avoids extra GPU/HDMI
+         * churn during display init. */
+        bool atiHDMI = isAtiHdmiCodec(codec);
         
-        if (shouldActivate) {
-          IOLog("VoodooHDA: HDMI pin 0x%x - VALID ELD (spkalloc=0x%02x), activating\n",
-                slot->pinNid, w->eld[4]);
-          activateAudioEngine(audioEngine);
-          slot->activated = true;
+        /* RX5xx/Polaris connected-only policy:
+         * Do not publish ATI/AMD HDMI engines one-by-one while the parser is
+         * still creating channels.  Many AMD HDMI codecs expose stale/cached
+         * ELD on every pin, so early activation makes CoreAudio list five
+         * identical HDMI outputs.  Store the slots now and let
+         * updateHDMIEnginePresence() publish the safe effective set after all
+         * channels exist. */
+        if (atiHDMI) {
+          result = true;
+        } else if (hasPresence) {
+          if (activateAudioEngine(audioEngine) == kIOReturnSuccess) {
+            slot->activated = true;
+            result = true;
+          }
         } else {
-          IOLog("VoodooHDA: HDMI pin 0x%x - NO ELD/EDID, deferring activation until hot-plug\n", slot->pinNid);
-          // Движок создан, но НЕ активирован. Он не появится в macOS, пока не подключат телевизор.
+          result = true;
         }
-        
-        // Балансируем retain от new VoodooHDAEngine.
-        // activateAudioEngine делает свой retain внутри, поэтому один release безопасен.
-        result = true; // Успешно обработали HDMI-канал
+        if (mVerbose >= 1) {
+          IOLog("VoodooHDA DBG: HDMI engine pin=%d presence=%d activated=%d%s\n",
+                hdmiPin, hasPresence, slot->activated,
+                slot->activated ? "" : " deferred-connected-only");
+        }
+
       }
     } else {
       /* Non-HDMI: always activate */
@@ -2106,6 +2254,32 @@ int VoodooHDADevice::unsolqFlush()
 	return ret;
 }
 
+
+static inline bool shouldUseAmdLegacyPolarisHDMIFallback(VoodooHDAFramebufferNotifier *notifier,
+                                                         IOPCIDevice *hdaDevice,
+                                                         UInt32 packedControllerId)
+{
+  /* Prefer runtime GPU-family detection from the framebuffer GPU PCI function.
+   * This is the only reliable way to distinguish Polaris from Vega/RDNA when
+   * AMD reuses or board vendors vary the separate HDA audio function ID. */
+  if (notifier) {
+    VoodooHDAAMDGPUFamily family = kVoodooHDAAMDGPUUnknown;
+    UInt16 gpuDeviceId = 0;
+    if (notifier->detectedAMDGPUFamily(&family, &gpuDeviceId))
+      return family == kVoodooHDAAMDGPUClassicPolaris;
+  }
+  
+  VoodooHDAAMDGPUFamily family = kVoodooHDAAMDGPUUnknown;
+  UInt16 gpuDeviceId = 0;
+  if (detectSiblingAmdGpuForHDAPolicy(hdaDevice, &family, &gpuDeviceId))
+    return family == kVoodooHDAAMDGPUClassicPolaris;
+  
+  /* Early-boot fallback before any framebuffer/IODisplay has matched.  Keep this
+   * deliberately narrow so Vega/Radeon VII/RDNA cards stay on the modern
+   * EDID-driven path. */
+  return isAmdLegacyPolarisHdaController(packedControllerId);
+}
+
 /*
  * Unsolicited messages handler.
  * For HDMI/DP pins, resp bits [1:0] carry flags:
@@ -2113,6 +2287,7 @@ int VoodooHDADevice::unsolqFlush()
  * For analog pins, only presence (bit 0) is meaningful.
  * (Based on FreeBSD hdaa_unsol_intr)
  */
+#if 0
 void VoodooHDADevice::updateHDMIEnginePresence()
 {
 	/* Retry enableAudioPipe on framebuffers that returned timeout at
@@ -2195,7 +2370,230 @@ void VoodooHDADevice::updateHDMIEnginePresence()
 		slot->engine->setProperty("IOAudioEngineDescription", desc);
 	}
 }
+#else
+void VoodooHDADevice::updateHDMIEnginePresence()
+{
+  /* First pass: read pin sense for all engines and find which have presence.
+   * ATI codecs may report stale presence on previously-connected pins,
+   * so count total presence to detect the "cable moved" scenario. */
+  bool presence[16] = {};
+  UInt32 pinSenses[16] = {};
+  int presenceCount = 0;
+  int firstPresenceIdx = -1;
+  nid_t presentPins[16] = {};
+  int presentPinCount = 0;
+  nid_t preferredPin = (nid_t)-1;
+  bool havePreferredPin = false;
+  int hdmiEngineCount = (mNumHDMIEngines > 16) ? 16 : mNumHDMIEngines;
+  bool legacyPolarisRecovery = shouldUseAmdLegacyPolarisHDMIFallback(mFBNotifier, mPciNub, mDeviceId);
+  
+  if (hdmiEngineCount < 0)
+    hdmiEngineCount = 0;
+  
+  for (int i = 0; i < hdmiEngineCount; i++) {
+    HDMIEngineSlot *slot = &mHDMIEngines[i];
+    if (!slot->engine) continue;
+    slot->mirrorCandidate = false;
+    if (slot->cad < 0 || slot->cad >= HDAC_CODEC_MAX) {
+      presence[i] = false;
+      continue;
+    }
+    pinSenses[i] = sendCommand(HDA_CMD_GET_PIN_SENSE(slot->cad, slot->pinNid), slot->cad);
+ //   Codec *codec = mCodecs[slot->cad];
+    bool hasPresence = (pinSenses[i] & (1U << 31)) != 0;
+ //   bool eldValid = (pinSenses[i] & HDA_CMD_GET_PIN_SENSE_ELD_VALID) != 0;
 
+    presence[i] = hasPresence;
+    if (presence[i]) {
+      presenceCount++;
+      if (presentPinCount < 16)
+        presentPins[presentPinCount++] = slot->pinNid;
+      if (firstPresenceIdx < 0)
+        firstPresenceIdx = i;
+    }
+  }
+  
+  /* If the framebuffer notifier has EDID for a concrete IOFramebuffer, let it
+   * choose the physical HDA pin.  Some Polaris cards report no reliable
+   * HDA pin-sense bits until the display pipe is enabled, while others report
+   * stale ELD/presence on every pin.  Therefore query the notifier even when
+   * presenceCount is 0 or 1 and pass the full ATI HDMI pin list as fallback. */
+  if (mFBNotifier && hdmiEngineCount > 0) {
+    nid_t candidatePins[16] = {};
+    int candidatePinCount = 0;
+    int cad = -1;
+    if (presentPinCount > 0) {
+      for (int p = 0; p < presentPinCount && candidatePinCount < 16; p++)
+        candidatePins[candidatePinCount++] = presentPins[p];
+    }
+    for (int i = 0; i < hdmiEngineCount; i++) {
+      HDMIEngineSlot *slot = &mHDMIEngines[i];
+      Codec *codec = (slot->cad >= 0 && slot->cad < HDAC_CODEC_MAX) ? mCodecs[slot->cad] : NULL;
+      if (!codec || !isAtiHdmiCodec(codec))
+        continue;
+      if (cad < 0)
+        cad = slot->cad;
+      bool already = false;
+      for (int p = 0; p < candidatePinCount; p++) {
+        if (candidatePins[p] == slot->pinNid) { already = true; break; }
+      }
+      if (!already && candidatePinCount < 16)
+        candidatePins[candidatePinCount++] = slot->pinNid;
+    }
+    if (cad >= 0 && candidatePinCount > 0)
+      havePreferredPin = mFBNotifier->getPreferredConnectedPin(cad, candidatePins, candidatePinCount, &preferredPin);
+  }
+  
+  /*
+   * RX4xx/RX5xx/Polaris recovery rule:
+   * If a legacy Polaris-class AMD controller reports stale/cached HDA pins, the
+   * EDID-backed IOFramebuffer index may not be the same as the physical HDA pin
+   * that actually carries audio.  A single forced visible pin can therefore hide
+   * the working route.  Keep one Sound output visible, but mirror stream setup to
+   * every other ATI HDMI candidate pin for this legacy group.
+   *
+   * Do not apply this forced fallback to Navi/RDNA1 RX5500/5600/5700 or
+   * Navi/RDNA2 RX6600/6650/6700/6750/6800/6900/6950; those cards keep the
+   * EDID/framebuffer-driven path because RX6600 is already validated and the
+   * Navi connector order is more reliable than Polaris stale pin-sense.
+   */
+  if (legacyPolarisRecovery) {
+    if (mVerbose >= 1) {
+      IOLog("VoodooHDA ATI DBG: legacy Polaris HDMI recovery single visible with candidate mirrors presenceCount=%d preferred=%d controller=0x%08x family=%s\n",
+            presenceCount, havePreferredPin ? preferredPin : -1, (unsigned)mDeviceId,
+            mFBNotifier ? mFBNotifier->detectedAMDGPUFamilyName() : "HDA fallback");
+    }
+  }
+  
+  /* On modern AMD, once an HDMI engine has been published, keep using that
+   * engine as the single CoreAudio-facing output.  Legacy Polaris recovery
+   * intentionally skips this collapse because the guessed single pin can be
+   * the silent one.
+   */
+  nid_t visiblePin = preferredPin;
+  bool haveVisiblePin = havePreferredPin;
+  if (legacyPolarisRecovery) {
+    haveVisiblePin = false;
+    visiblePin = (nid_t)-1;
+    for (int pass = 0; pass < 2 && !haveVisiblePin; pass++) {
+      for (int i = 0; i < hdmiEngineCount; i++) {
+        HDMIEngineSlot *slot = &mHDMIEngines[i];
+        Codec *codec = (slot->cad >= 0 && slot->cad < HDAC_CODEC_MAX) ? mCodecs[slot->cad] : NULL;
+        if (!slot->engine || !codec || !isAtiHdmiCodec(codec))
+          continue;
+        if (pass == 0 && !presence[i])
+          continue;
+        visiblePin = slot->pinNid;
+        haveVisiblePin = true;
+        break;
+      }
+    }
+    if (haveVisiblePin && mVerbose >= 1)
+      IOLog("VoodooHDA ATI DBG: legacy Polaris HDMI recovery visible pin=%d with mirrored candidates\n",
+            visiblePin);
+  } else {
+    for (int i = 0; i < hdmiEngineCount; i++) {
+      HDMIEngineSlot *slot = &mHDMIEngines[i];
+      Codec *codec = (slot->cad >= 0 && slot->cad < HDAC_CODEC_MAX) ? mCodecs[slot->cad] : NULL;
+      if (!slot->engine || !slot->activated || !codec || !isAtiHdmiCodec(codec))
+        continue;
+      visiblePin = slot->pinNid;
+      haveVisiblePin = true;
+      break;
+    }
+    if (!haveVisiblePin && firstPresenceIdx >= 0) {
+      visiblePin = mHDMIEngines[firstPresenceIdx].pinNid;
+      haveVisiblePin = true;
+    }
+  }
+  
+  /* Second pass: update status and inject ELD */
+  for (int i = 0; i < hdmiEngineCount; i++) {
+    HDMIEngineSlot *slot = &mHDMIEngines[i];
+    if (!slot->engine) continue;
+    if (slot->cad < 0 || slot->cad >= HDAC_CODEC_MAX)
+      continue;
+    
+    Codec *slotCodec = mCodecs[slot->cad];
+    bool atiHDMI = slotCodec && isAtiHdmiCodec(slotCodec);
+    bool effectivePresence = presence[i];
+    
+    /* AMD connected-only policy:
+     * Prefer the pin backed by a real online IOFramebuffer/IODisplay EDID.
+     * This is used for Polaris RX4xx/RX5xx, Navi/RDNA1 RX5xxx and Navi/RDNA2
+     * RX6xxx.  In legacy Polaris recovery mode, publish one ATI HDMI pin and
+     * mirror the hidden candidates instead of forcing only one physical route. */
+    if (atiHDMI) {
+      if (legacyPolarisRecovery) {
+        effectivePresence = (haveVisiblePin && slot->pinNid == visiblePin);
+        if (haveVisiblePin && slot->pinNid != visiblePin) {
+          slot->mirrorCandidate = true;
+          if (mFBNotifier)
+            mFBNotifier->injectELDIntoPinIfReady(slot->cad, slot->pinNid);
+          if (mVerbose >= 2) {
+            IOLog("VoodooHDA ATI DBG: HDMI recovery mirror candidate pin=%d visiblePin=%d\n",
+                  slot->pinNid, visiblePin);
+          }
+        }
+      } else if (haveVisiblePin)
+        effectivePresence = (slot->pinNid == visiblePin);
+      else if (presenceCount > 1 && i != firstPresenceIdx)
+        effectivePresence = false;
+    }
+    
+    bool hasPresence = effectivePresence;
+    const char *engineName = setHDMIEngineDisplayName(slot, false);
+    
+    if (hasPresence && !slot->activated) {
+      if (mVerbose >= 1)
+        IOLog("VoodooHDA DBG: HDMI hot-plug: activating engine for pin=%d\n", slot->pinNid);
+      IOReturn ret = activateAudioEngine(slot->engine);
+      if (mVerbose >= 1)
+        IOLog("VoodooHDA DBG: HDMI hot-plug: activateAudioEngine ret=0x%x\n", ret);
+      if (ret == kIOReturnSuccess)
+        slot->activated = true;
+    }
+    
+    if (hasPresence && mFBNotifier) {
+      mFBNotifier->injectELDIntoPinIfReady(slot->cad, slot->pinNid);
+      mFBNotifier->ensureAudioPipeEnabled(slot->cad, slot->pinNid);
+    }
+    
+    /* When cable is removed, tell the GPU to stop the audio pipe so it
+     * can power-gate the display engine and reduce power consumption.
+     * ATI HDMI codecs always report presence=0 (bit 31) even when a display
+     * is connected — they set ELD_VALID (bit 1) instead.  Only disable the
+     * audio pipe for ATI when ELD_VALID is also 0, meaning truly disconnected. */
+    if (!hasPresence && mFBNotifier) {
+      /*
+       * Do not disable AMD/ATI framebuffer audio pipes from the HDA side.
+       * RX4xx/RX5xx/RX5xxx/RX6xxx AMD cards can report stale pin sense while
+       * the display pipe is still valid; disabling here can kill HDMI audio or
+       * trigger black-screen during hotplug/sleep-wake.  Non-ATI paths keep the
+       * normal disable behavior.
+       */
+      bool disablePipe = !atiHDMI;
+      Codec *codec = mCodecs[slot->cad];
+      if (codec && isAtiHdmiCodec(codec)) {
+        bool eldValid = (pinSenses[i] & (1U << 1)) != 0;
+        if (mVerbose >= 2) {
+          IOLog("VoodooHDA ATI DBG: updatePresence pin=%d pinSense=0x%08x ELD_VALID=%d disablePipe=0 preferred=%d\n",
+                slot->pinNid, (unsigned)pinSenses[i], eldValid,
+                legacyPolarisRecovery ? 3 : (havePreferredPin ? 1 : 0));
+        }
+      }
+      if (disablePipe)
+        mFBNotifier->disableAudioPipeForPin(slot->cad, slot->pinNid);
+    }
+    
+    /* Keep HDMI/DP output names generic; Polaris recovery uses hidden mirrors
+     * rather than exposing separate pin-labeled Sound outputs.
+     */
+    slot->engine->setProperty("IOAudioEngineDescription", engineName);
+  }
+}
+
+#endif
 void VoodooHDADevice::handleUnsolicited(Codec *codec, UInt32 tag, UInt32 resp)
 {
   FunctionGroup *funcGroup = NULL;
@@ -2376,10 +2774,11 @@ void VoodooHDADevice::timeoutOccurred(OSObject *owner, IOTimerEventSource *sourc
 	if (!device)
 		return;
 
-	device->logMsg("total interrupts: %lld (%lld channel interrupts)\n", device->mTotalInt,
+  if (device->mVerbose >= 4)
+    device->logMsg("total interrupts: %lld (%lld channel interrupts)\n", device->mTotalInt,
 			device->mTotalChanInt);
 
-	source->setTimeoutMS(5000);
+	source->setTimeoutMS(10000);
 }
 
 /********************************************************************************************/

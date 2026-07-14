@@ -463,10 +463,13 @@ public:
 		int cad;
 		bool activated;
     UInt32 unsolTag;
+    bool mirrorCandidate;
+    bool mirroredActive;
 	};
 	HDMIEngineSlot mHDMIEngines[16];
 	int mNumHDMIEngines;
 	nid_t getHDMIPinForChannel(Channel *channel);
+//  UInt16 diagnosticFlagsForPin(int cad, nid_t pinNid) const;
 	void updateHDMIEnginePresence();
 };
 

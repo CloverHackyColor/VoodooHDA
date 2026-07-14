@@ -14,6 +14,119 @@ OSDefineMetaClassAndStructors(VoodooHDAFramebufferNotifier, OSObject)
 
 #define FBLOG(fmt, ...) IOLog("VoodooHDA FB: " fmt "\n", ##__VA_ARGS__)
 
+static VoodooHDAAMDGPUFamily classifyAMDGPUDevice(UInt16 gpuDeviceId);
+static const char *amdHdmiGpuFamilyNameForFamily(VoodooHDAAMDGPUFamily family);
+static const char *amdHdmiGpuFamilyName(UInt16 gpuDeviceId);
+
+static bool vhdaIsLegacyPolarisHDADevice(IOPCIDevice *hdaDevice)
+{
+  if (!hdaDevice)
+    return false;
+  if (hdaDevice->configRead16(kIOPCIConfigVendorID) != 0x1002)
+    return false;
+  
+  switch (hdaDevice->configRead16(kIOPCIConfigDeviceID)) {
+    case 0xaae0:
+    case 0xab00:
+    case 0xaaf0:
+    case 0xaaf8:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool vhdaReadAMDAudioCodecInfoPin(IOService *framebuffer, nid_t *outPin)
+{
+  if (!framebuffer || !outPin)
+    return false;
+  OSData *codecInfo = OSDynamicCast(OSData, framebuffer->getProperty("audio-codec-info"));
+  if (!codecInfo || codecInfo->getLength() < 4)
+    return false;
+  const UInt8 *bytes = (const UInt8 *)codecInfo->getBytesNoCopy();
+  if (!bytes)
+    return false;
+  
+  /*
+   * AMDFramebuffer publishes audio-codec-info as four bytes.  On Polaris
+   * RX580 logs we saw <00 01 09 00>, where byte[2] is the HDA pin NID
+   * used by the physical display connector.  Accept only real HDMI pin NIDs
+   * from the normal ATI table range to avoid treating garbage as a pin.
+   */
+  nid_t pin = (nid_t)bytes[2];
+  if (pin < 3 || pin > 31)
+    return false;
+  *outPin = pin;
+  return true;
+}
+
+
+static bool vhdaIsIONDRVFramebuffer(IOService *framebuffer)
+{
+  if (!framebuffer)
+    return false;
+  
+  OSString *publisher = OSDynamicCast(OSString, framebuffer->getProperty("IOPersonalityPublisher"));
+  if (publisher && publisher->isEqualTo("com.apple.iokit.IONDRVSupport"))
+    return true;
+  
+  OSString *className = OSDynamicCast(OSString, framebuffer->getProperty("IOClass"));
+  if (className && className->isEqualTo("IONDRVFramebuffer"))
+    return true;
+  
+  return false;
+}
+
+static bool vhdaParseRegistryAtIndex(const char *name, int *outIndex)
+{
+  if (!name || !outIndex)
+    return false;
+  
+  for (const char *p = name; *p; p++) {
+    if (*p != '@')
+      continue;
+    p++;
+    int value = 0;
+    bool haveDigit = false;
+    while (*p >= '0' && *p <= '9') {
+      haveDigit = true;
+      value = (value * 10) + (*p - '0');
+      p++;
+    }
+    if (haveDigit) {
+      *outIndex = value;
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool vhdaGetFramebufferConnectorIndex(IOService *framebuffer, int *outIndex)
+{
+  if (!framebuffer || !outIndex)
+    return false;
+  
+  IOService *service = framebuffer;
+  for (int depth = 0; depth < 6 && service; depth++) {
+    if (vhdaParseRegistryAtIndex(service->getName(), outIndex))
+      return true;
+    service = service->getProvider();
+  }
+  return false;
+}
+
+static const char *amdHdmiGpuFamilyNameForFamily(VoodooHDAAMDGPUFamily family)
+{
+  switch (family) {
+    case kVoodooHDAAMDGPUClassicPolaris: return "Polaris RX4xx/RX5xx";
+    case kVoodooHDAAMDGPUVega: return "Vega56/Vega64";
+    case kVoodooHDAAMDGPUVega20RadeonVII: return "AMD Radeon VII / Vega20";
+    case kVoodooHDAAMDGPUModernNavi: return "Navi/RDNA RX5xxx/RX6xxx";
+    case kVoodooHDAAMDGPUGenericAMD: return "Generic AMD HDMI";
+    default: return "Unknown AMD HDMI";
+  }
+}
+
 /* ---------- lifecycle ---------- */
 
 VoodooHDAFramebufferNotifier *
@@ -65,6 +178,35 @@ void VoodooHDAFramebufferNotifier::free()
 		mLock = NULL;
 	}
 	super::free();
+}
+
+bool VoodooHDAFramebufferNotifier::detectedAMDGPUFamily(VoodooHDAAMDGPUFamily *outFamily, UInt16 *outDeviceId)
+{
+  if (!mLock)
+    return false;
+  IOLockLock(mLock);
+  VoodooHDAAMDGPUFamily family = mAMDGPUFamily;
+  UInt16 deviceId = mAMDGPUDeviceId;
+  IOLockUnlock(mLock);
+  if (family == kVoodooHDAAMDGPUUnknown)
+    return false;
+  if (deviceId == 0 && family != kVoodooHDAAMDGPUClassicPolaris)
+    return false;
+  if (outFamily)
+    *outFamily = family;
+  if (outDeviceId)
+    *outDeviceId = deviceId;
+  return true;
+}
+
+
+
+const char *VoodooHDAFramebufferNotifier::detectedAMDGPUFamilyName()
+{
+  VoodooHDAAMDGPUFamily family = kVoodooHDAAMDGPUUnknown;
+  if (!detectedAMDGPUFamily(&family, NULL))
+    return "Unknown AMD HDMI";
+  return amdHdmiGpuFamilyNameForFamily(family);
 }
 
 /* ---------- pin registration ---------- */
@@ -412,12 +554,71 @@ IOReturn VoodooHDAFramebufferNotifier::interestHandler(
 
 void VoodooHDAFramebufferNotifier::mapConnectionToPin(FBConnectionState *conn, int connIndex)
 {
-	if (mATIPinCount > 0 && connIndex < mATIPinCount) {
-		conn->mappedPinNid = mATIPinNids[connIndex];
-		conn->mappedCodecCad = mATIPinCad;
-		FBLOG("mapConnectionToPin: connIndex=%d -> pin nid=%d cad=%d",
-		      connIndex, conn->mappedPinNid, conn->mappedCodecCad);
-	}
+  if (!conn || mATIPinCount <= 0)
+    return;
+  
+  /*
+   * AMD framebuffer exposes an audio-codec-info property on each connector.
+   * On Polaris/RX4xx/RX5xx this is much more reliable than assuming that
+   * framebuffer index N maps to HDA pin N, especially when every ATI pin
+   * reports stale presence/ELD.  Example seen on RX580 2048SP:
+   *   framebuffer@1 with IODisplayEDID has audio-codec-info <00 01 09 00>
+   *   so the physical HDMI audio pin is nid 9, not the first pin nid 3.
+   */
+  
+  if (conn->framebuffer) {
+    nid_t codecPin = -1;
+    if (vhdaReadAMDAudioCodecInfoPin(conn->framebuffer, &codecPin)) {
+      for (int i = 0; i < mATIPinCount; i++) {
+        if (mATIPinNids[i] == codecPin) {
+          conn->mappedPinNid = codecPin;
+          conn->mappedCodecCad = mATIPinCad;
+          FBLOG("mapConnectionToPin: connIndex=%d audio-codec-info pin nid=%d cad=%d",
+                connIndex, conn->mappedPinNid, conn->mappedCodecCad);
+          return;
+        }
+      }
+      FBLOG("mapConnectionToPin: connIndex=%d audio-codec-info pin nid=%d not in ATI pin table",
+            connIndex, codecPin);
+    }
+  }
+  /*
+   * Legacy Polaris without the native framebuffer driver may expose only
+   * IONDRV/boot framebuffers and no audio-codec-info.  In that mode every HDA
+   * HDMI pin can report stale presence, so first-pin fallback selects pin 3
+   * even when the active display path is wired to the high pin.  RX580 2048SP
+   * debug traces with the monitor on ATY,Radeon@0 showed working stream setup
+   * on pin 13; reverse the classic 3,5,7,9,11,13 table only for this IONDRV
+   * no-codec-info path.  Prefer the real ATY,Radeon@N index from the provider
+   * chain over IOKit match order so the connected framebuffer drives the HDAU
+   * pin selection.  Native AMDFramebuffer/audio-codec-info remains the
+   * authoritative mapping above.
+   */
+  if (conn->framebuffer && vhdaIsIONDRVFramebuffer(conn->framebuffer) &&
+      vhdaIsLegacyPolarisHDADevice(mHDAPciDevice) &&
+      mATIPinCount >= 6 &&
+      mATIPinNids[0] == 3 && mATIPinNids[1] == 5 &&
+      mATIPinNids[2] == 7 && mATIPinNids[3] == 9 &&
+      mATIPinNids[4] == 11 && mATIPinNids[5] == 13) {
+    int fbIndex = -1;
+    if (!vhdaGetFramebufferConnectorIndex(conn->framebuffer, &fbIndex))
+      fbIndex = connIndex;
+    int reverseIndex = (mATIPinCount - 1) - fbIndex;
+    if (reverseIndex >= 0 && reverseIndex < mATIPinCount) {
+      conn->mappedPinNid = mATIPinNids[reverseIndex];
+      conn->mappedCodecCad = mATIPinCad;
+      FBLOG("mapConnectionToPin: connIndex=%d fbIndex=%d IONDRV reverse fallback -> pin nid=%d cad=%d",
+            connIndex, fbIndex, conn->mappedPinNid, conn->mappedCodecCad);
+      return;
+    }
+  }
+  
+  if (connIndex < mATIPinCount) {
+    conn->mappedPinNid = mATIPinNids[connIndex];
+    conn->mappedCodecCad = mATIPinCad;
+    FBLOG("mapConnectionToPin: connIndex=%d fallback -> pin nid=%d cad=%d",
+          connIndex, conn->mappedPinNid, conn->mappedCodecCad);
+  }
 }
 
 /* ---------- EDID reading ---------- */
@@ -1288,6 +1489,81 @@ void VoodooHDAFramebufferNotifier::disableAudioPipeForPin(int cad, nid_t pinNid)
   }
   IOLockUnlock(mLock);
 }
+
+
+bool VoodooHDAFramebufferNotifier::getPreferredConnectedPin(int cad, const nid_t *pinNids, int pinCount, nid_t *outPin)
+{
+  if (!mLock || !pinNids || pinCount <= 0 || !outPin)
+    return false;
+  
+  IOLockLock(mLock);
+  
+  /*
+   * Strongest rule: if an online/EDID-backed AMDFramebuffer publishes
+   * audio-codec-info, trust that NID even if the earlier slot/index mapping
+   * was fallback-based.  This fixes RX580/Polaris cards where the connected
+   * display is on framebuffer@1 with audio-codec-info <00 01 09 00>, while
+   * the HDA stale-presence list would otherwise select pin 3 or pin 5.
+   */
+  for (int pass = 0; pass < 2; pass++) {
+    for (int i = 0; i < mNumConnections; i++) {
+      FBConnectionState *conn = &mConnections[i];
+      if (conn->mappedCodecCad != cad || !conn->framebuffer)
+        continue;
+      bool eligible = (pass == 0) ? (conn->displayOnline && conn->edidValid)
+      : (conn->displayOnline || conn->edidValid);
+      if (!eligible)
+        continue;
+      nid_t codecPin = -1;
+      if (!vhdaReadAMDAudioCodecInfoPin(conn->framebuffer, &codecPin))
+        continue;
+      for (int p = 0; p < pinCount; p++) {
+        if (pinNids[p] == codecPin) {
+          *outPin = codecPin;
+          IOLockUnlock(mLock);
+          return true;
+        }
+      }
+    }
+  }
+  
+  /* Prefer a framebuffer connection with valid EDID and an enabled audio pipe. */
+  for (int pass = 0; pass < 3; pass++) {
+    for (int i = 0; i < mNumConnections; i++) {
+      FBConnectionState *conn = &mConnections[i];
+      if (conn->mappedCodecCad != cad || conn->mappedPinNid < 0)
+        continue;
+      
+      bool eligible = false;
+      switch (pass) {
+        case 0:
+          eligible = conn->displayOnline && conn->edidValid && conn->audioPipeEnabled;
+          break;
+        case 1:
+          eligible = conn->displayOnline && conn->edidValid;
+          break;
+        default:
+          eligible = conn->edidValid || conn->displayOnline;
+          break;
+      }
+      if (!eligible)
+        continue;
+      
+      for (int p = 0; p < pinCount; p++) {
+        if (pinNids[p] == conn->mappedPinNid) {
+          *outPin = conn->mappedPinNid;
+          IOLockUnlock(mLock);
+          return true;
+        }
+      }
+    }
+  }
+  
+  IOLockUnlock(mLock);
+  return false;
+}
+
+
 
 
 /* ---------- Auto-init: try all endpoints/DIGs ---------- */
