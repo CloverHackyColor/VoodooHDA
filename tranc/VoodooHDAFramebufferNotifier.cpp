@@ -16,7 +16,7 @@ OSDefineMetaClassAndStructors(VoodooHDAFramebufferNotifier, OSObject)
 
 static VoodooHDAAMDGPUFamily classifyAMDGPUDevice(UInt16 gpuDeviceId);
 static const char *amdHdmiGpuFamilyNameForFamily(VoodooHDAAMDGPUFamily family);
-static const char *amdHdmiGpuFamilyName(UInt16 gpuDeviceId);
+//static const char *amdHdmiGpuFamilyName(UInt16 gpuDeviceId);
 
 static bool vhdaIsLegacyPolarisHDADevice(IOPCIDevice *hdaDevice)
 {
@@ -125,6 +125,37 @@ static const char *amdHdmiGpuFamilyNameForFamily(VoodooHDAAMDGPUFamily family)
     case kVoodooHDAAMDGPUGenericAMD: return "Generic AMD HDMI";
     default: return "Unknown AMD HDMI";
   }
+}
+
+static VoodooHDAAMDGPUFamily classifyAMDGPUDevice(UInt16 gpuDeviceId)
+{
+  /* Polaris RX4xx/RX5xx: Ellesmere/Baffin/Lexa/Polaris30.  Keep this
+   * narrower than the old broad 0x66xx rule so Radeon VII/Vega20 (0x66af)
+   * is not accidentally treated as Polaris. */
+  if ((gpuDeviceId & 0xFF00) == 0x6700 ||
+      (gpuDeviceId & 0xFF00) == 0x6F00 ||
+      (gpuDeviceId & 0xFFF0) == 0x6980 ||
+      (gpuDeviceId & 0xFFF0) == 0x6990)
+    return kVoodooHDAAMDGPUClassicPolaris;
+  
+  /* Vega 10/12 family: RX Vega 56/64 and related boards. */
+  if ((gpuDeviceId & 0xFFF0) == 0x6860 ||
+      (gpuDeviceId & 0xFFF0) == 0x6870 ||
+      (gpuDeviceId & 0xFFF0) == 0x69A0)
+    return kVoodooHDAAMDGPUVega;
+  
+  /* Vega 20: AMD Radeon VII. */
+  if ((gpuDeviceId & 0xFFF0) == 0x66A0)
+    return kVoodooHDAAMDGPUVega20RadeonVII;
+  
+  /* Navi/RDNA1/RDNA2: RX5500/5600/5700 and RX6600/6650/6700/6750/6800/
+   * 6900/6950 families.  These use the EDID/framebuffer-driven policy that
+   * was confirmed working on RX6600. */
+  if ((gpuDeviceId & 0xFF00) == 0x7300 ||
+      (gpuDeviceId & 0xFF00) == 0x7400)
+    return kVoodooHDAAMDGPUModernNavi;
+  
+  return kVoodooHDAAMDGPUGenericAMD;
 }
 
 /* ---------- lifecycle ---------- */
@@ -1176,10 +1207,11 @@ bool VoodooHDAFramebufferNotifier::mapGPUMMIO()
 
 	IOPCIDevice *gpuDev = NULL;
 	IOService *child;
+  UInt16 vendor = 0;
 	while ((child = OSDynamicCast(IOService, iter->getNextObject()))) {
 		IOPCIDevice *pci = OSDynamicCast(IOPCIDevice, child);
 		if (!pci) continue;
-		UInt16 vendor = pci->configRead16(kIOPCIConfigVendorID);
+		vendor = pci->configRead16(kIOPCIConfigVendorID);
 		if (vendor != 0x1002) continue;
 		/* Function 0 is the GPU display controller */
 		UInt8 funcNum = pci->getFunctionNumber();
@@ -1198,6 +1230,13 @@ bool VoodooHDAFramebufferNotifier::mapGPUMMIO()
 	UInt16 gpuDeviceId = gpuDev->configRead16(kIOPCIConfigDeviceID);
 	FBLOG("mapGPUMMIO: found GPU device=%p vendor=%04x device=%04x",
 	      gpuDev, gpuDev->configRead16(kIOPCIConfigVendorID), gpuDeviceId);
+  
+  VoodooHDAAMDGPUFamily family = classifyAMDGPUDevice(gpuDeviceId);
+  mAMDGPUDeviceId = gpuDeviceId;
+  mAMDGPUFamily = family;
+  
+  FBLOG("isSameGPU: vendor=0x%04x device=0x%04x family=%s -> YES",
+        vendor, gpuDeviceId, amdHdmiGpuFamilyNameForFamily(family));
 
 	/* Select register offset table based on GPU generation.
 	 * Polaris (DCE 11.x): 67xx device IDs (Ellesmere/Baffin/Lexa)

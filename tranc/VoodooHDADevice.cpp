@@ -125,17 +125,26 @@ static inline const char *amdGpuFamilyNameForHDAPolicy(VoodooHDAAMDGPUFamily fam
   }
 }
 
-static const char *setHDMIEngineDisplayName(VoodooHDADevice::HDMIEngineSlot *slot, bool includePin)
+static const char *setHDMIEngineDisplayName(VoodooHDAFramebufferNotifier *notifier, VoodooHDADevice::HDMIEngineSlot *slot, bool includePin)
 {
-  if (!slot || !slot->engine)
-    return "VoodooHDA HDMI/DP Audio";
+  const char* name = "VoodooHDA";
+  bool findFamily = false;
+  VoodooHDAAMDGPUFamily family = kVoodooHDAAMDGPUUnknown;
+  UInt16 gpuDeviceId = 0;
+  if (notifier) {
+    findFamily = notifier->detectedAMDGPUFamily(&family, &gpuDeviceId);
+  }
+  if (findFamily) {
+    name = amdGpuFamilyNameForHDAPolicy(family);
+  }
   
-  if (includePin && slot->pinNid >= 0) {
+  if (includePin && slot && slot->engine && slot->pinNid >= 0) {
     snprintf(slot->engine->mPortNameBuf, sizeof(slot->engine->mPortNameBuf),
-             "VoodooHDA HDMI/DP Audio P%d", slot->pinNid);
+             "%s Audio P%d", name, slot->pinNid);
     slot->engine->mPortName = slot->engine->mPortNameBuf;
   } else {
-    slot->engine->mPortName = "VoodooHDA HDMI/DP Audio";
+    snprintf(slot->engine->mPortNameBuf, sizeof(slot->engine->mPortNameBuf),
+             "%s Audio", name);
   }
   slot->engine->mPortType = kIOAudioSelectorControlSelectionValueExternalSpeaker;
   return slot->engine->mPortName;
@@ -171,7 +180,9 @@ static bool detectSiblingAmdGpuForHDAPolicy(IOPCIDevice *hdaDevice,
       continue;
     
     UInt16 gpuDeviceId = pci->configRead16(kIOPCIConfigDeviceID);
+    IOLog("gpuDeviceId=%x\n", gpuDeviceId);
     VoodooHDAAMDGPUFamily family = classifyAmdGpuDeviceForHDAPolicy(gpuDeviceId);
+    IOLog("family=%x\n", family);
     if (outFamily)
       *outFamily = family;
     if (outDeviceId)
@@ -2542,7 +2553,7 @@ void VoodooHDADevice::updateHDMIEnginePresence()
     }
     
     bool hasPresence = effectivePresence;
-    const char *engineName = setHDMIEngineDisplayName(slot, false);
+    const char *engineName = setHDMIEngineDisplayName(mFBNotifier, slot, false);
     
     if (hasPresence && !slot->activated) {
       if (mVerbose >= 1)
