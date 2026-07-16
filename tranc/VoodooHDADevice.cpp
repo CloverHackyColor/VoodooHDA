@@ -141,11 +141,11 @@ static const char *setHDMIEngineDisplayName(VoodooHDAFramebufferNotifier *notifi
   if (includePin && slot && slot->engine && slot->pinNid >= 0) {
     snprintf(slot->engine->mPortNameBuf, sizeof(slot->engine->mPortNameBuf),
              "%s Audio P%d", name, slot->pinNid);
-    slot->engine->mPortName = slot->engine->mPortNameBuf;
   } else {
     snprintf(slot->engine->mPortNameBuf, sizeof(slot->engine->mPortNameBuf),
              "%s Audio", name);
   }
+  slot->engine->mPortName = slot->engine->mPortNameBuf;
   slot->engine->mPortType = kIOAudioSelectorControlSelectionValueExternalSpeaker;
   return slot->engine->mPortName;
 }
@@ -2600,7 +2600,11 @@ void VoodooHDADevice::updateHDMIEnginePresence()
     /* Keep HDMI/DP output names generic; Polaris recovery uses hidden mirrors
      * rather than exposing separate pin-labeled Sound outputs.
      */
-    slot->engine->setProperty("IOAudioEngineDescription", engineName);
+    if (engineName) {
+      slot->engine->setProperty("IOAudioEngineDescription", engineName);
+    } else {
+      slot->engine->setProperty("IOAudioEngineDescription", "VoodooHDA HDMI");
+    }
   }
 }
 
