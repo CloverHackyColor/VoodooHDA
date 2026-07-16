@@ -769,75 +769,74 @@ IOReturn VoodooHDAEngine::performFormatChange(IOAudioStream *audioStream,
 		return kIOReturnSuccess;
 	}
 
-	if (newFormat) {
-	int channels = newFormat->fNumChannels;
-
-        if(!channels) {
-            channels = 2;
-        }
-
-			ossFormat = AFMT_STEREO;
-
-        if (newFormat->fSampleFormat == kIOAudioStreamSampleFormat1937AC3) {
-            ossFormat = AFMT_AC3;
-		} else if (channels == 4) {
-			ossFormat = SND_FORMAT(0, 4, 0);
-		} else if (channels == 6) {
-			ossFormat = SND_FORMAT(0, 6, 1);
-		} else if (channels == 8) {
-			ossFormat = SND_FORMAT(0, 8, 1);
-		}
-
-		ASSERT(newFormat->fNumericRepresentation == kIOAudioStreamNumericRepresentationSignedInt);
-		ASSERT(newFormat->fAlignment == kIOAudioStreamAlignmentLowByte);
-		ASSERT(newFormat->fByteOrder == kIOAudioStreamByteOrderLittleEndian);
-
-        if(ossFormat != AFMT_AC3) {
-		switch (newFormat->fBitDepth) {
-			case 16:
-				ASSERT(newFormat->fBitWidth == 16);
-				ossFormat |= AFMT_S16_LE;
-				break;
-			case 20:		
-				ASSERT(newFormat->fBitWidth == 32);
-				ossFormat |= AFMT_S32_LE;
-				mChannel->bit32 = 2;
-				break;
-            case 24:
-				ASSERT(newFormat->fBitWidth == 32);
-				ossFormat |= AFMT_S32_LE;
-				mChannel->bit32 = 3;
-				break;
-			case 32:
-				ASSERT(newFormat->fBitWidth == 32); 
-				ossFormat |= AFMT_S32_LE;
-				mChannel->bit32 = 4;
-				break;
-			default:
-				BUG("unsupported bit depth");
-//				goto done;
-		}
-        }
-		//IOLog("ossFormat=%08x\n", (unsigned int)ossFormat);
-		
-		setResult = mDevice->channelSetFormat(mChannel, ossFormat);
-		logMsg("channelSetFormat(0x%08lx) for channel %d returned %d\n", static_cast<long unsigned int>(ossFormat), getEngineId(),
-				setResult);
-		if (setResult != 0) {
-			errorMsg("error: couldn't set format 0x%lx (%d-bit depth)\n", (long unsigned int)ossFormat, newFormat->fBitDepth);
-			goto done;
-		}
-
-		ASSERT(mBufferSize);
-		mSampleSize = channels * (newFormat->fBitWidth / 8);
-		mNumSampleFrames = mBufferSize / mSampleSize;
-		mChannel->slack = static_cast<UInt16>(mBufferSize - mNumSampleFrames * mSampleSize);
-		setNumSampleFramesPerBuffer(mNumSampleFrames);
-
-		logMsg("buffer size: %ld, channels: %d, bit depth: %d, # samp. frames: %ld\n", (long int)mBufferSize,
-				channels, newFormat->fBitDepth, (long int)mNumSampleFrames);
-	}
-
+  if (newFormat) {
+    int channels = newFormat->fNumChannels;
+    if(!channels) {
+      channels = 2;
+    }
+    
+    ossFormat = AFMT_STEREO;
+    if (newFormat->fSampleFormat == kIOAudioStreamSampleFormat1937AC3) {
+      ossFormat = AFMT_AC3;
+    } else if (channels == 4) {
+      ossFormat = SND_FORMAT(0, 4, 0);
+    } else if (channels == 6) {
+      ossFormat = SND_FORMAT(0, 6, 1);
+    } else if (channels == 8) {
+      ossFormat = SND_FORMAT(0, 8, 1);
+    }
+    
+    ASSERT(newFormat->fNumericRepresentation == kIOAudioStreamNumericRepresentationSignedInt);
+    ASSERT(newFormat->fAlignment == kIOAudioStreamAlignmentLowByte);
+    ASSERT(newFormat->fByteOrder == kIOAudioStreamByteOrderLittleEndian);
+    
+    if(ossFormat != AFMT_AC3) {
+      switch (newFormat->fBitDepth) {
+        case 16:
+          ASSERT(newFormat->fBitWidth == 16);
+          ossFormat |= AFMT_S16_LE;
+          break;
+        case 20:
+          ASSERT(newFormat->fBitWidth == 32);
+          ossFormat |= AFMT_S32_LE;
+          mChannel->bit32 = 2;
+          break;
+        case 24:
+          ASSERT(newFormat->fBitWidth == 32);
+          ossFormat |= AFMT_S32_LE;
+          mChannel->bit32 = 3;
+          break;
+        case 32:
+          ASSERT(newFormat->fBitWidth == 32);
+          ossFormat |= AFMT_S32_LE;
+          mChannel->bit32 = 4;
+          break;
+        default:
+          BUG("unsupported bit depth");
+          //        goto done;
+      }
+    }
+    //IOLog("ossFormat=%08x\n", (unsigned int)ossFormat);
+    
+    setResult = mDevice->channelSetFormat(mChannel, ossFormat);
+    logMsg("channelSetFormat(0x%08lx) for channel %d returned %d\n",
+           static_cast<long unsigned int>(ossFormat), getEngineId(), setResult);
+    if (setResult != 0) {
+      errorMsg("error: couldn't set format 0x%lx (%d-bit depth)\n",
+               (long unsigned int)ossFormat, newFormat->fBitDepth);
+      goto done;
+    }
+    
+    ASSERT(mBufferSize);
+    mSampleSize = channels * (newFormat->fBitWidth / 8);
+    mNumSampleFrames = mBufferSize / mSampleSize;
+    mChannel->slack = static_cast<UInt16>(mBufferSize - mNumSampleFrames * mSampleSize);
+    setNumSampleFramesPerBuffer(mNumSampleFrames);
+    
+    logMsg("buffer size: %ld, channels: %d, bit depth: %d, # samp. frames: %ld\n", (long int)mBufferSize,
+           channels, newFormat->fBitDepth, (long int)mNumSampleFrames);
+  }
+  
 	if (newSampleRate) {
 		setResult = mDevice->channelSetSpeed(mChannel, newSampleRate->whole);
 //		logMsg("channelSetSpeed(%ld) for channel %d returned %d\n", newSampleRate->whole, getEngineId(),

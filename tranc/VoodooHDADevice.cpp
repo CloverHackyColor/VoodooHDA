@@ -3179,6 +3179,14 @@ Channel *VoodooHDADevice::channelInit(PcmDevice *pcmDevice, int direction)
 
 int VoodooHDADevice::channelSetFormat(Channel *channel, UInt32 format)
 {
+  // 🔧 Разрешаем 32-бит для цифровых потоков (HDMI/DP), даже если кодек не объявил его в caps
+  if (channel->pcmDevice && channel->pcmDevice->digital >= 2) {
+    if (format & AFMT_S32_LE) {
+      channel->format = format;
+      return 0;
+    }
+  }
+  
 	for (int i = 0; channel->caps.formats[i] != 0; i++) {
 		if (format == channel->caps.formats[i]) {
 			channel->format = format;
