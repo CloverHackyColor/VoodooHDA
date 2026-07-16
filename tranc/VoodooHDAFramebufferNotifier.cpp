@@ -811,6 +811,26 @@ bool VoodooHDAFramebufferNotifier::parseEDIDAudio(FBConnectionState *conn)
     pos += blockLen;
   }
   
+  // Workaround для старых ТВ с некорректным spkalloc
+  // Если заявлен spkalloc=0x03 (2.1), но SADs содержат только стерео
+  if (conn->speakerAllocation == 0x03 && conn->numSADs > 0) {
+    bool allStereo = true;
+    for (int i = 0; i < conn->numSADs; i++) {
+      int fmt = (conn->sads[i*3] >> 3) & 0x0f;
+      int nch = (conn->sads[i*3] & 0x07) + 1;
+      // Если есть LPCM с >2 каналами, значит ТВ действительно поддерживает многоканал
+      if (fmt == 1 && nch > 2) {
+        allStereo = false;
+        break;
+      }
+    }
+    if (allStereo) {
+      FBLOG("parseEDIDAudio: pin=%d fixing spkalloc 0x03->0x01 (TV claims 2.1 but only stereo SADs)",
+            conn->mappedPinNid);
+      conn->speakerAllocation = 0x01;
+    }
+  }
+  
   // Если не нашли speaker allocation, но есть SAD, используем значение по умолчанию
   if (conn->speakerAllocation == 0 && conn->numSADs > 0) {
     conn->speakerAllocation = 0x01;  // FL/FR only
