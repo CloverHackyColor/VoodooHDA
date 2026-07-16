@@ -101,6 +101,7 @@ void VoodooHDADevice::probeCodec(Codec *codec)
 	UInt32 vendorId, revisionId, subNode;
 	int startNode, endNode;
 	nid_t cad = codec->cad;
+  extern kmod_info_t kmod_info;
 
 	dumpMsg("\nProbing codec #%d...\n", cad);
 	vendorId = sendCommand(HDA_CMD_GET_PARAMETER(cad, 0, HDA_PARAM_VENDOR_ID), cad);
@@ -122,6 +123,7 @@ void VoodooHDADevice::probeCodec(Codec *codec)
 	dumpMsg("     Revision: 0x%02x\n", codec->revisionId);
 	dumpMsg("     Stepping: 0x%02x\n", codec->steppingId);
 	dumpMsg("PCI Subvendor: 0x%08lx\n", (long unsigned int)mSubDeviceId);
+  dumpMsg("Loading VoodooHDA %s \n", kmod_info.version);
 
 	subNode = sendCommand(HDA_CMD_GET_PARAMETER(cad, 0, HDA_PARAM_SUB_NODE_COUNT), cad);
 	startNode = HDA_PARAM_SUB_NODE_COUNT_START(subNode);
@@ -4929,26 +4931,70 @@ void VoodooHDADevice::hdaa_eld_handler(Widget *widget)
   IOLog("VoodooHDA HDMI: nid=%d ATI ELD result: spkalloc=0x%02x nsads=%d %s\n",
         nid, spkalloc & 0xff, nsads, atiDataEmpty ? "EMPTY (GPU not ready?)" : "OK");
 
-  /* Build minimal ELD */
-  int mnl = 0;
-  int baseline_len = 4 + mnl + nsads * 3;
-  int total_len = 4 + baseline_len;
-  widget->eld_len = total_len;
-  widget->eld = (uint8_t*)allocMem(total_len);
+//  /* Build minimal ELD */
+//  int mnl = 0;
+//  int baseline_len = 4 + mnl + nsads * 3;
+//  int total_len = 4 + baseline_len;
+//  widget->eld_len = total_len;
+//  widget->eld = (uint8_t*)allocMem(total_len);
+//  if (widget->eld == NULL) {
+//    widget->eld_len = 0;
+//    return;
+//  }
+//  bzero(widget->eld, total_len);
+//  widget->eld[0] = 0x02;
+//  widget->eld[2] = baseline_len / 4;
+//  widget->eld[4] = (nsads << 4) | mnl;
+//  widget->eld[5] = isDP ? 0x04 : 0x00; /* conn_type: DP=1, HDMI=0 */
+//  widget->eld[6] = avdelay & 0xff;
+//  widget->eld[7] = spkalloc & 0xff;
+//  for (int i = 0; i < nsads * 3; i++)
+//    widget->eld[8 + i] = sads[i];
+  
+  int mnl = 0; // Monitor name length (пока не используем)
+  
+  // ПРАВИЛЬНЫЙ расчёт Baseline ELD по HDA Spec 7.3.2:
+  // Byte 4: Speaker Allocation (1 byte)
+  // Bytes 5-12: Port ID (8 bytes)
+  // Byte 13: Audio Sync Delay (1 byte)
+  // Byte 14: Reserved + HDCP + AI_CP (1 byte)
+  // Byte 15: SAD count + CEA_EDID_Version (1 byte)
+  // Bytes 16+: SADs (3 bytes × numSADs)
+  // После SADs: Monitor Name (MNL bytes)
+  // Итого Baseline = 1 + 8 + 1 + 1 + 1 + 3*numSADs + MNL = 12 + 3*numSADs + MNL
+  
+  int baselineLen = 12 + 3 * nsads + mnl;
+  
+  // Округляем ВВЕРХ до кратного 4 (до целого числа DWORD)
+  int baselineLenAligned = ((baselineLen + 3) / 4) * 4;
+  int totalLen = 4 + baselineLenAligned;
+  widget->eld_len = totalLen;
+  widget->eld = (uint8_t*)allocMem(totalLen);
   if (widget->eld == NULL) {
     widget->eld_len = 0;
+    logMsg("HDMI ELD not created\n");
     return;
   }
-  bzero(widget->eld, total_len);
-  widget->eld[0] = 0x02;
-  widget->eld[2] = baseline_len / 4;
-  widget->eld[4] = (nsads << 4) | mnl;
+  bzero(widget->eld, totalLen);
+  // === HEADER (bytes 0-3) ===
+  widget->eld[0] = 0x02 << 3;  // ELD version 2 (bits 7:3 = 0x10)
+  widget->eld[1] = 0x00;       // Reserved
+  widget->eld[2] = baselineLenAligned / 4;  // Baseline ELD length in DWORDs
+  widget->eld[3] = (0x03 << 5) | (mnl & 0x1F);  // CEA_EDID_Version=3 + MNL
+  
+  // === BASELINE ELD (bytes 4+) ===
+  widget->eld[4] = spkalloc & 0xff;  // Speaker Allocation (ПРАВИЛЬНОЕ МЕСТО!)
+                                           // Bytes 5-12: Port ID — остаются нулями (bzero)
   widget->eld[5] = isDP ? 0x04 : 0x00; /* conn_type: DP=1, HDMI=0 */
-  widget->eld[6] = avdelay & 0xff;
-  widget->eld[7] = spkalloc & 0xff;
-  for (int i = 0; i < nsads * 3; i++)
-    widget->eld[8 + i] = sads[i];
-
+  widget->eld[13] = avdelay & 0xff;  // Audio Sync Delay
+  widget->eld[14] = 0x00;  // Reserved + HDCP + AI_CP
+  widget->eld[15] = (nsads<< 4) | 0x00;  // SAD count (bits 7:4) + CEA_EDID_Version
+  
+  // === SADs (bytes 16+) ===
+  for (int i = 0; i < nsads * 3; i++) {
+    widget->eld[16 + i] = sads[i];
+  }
+  
   logMsg("HDMI ELD (ATI emulated) nid=%d: spkalloc=0x%02x nsads=%d\n",
          nid, spkalloc & 0xff, nsads);
 }
