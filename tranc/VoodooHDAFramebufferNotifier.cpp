@@ -700,13 +700,14 @@ bool VoodooHDAFramebufferNotifier::readEDID(FBConnectionState *conn)
 /* -------------------------------------------------------------------------- */
 void VoodooHDAFramebufferNotifier::initGPUAudioIfNeeded()
 {
+#if 1
   if (mGPUAudioInitDone) return;
   if (!mapGPUMMIO()) {
     FBLOG("initGPUAudio: cannot map GPU MMIO");
     return;
   }
   mGPUAudioInitDone = true;
-  
+#else
   FBLOG("initGPUAudio: === Starting GENTLE GPU AZ Audio Init ===");
   const AZRegOffsets *r = (const AZRegOffsets *)mRegs;
   
@@ -724,8 +725,9 @@ void VoodooHDAFramebufferNotifier::initGPUAudioIfNeeded()
     bool isDigEnabled = (beEn & 0x1) != 0;
     int digMode = (beCntl >> 16) & 0x7; // 1 = HDMI, 2 = DVI
     
-    if (isDigEnabled && digMode == 1) {
-      FBLOG("initGPUAudio: Found ACTIVE HDMI DIG%d (BE_EN=1, mode=1). Applying audio fix...", digIndex);
+    if (isDigEnabled && (digMode == 1 )) {
+      FBLOG("initGPUAudio: Found ACTIVE DIG%d (BE_EN=1, mode=%d). Applying audio fix...",
+            digIndex, digMode);
       
       int endpoint = digIndex;
       // Вызываем исправленную функцию выше (где DP_SEC включен безусловно)
@@ -735,7 +737,7 @@ void VoodooHDAFramebufferNotifier::initGPUAudioIfNeeded()
       break;
     }
   }
-  
+#endif
   FBLOG("initGPUAudio: === GPU AZ STATE (Final) ===");
   dumpAZState();
 }
@@ -1483,7 +1485,17 @@ bool VoodooHDAFramebufferNotifier::enableGPUAudioEngine(
 		/* DP ref clock ~100 MHz */
 		gpuWrite32(r->dccgDto1Module, 1000000);  /* 100 MHz in 100Hz units */
 		gpuWrite32(r->dccgDto1Phase, 240000);    /* 24 MHz in 100Hz units */
-	}
+  } else {
+    // HDMI audio setup через AFMT
+    uint32_t afmtCntl = gpuRead32(r->afmtCntl0 + digIndex * r->digStride);
+    afmtCntl |= AFMT_AUDIO_CLOCK_EN;
+    gpuWrite32(r->afmtCntl0 + digIndex * r->digStride, afmtCntl);
+    
+    uint32_t pktCtl = gpuRead32(r->afmtPktCtl0 + digIndex * r->digStride);
+    pktCtl |= AFMT_AUDIO_SAMPLE_SEND;
+    gpuWrite32(r->afmtPktCtl0 + digIndex * r->digStride, pktCtl);
+    FBLOG("AFMT: afmtCntl=%x pktCtl=%x", afmtCntl, pktCtl);
+  }
 
 	/* Phase 4: Enable AZ audio */
 	hpc = azEndpointRead(endpoint, AZ_REG_PIN_CONTROL_HOT_PLUG_CONTROL);
