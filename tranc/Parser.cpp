@@ -586,55 +586,6 @@ void VoodooHDADevice::audioCtlParse(FunctionGroup *funcGroup)
 	funcGroup->audio.controls = controls;
 }
 
-#if 0
-/* This function surely going to make its way into upper level someday. */
-static void
-hdac_config_fetch(UInt32 *on, UInt32 *off)
-{
-	const char *res = NULL;
-	int i = 0, j, k, len, inv;
-
-	if (on)
-		*on = 0;
-	if (off)
-		*off = 0;
-	if (resource_string_value(device_get_name(sc->dev), device_get_unit(sc->dev), "config", &res) != 0)
-		return;
-	if (!(res && strlen(res) > 0))
-		return;
-	dumpMsg("HDA Config:");
-	for (;;) {
-		while (res[i] != '\0' && (res[i] == ',' || isspace(res[i]) != 0))
-			i++;
-		if (res[i] == '\0') {
-			dumpMsg("\n");
-			return;
-		}
-		j = i;
-		while (res[j] != '\0' && !(res[j] == ',' || isspace(res[j]) != 0))
-			j++;
-		len = j - i;
-		if (len > 2 && strncmp(res + i, "no", 2) == 0)
-			inv = 2;
-		else
-			inv = 0;
-		for (k = 0; len > inv && gQuirkTypes[k].key; k++) {
-			if (strncmp(res + i + inv, gQuirkTypes[k].key, len - inv) != 0)
-				continue;
-			if (len - inv != strlen(gQuirkTypes[k].key))
-				continue;
-			dumpMsg(" %s%s", (inv != 0) ? "no" : "", gQuirkTypes[k].key);
-			if (inv == 0 && on)
-				*on |= gQuirkTypes[k].value;
-			else if (inv != 0 && off)
-				*off |= gQuirkTypes[k].value;
-			break;
-		}
-		i = j;
-	}
-}
-#endif
-
 void VoodooHDADevice::vendorPatchParse(FunctionGroup *funcGroup)
 {
 	Widget *widget;
@@ -1828,57 +1779,42 @@ void VoodooHDADevice::audioTraceAssociationExtra(FunctionGroup *funcGroup)
 	/* Find mixer associated with input, but supplying signal
 	   for output associations. Hope it will be input monitor. */
 	dumpMsg("Tracing input monitor\n");
-#if 0
-	if (0 && mDisableInputMonitor) {
-		dumpMsg(" disabled by Info.plist set\n");
-	} else {
-#endif
-		for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
-			Widget *widget = widgetGet(funcGroup, j);
-			if (!widget || (widget->enable == 0))
-				continue;
-			if (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_MIXER)
-				continue;
-			if ((widget->bindAssoc < 0) || (assocs[widget->bindAssoc].dir != HDA_CTL_IN))
-				continue;
-			dumpMsg(" Tracing nid mix %d to out\n", j);
-			if (audioTraceToOut(funcGroup, widget->nid, 0)) {
-			//if(mVerbose > 0)
-				dumpMsg(" nid %d is input monitor\n", widget->nid);
-#if 0
-				if (0 && mDisableInputMonitor) {
-					audioUndoTrace(funcGroup, widget->bindAssoc, -1);
-				} else {
-#endif
-					widget->pflags |= HDA_ADC_MONITOR;
-					widget->ossdev = SOUND_MIXER_IGAIN; //SOUND_MIXER_IMIX;
-#if 0
-				}
-#endif
-			}
-		}
-		/* Other inputs monitor */
-		/* Find input pins supplying signal for output associations.
-		   Hope it will be input monitoring. */
-		dumpMsg("Tracing other input monitors\n");
-		for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
-			Widget *widget = widgetGet(funcGroup, j);
-			if (!widget || (widget->enable == 0))
-				continue;
-			if (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
-				continue;
-			if (widget->bindAssoc < 0 || assocs[widget->bindAssoc].dir != HDA_CTL_IN)
-				continue;
-			dumpMsg(" Tracing nid complex %d to out\n", j);
 
-			if (audioTraceToOut(funcGroup, widget->nid, 0)) {
-				dumpMsg( " nid %d is input monitor\n", widget->nid);
-			}
-		}
-#if 0
-	}
-#endif
-
+  for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
+    Widget *widget = widgetGet(funcGroup, j);
+    if (!widget || (widget->enable == 0))
+      continue;
+    if (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_AUDIO_MIXER)
+      continue;
+    if ((widget->bindAssoc < 0) || (assocs[widget->bindAssoc].dir != HDA_CTL_IN))
+      continue;
+    dumpMsg(" Tracing nid mix %d to out\n", j);
+    if (audioTraceToOut(funcGroup, widget->nid, 0)) {
+      //if(mVerbose > 0)
+      dumpMsg(" nid %d is input monitor\n", widget->nid);
+      widget->pflags |= HDA_ADC_MONITOR;
+      widget->ossdev = SOUND_MIXER_IGAIN; //SOUND_MIXER_IMIX;
+    }
+  }
+  /* Other inputs monitor */
+  /* Find input pins supplying signal for output associations.
+   Hope it will be input monitoring. */
+  dumpMsg("Tracing other input monitors\n");
+  for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
+    Widget *widget = widgetGet(funcGroup, j);
+    if (!widget || (widget->enable == 0))
+      continue;
+    if (widget->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
+      continue;
+    if (widget->bindAssoc < 0 || assocs[widget->bindAssoc].dir != HDA_CTL_IN)
+      continue;
+    dumpMsg(" Tracing nid complex %d to out\n", j);
+    
+    if (audioTraceToOut(funcGroup, widget->nid, 0)) {
+      dumpMsg( " nid %d is input monitor\n", widget->nid);
+    }
+  }
+  
 
 	/* Beeper */
 	dumpMsg("Tracing beeper\n");

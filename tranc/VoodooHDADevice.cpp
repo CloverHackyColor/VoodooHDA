@@ -3873,7 +3873,7 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 void VoodooHDADevice::streamStop(Channel *channel)
 {
 	UInt32 ctl;
-#if 1
+
 	ctl = readData8(channel->off + HDAC_SDCTL0);
 	ctl &= ~(HDAC_SDCTL_IOCE | HDAC_SDCTL_FEIE | HDAC_SDCTL_DEIE | HDAC_SDCTL_RUN);
 	writeData8(channel->off + HDAC_SDCTL0, ctl);
@@ -3883,40 +3883,6 @@ void VoodooHDADevice::streamStop(Channel *channel)
 	ctl = readData32(HDAC_INTCTL);
 	ctl &= ~(1 << (channel->off >> 5));
 	writeData32(HDAC_INTCTL, ctl);
-#else //Qwen >>
-      // 1. Останавливаем поток и отключаем прерывания (используем ваш макрос HDAC_SDCTL0)
-  ctl = readData8(channel->off + HDAC_SDCTL0);
-  ctl &= ~(HDAC_SDCTL_IOCE | HDAC_SDCTL_FEIE | HDAC_SDCTL_DEIE | HDAC_SDCTL_RUN);
-  writeData8(channel->off + HDAC_SDCTL0, ctl);
-  
-  // 2. КРИТИЧЕСКИ ВАЖНО для AMD: Аппаратный сброс потока (Stream Reset).
-  // Без этого бита DMA-движок AMD игнорирует остановку и продолжает зацикливать буфер (эхо).
-  ctl |= HDAC_SDCTL_SRST;
-  writeData8(channel->off + HDAC_SDCTL0, ctl);
-  
-  // Ждем завершения аппаратного сброса (максимум 100 мкс)
-  int timeout = 100;
-  while (timeout-- > 0) {
-    if (!(readData8(channel->off + HDAC_SDCTL0) & HDAC_SDCTL_SRST)) break;
-    IODelay(1);
-  }
-  
-  // 3. КРИТИЧЕСКИ ВАЖНО: Принудительный сброс позиции DMA в 0.
-  // Это предотвращает "эхо", заставляя контроллер немедленно прекратить чтение буфера.
-  writeData32(channel->off + HDAC_SDLPIB, 0);
-  writeData32(channel->off + HDAC_SDCBL, 0);  // Сброс длины буфера!
-  writeData16(channel->off + HDAC_SDLVI, 0);  // Сброс последнего валидного индекса!
-  
-  // 4. Очищаем статусные флаги (FIFOE, BCIS), чтобы они не триггерили ложные прерывания
-  writeData8(channel->off + HDAC_SDSTS, 0xFF);
-  
-  channel->flags &= ~HDAC_CHN_RUNNING;
-  
-  // 5. Отключаем прерывание на уровне глобального контроллера
-  ctl = readData32(HDAC_INTCTL);
-  ctl &= ~(1 << (channel->off >> 5));
-  writeData32(HDAC_INTCTL, ctl);
-#endif
 }
 
 void VoodooHDADevice::streamStart(Channel *channel)

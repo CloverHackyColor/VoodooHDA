@@ -68,8 +68,6 @@ bool VoodooHDAEngine::initWithChannel(Channel *channel)
 		goto done;
 
 	mChannel = channel;
-  mUseTimerBasedPosition = false;
-  mEngineStartTime = AbsoluteTime_zero;
 
 	result = true;
 done:
@@ -725,19 +723,6 @@ int VoodooHDAEngine::getEngineId()
 
 IOReturn VoodooHDAEngine::performAudioEngineStart()
 {
-  // Для HDMI-каналов включаем таймерную модель позиции.
-  // На AMD Polaris регистр LPIB возвращает фиксированное значение 0x2c,
-  // что вызывает ошибку "beyond stream boundary" и рассинхронизацию буфера.
-  bool isDigital = (mChannel->funcGroup &&
-                    mChannel->funcGroup->audio.assocs[mChannel->assocNum].digital != 0);
-  mUseTimerBasedPosition = isDigital;
-  if (mUseTimerBasedPosition) {
-    clock_get_uptime(&mEngineStartTime);
-    logMsg("VoodooHDAEngine[%p]::performAudioEngineStart: "
-           "digital output — using timer-based position\n", this);
-  }
-
-//	logMsg("calling channelStart() for channel %d\n", getEngineId());
 	takeTimeStamp(false);
 	mDevice->channelStart(mChannel);
 
@@ -748,9 +733,6 @@ IOReturn VoodooHDAEngine::performAudioEngineStop()
 {
 //	logMsg("VoodooHDAEngine[%p]::performAudioEngineStop\n", this);
 
-//	logMsg("calling channelStop() for channel %d\n", getEngineId());
-  
-  mUseTimerBasedPosition = false;
 	mDevice->channelStop(mChannel);
   // Дренаж аппаратного FIFO перед выключением
   IODelay(500);
@@ -760,32 +742,6 @@ IOReturn VoodooHDAEngine::performAudioEngineStop()
 	
 UInt32 VoodooHDAEngine::getCurrentSampleFrame()
 {
-  if (mUseTimerBasedPosition && mNumSampleFrames > 0) {
-    // Таймерная модель: вычисляем позицию по времени с момента старта.
-    // Это обходит некорректный LPIB (0x2c) на AMD Polaris HDMI.
-    AbsoluteTime now;
-    clock_get_uptime(&now);
-    
-    UInt64 nowNanos, startNanos;
-    absolutetime_to_nanoseconds(now, &nowNanos);
-    absolutetime_to_nanoseconds(mEngineStartTime, &startNanos);
-    UInt64 elapsedNanos = nowNanos - startNanos;
-    
-    const IOAudioSampleRate* rate = getSampleRate();
-    UInt64 sampleRate = rate->whole ? rate->whole : 48000;
-    
-    // elapsedFrames = elapsedNanos * sampleRate / 1e9
-    // Чтобы избежать переполнения при больших elapsedNanos,
-    // делим наносекунды на 1000 сначала (микроcекунды),
-    // а затем умножаем на sampleRate и делим на 1e6.
-    UInt64 elapsedUs = elapsedNanos / 1000ULL;
-    UInt64 elapsedFrames = (elapsedUs * sampleRate) / 1000000ULL;
-    
-    // Зацикливаем в пределах буфера
-    UInt32 framePos = (UInt32)(elapsedFrames % (UInt64)mNumSampleFrames);
-    return framePos;
-  }
-  
 	return (mDevice->channelGetPosition(mChannel) / mSampleSize);
 }
 
@@ -941,8 +897,7 @@ bool VoodooHDAEngine::createAudioControls()
 	minMaxDb = getMinMaxDb(initOssMask);
 	minDb = (IOFixed) (minMaxDb >> 32);
 	maxDb = (IOFixed) (minMaxDb & ~0UL);
-//	logMsg("minDb: %d (%08lx), maxDb: %d (%08lx)\n", (SInt16) (minDb >> 16), minDb,
-//		   (SInt16) (maxDb >> 16), maxDb);
+
 	if ((minDb == ~0L) || (maxDb == ~0L)) {
 		//logMsg("warning: found invalid min/max dB (using default -22.5 -> 0.0dB range)\n"); //-22.5 -> 0.0
 		minDb = static_cast<int>(static_cast<unsigned>(-22) << 16) + (65536 / 2);

@@ -700,44 +700,14 @@ bool VoodooHDAFramebufferNotifier::readEDID(FBConnectionState *conn)
 /* -------------------------------------------------------------------------- */
 void VoodooHDAFramebufferNotifier::initGPUAudioIfNeeded()
 {
-#if 1
+
   if (mGPUAudioInitDone) return;
   if (!mapGPUMMIO()) {
     FBLOG("initGPUAudio: cannot map GPU MMIO");
     return;
   }
   mGPUAudioInitDone = true;
-#else
-  FBLOG("initGPUAudio: === Starting GENTLE GPU AZ Audio Init ===");
-  const AZRegOffsets *r = (const AZRegOffsets *)mRegs;
-  
-  /* Сканируем DIG0..5 в поисках того, который УЖЕ включен видеодрайвером как HDMI.
-   * Мы НЕ трогаем DIG_MODE или DIG_BE_EN, чтобы избежать черного экрана.
-   * Мы только добавляем аудио-пакеты в существующий рабочий поток. */
-  for (int digIndex = 0; digIndex < 6; digIndex++) {
-    uint32_t base = r->digFeCntl0 + digIndex * r->digStride;
-    uint32_t beCntlOff = base + (r->digBeCntl0 - r->digFeCntl0);
-    uint32_t beEnOff = base + (r->digBeEnCntl0 - r->digFeCntl0);
-    
-    uint32_t beCntl = gpuRead32(beCntlOff);
-    uint32_t beEn = gpuRead32(beEnOff);
-    
-    bool isDigEnabled = (beEn & 0x1) != 0;
-    int digMode = (beCntl >> 16) & 0x7; // 1 = HDMI, 2 = DVI
-    
-    if (isDigEnabled && (digMode == 1 )) {
-      FBLOG("initGPUAudio: Found ACTIVE DIG%d (BE_EN=1, mode=%d). Applying audio fix...",
-            digIndex, digMode);
-      
-      int endpoint = digIndex;
-      // Вызываем исправленную функцию выше (где DP_SEC включен безусловно)
-      enableGPUAudioEngine(endpoint, digIndex, false, 0x01, 2);
-      
-      // Прерываем цикл, чтобы не задеть другие порты
-      break;
-    }
-  }
-#endif
+
   FBLOG("initGPUAudio: === GPU AZ STATE (Final) ===");
   dumpAZState();
 }
@@ -1634,26 +1604,3 @@ bool VoodooHDAFramebufferNotifier::getPreferredConnectedPin(int cad, const nid_t
   return false;
 }
 
-
-
-
-/* ---------- Auto-init: try all endpoints/DIGs ---------- */
-#if 0
-void VoodooHDAFramebufferNotifier::initGPUAudioIfNeeded()
-{
-	if (mGPUAudioInitDone) return;
-
-	if (!mapGPUMMIO()) {
-		FBLOG("initGPUAudio: cannot map GPU MMIO");
-		return;
-	}
-
-	mGPUAudioInitDone = true;
-
-	/* Read-only diagnostic dump of GPU AZ state.
-	 * Audio is enabled by correct HDA verbs (ATI paired multichannel),
-	 * not by GPU MMIO writes.  This dump is for debugging only. */
-	FBLOG("initGPUAudio: === GPU AZ STATE (diagnostic) ===");
-	dumpAZState();
-}
-#endif

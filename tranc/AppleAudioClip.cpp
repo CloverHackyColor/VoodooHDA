@@ -21,7 +21,6 @@
  * @APPLE_LICENSE_HEADER_END@
  */
 
-//#ifdef USE_APPLE_ROUTINES
 
 #include <libkern/OSTypes.h>
 #include <IOKit/IOReturn.h>
@@ -38,9 +37,6 @@ class IOMemoryDescriptor;
 #include "PCMBlitterLibDispatch.h"
 
 extern "C" {
-//	floating point types
-//typedef	float				Float32;
-//typedef double				Float64;
 
 #define FLOATLIB			FALSE
 
