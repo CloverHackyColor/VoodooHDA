@@ -1924,7 +1924,7 @@ DmaMemory *VoodooHDADevice::allocateDmaMemory(mach_vm_size_t size, const char *d
 	cacheOption &= kIOMapCacheMask;
 	if (!cacheOption) {
 		cacheOption = mInhibitCache ? kIOMapInhibitCache : kIOMapDefaultCache;
-    }
+  }
 	memDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task,
 			kIOMemoryPhysicallyContiguous | kIODirectionInOut | cacheOption, size, physMask);
 	
@@ -2727,6 +2727,7 @@ int VoodooHDADevice::handleStreamInterrupt(Channel *channel)
 	/* XXX to be removed */
 	if (res & HDAC_SDSTS_BCIS)
 		return 1;
+  
 
 	return 0;
 }
@@ -3162,7 +3163,10 @@ Channel *VoodooHDADevice::channelInit(PcmDevice *pcmDevice, int direction)
 //	logMsg("block size: %ld, block count: %ld, buffer size: %ld\n", channel->blockSize, channel->numBlocks,
 //			pcmDevice->chanSize);
 
-	channel->buffer = allocateDmaMemory(pcmDevice->chanSize, "buffer");
+//	channel->buffer = allocateDmaMemory(pcmDevice->chanSize, "buffer");
+//  bool isDigital = (pcmDevice->digital >= 2);
+  channel->buffer = allocateDmaMemory(pcmDevice->chanSize, "buffer",
+                                      mInhibitCache ? kIOMapInhibitCache : kIOMapDefaultCache);
 	if (!channel->buffer) {
 		errorMsg("can't allocate sound buffer!\n");
 		return NULL;
@@ -4008,7 +4012,7 @@ void VoodooHDADevice::bdlSetup(Channel *channel)
 		bdlEntry->addrl = (UInt32) addr;
 		bdlEntry->addrh = (UInt32) (addr >> 32);
 		bdlEntry->len = ((n == numBlocks) ? (blockSize - channel->slack) : blockSize);
-		bdlEntry->ioc = (n == numBlocks);
+    bdlEntry->ioc = (n == numBlocks); 
 		addr += bdlEntry->len;
 	}
 
@@ -4059,6 +4063,10 @@ int VoodooHDADevice::pcmAttach(PcmDevice *pcmDevice)
 
 	pcmDevice->chanSize = HDA_BUFSZ_DEFAULT;
 	pcmDevice->chanNumBlocks = HDA_BDL_DEFAULT;
+  if (pcmDevice->digital >= 2) {
+    // Для HDMI/DP на AMD увеличиваем число блоков для более частых прерываний
+    pcmDevice->chanNumBlocks = 16;  // вместо стандартных 8
+  }
 
 	dumpMsg("+--------------------------------------+\n");
 	dumpMsg("| DUMPING PCM Playback/Record Channels |\n");

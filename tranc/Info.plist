@@ -95,7 +95,7 @@
 			<key>IOUserClientClass</key>
 			<string>VoodooHDAUserClient</string>
 			<key>InhibitCache</key>
-			<false/>
+			<true/>
 			<key>MixerValues</key>
 			<dict>
 				<key>PCM</key>

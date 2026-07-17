@@ -90,6 +90,13 @@ public:
 			UInt32 numSampleFrames, const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream) override;
 	virtual OSString *getLocalUniqueID() override;
     virtual bool driverDesiresHiResSampleIntervals(void);
+private:
+  // --- Timer-based position tracking for ATI/AMD HDMI ---
+  // On Polaris, the HDA LPIB register returns a fixed garbage value (0x2c)
+  // instead of the real DMA position. For digital (HDMI) outputs we fall
+  // back to a time-based position computed from the engine start timestamp.
+  AbsoluteTime    mEngineStartTime;
+  bool            mUseTimerBasedPosition;
 };
 
 #endif
