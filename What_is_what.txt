@@ -1,0 +1,18 @@
+VoodooHDA 3.6.4 Final supporting AMD HDMI audio outputs
+=======================================================
+Compatibility: macOS from 10.4 (?) up to 26.x
+
+1. Repository structure
+- removed branches/zdev and this codes moved to branch zdev
+- main sources located in "tranc" folder in "main" branch 
+- some documentation included in the root
+- MacKernelSDK should be outside the VoodooHDA folder
+- VHDAPrefPane contains project for VoodooHDA.prefPane 
+- VoodooHdaSettingsLoader contain old unsupported project for restore user settings after reboot
+- tranc/getdump2.c - the utility to get full information about present audio devices,
+method of compilation is in the file
+
+2. Info.plist tuning
+- IOKitPersonality contains two parts
+-- VoodooHDA for a chipset audio device. By default using IONameMatch=HDAS. Check your registry for real name
+-- VoodooHDA-HDMI for a AMD videocard audio device HDMI/DP. By default using IOPCIClassMatch=0x04000000&0xfffc0000 and IOPCIMatch=0xAA001002&0xfe00ffff. If you have other ATI card check its device-id. The driver does support even ATI HD5570.
