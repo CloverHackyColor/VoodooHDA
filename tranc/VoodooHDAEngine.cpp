@@ -57,7 +57,7 @@ bool    VoodooHDAEngine::driverDesiresHiResSampleIntervals(void) { return false;
 
 /******************************************************************************************/
 /******************************************************************************************/
-const AbsoluteTime AbsoluteTime_zero = 0;
+//const AbsoluteTime AbsoluteTime_zero = 0;
 bool VoodooHDAEngine::initWithChannel(Channel *channel)
 {
 	bool result = false;

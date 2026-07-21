@@ -204,12 +204,12 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 	mFBNotifier = NULL;
 	mNumHDMIEngines = 0;
 	bzero(mHDMIEngines, sizeof(mHDMIEngines));
-	IOLog("VoodooHDA DBG: init() called, dict=%p\n", dict);
+//	IOLog("VoodooHDA DBG: init() called, dict=%p\n", dict);
 	if (!super::init(dict)) {
 		IOLog("VoodooHDA DBG: super::init() FAILED\n");
 		return false;
 	}
-	IOLog("VoodooHDA DBG: super::init() OK, version=%s \n", kmod_info.version);
+//	IOLog("VoodooHDA DBG: super::init() OK, version=%s \n", kmod_info.version);
 
 	dumpMsg("Loading VoodooHDA %s (based on hdac version " HDAC_REVISION ")\n", kmod_info.version);
 	
@@ -893,7 +893,7 @@ void VoodooHDADevice::stop(IOService *provider)
 
 void VoodooHDADevice::free()
 {
-	IOLog("VoodooHDA DBG: free() called\n");
+//	IOLog("VoodooHDA DBG: free() called\n");
 	logMsg("VoodooHDADevice[%p]::free\n", this);
 
 	// if probe or initHardware (called by super start) fails, we end up here - stop is not called
@@ -1023,7 +1023,7 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
         Widget *w = widgetGet(channel->funcGroup, hdmiPin);
         bool hasEdidEld = (w && w->eld && w->eld_len >= 20);
         
-        IOLog("VoodooHDA DBG: HDMI pin=0x%x pinSense=0x%08x presence=%d eldValid=%d hasEdidEld=%d\n",
+        logMsg("VoodooHDA DBG: HDMI pin=0x%x pinSense=0x%08x presence=%d eldValid=%d hasEdidEld=%d\n",
               hdmiPin, (unsigned)pinSense, hasPresence, eldValid, hasEdidEld);
         
         /* RX5xx/Polaris HDMI safety: do not publish inactive/no-display
@@ -1051,12 +1051,10 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
         } else {
           result = true;
         }
-        if (mVerbose >= 1) {
-          IOLog("VoodooHDA DBG: HDMI engine pin=%d presence=%d activated=%d%s\n",
+
+        logMsg("VoodooHDA DBG: HDMI engine pin=%d presence=%d activated=%d%s\n",
                 hdmiPin, hasPresence, slot->activated,
                 slot->activated ? "" : " deferred-connected-only");
-        }
-
       }
     } else {
       /* Non-HDMI: always activate */
@@ -2298,90 +2296,6 @@ static inline bool shouldUseAmdLegacyPolarisHDMIFallback(VoodooHDAFramebufferNot
  * For analog pins, only presence (bit 0) is meaningful.
  * (Based on FreeBSD hdaa_unsol_intr)
  */
-#if 0
-void VoodooHDADevice::updateHDMIEnginePresence()
-{
-	/* Retry enableAudioPipe on framebuffers that returned timeout at
-	 * handleFBMatched time.  By the time unsolicited responses arrive,
-	 * all framebuffers should be fully initialized. */
-	if (mFBNotifier)
-		mFBNotifier->retryEnableAudioPipeAll();
-
-	/* First pass: read pin sense for all engines and find which have presence.
-	 * ATI codecs may report stale presence on previously-connected pins,
-	 * so count total presence to detect the "cable moved" scenario. */
-	bool presence[16] = {};
-  UInt32 pinSenses[16] = {};
-	int presenceCount = 0;
-	int lastPresenceIdx = -1;
-
-	for (int i = 0; i < mNumHDMIEngines; i++) {
-		HDMIEngineSlot *slot = &mHDMIEngines[i];
-		if (!slot->engine) continue;
-    Codec *codec = mCodecs[slot->cad];
-    pinSenses[i] = sendCommand(HDA_CMD_GET_PIN_SENSE(slot->cad, slot->pinNid), slot->cad);
-    bool hasPresence = (pinSenses[i] & (1U << 31)) != 0;
-    bool eldValid = (pinSenses[i] & HDA_CMD_GET_PIN_SENSE_ELD_VALID) != 0;
-		presence[i] = hasPresence && isAtiHdmiCodec(codec) && eldValid;
-		if (presence[i]) {
-			presenceCount++;
-			lastPresenceIdx = i;
-		}
-	}
-
-	/* Second pass: update status and inject ELD */
-	for (int i = 0; i < mNumHDMIEngines; i++) {
-		HDMIEngineSlot *slot = &mHDMIEngines[i];
-		if (!slot->engine) continue;
-
-		bool hasPresence = presence[i];
-
-		if (hasPresence && !slot->activated) {
-			IOLog("VoodooHDA DBG: HDMI hot-plug: activating engine for pin=%d\n", slot->pinNid);
-			IOReturn ret = activateAudioEngine(slot->engine);
-			IOLog("VoodooHDA DBG: HDMI hot-plug: activateAudioEngine ret=0x%x\n", ret);
-			if (ret == kIOReturnSuccess)
-				slot->activated = true;
-		}
-
-		if (hasPresence && mFBNotifier)
-			mFBNotifier->injectELDIntoPinIfReady(slot->cad, slot->pinNid);
-    
-    /* When cable is removed, tell the GPU to stop the audio pipe so it
-     * can power-gate the display engine and reduce power consumption.
-     * ATI HDMI codecs always report presence=0 (bit 31) even when a display
-     * is connected — they set ELD_VALID (bit 1) instead.  Only disable the
-     * audio pipe for ATI when ELD_VALID is also 0, meaning truly disconnected. */
-    if (!hasPresence && mFBNotifier) {
-      bool disablePipe = true;
-      Codec *codec = mCodecs[slot->cad];
-      if (codec && isAtiHdmiCodec(codec)) {
-        /* ATI: ELD_VALID=1 means display is present despite presence=0 */
-        bool eldValid = (pinSenses[i] & (1U << 1)) != 0;
-        disablePipe = !eldValid;
-        IOLog("VoodooHDA ATI DBG: updatePresence pin=%d pinSense=0x%08x ELD_VALID=%d disablePipe=%d\n",
-              slot->pinNid, (unsigned)pinSenses[i], eldValid, disablePipe);
-      }
-      if (disablePipe)
-        mFBNotifier->disableAudioPipeForPin(slot->cad, slot->pinNid);
-    }
-
-		/* Update engine description.  If multiple pins report presence
-		 * (stale ATI pin sense), only the most recently detected one
-		 * is shown as "connected" — the rest get "no display". */
-		bool showConnected = hasPresence;
-		if (presenceCount > 1 && hasPresence && i != lastPresenceIdx)
-			showConnected = false;
-
-		char desc[80];
-		snprintf(desc, sizeof(desc), "%s: HDMI %d (%s)",
-		         mControllerName ? mControllerName : "GPU",
-		         slot->pinNid,
-		         showConnected ? "connected" : "no display");
-		slot->engine->setProperty("IOAudioEngineDescription", desc);
-	}
-}
-#else
 void VoodooHDADevice::updateHDMIEnginePresence()
 {
   /* First pass: read pin sense for all engines and find which have presence.
@@ -2608,7 +2522,6 @@ void VoodooHDADevice::updateHDMIEnginePresence()
   }
 }
 
-#endif
 void VoodooHDADevice::handleUnsolicited(Codec *codec, UInt32 tag, UInt32 resp)
 {
   FunctionGroup *funcGroup = NULL;
@@ -2637,36 +2550,37 @@ void VoodooHDADevice::handleUnsolicited(Codec *codec, UInt32 tag, UInt32 resp)
       int flags = 0x01; /* default: presence only */
       
       /* Check if any HDMI/DP pin uses this tag — if so, extract both flags */
-      for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
-        Widget *w = widgetGet(funcGroup, j);
-        if (!w || w->enable == 0 || w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
-          continue;
-        if (HDA_PARAM_PIN_CAP_DP(w->pin.cap) || HDA_PARAM_PIN_CAP_HDMI(w->pin.cap)) {
-          flags = resp & 0x03;
-          break;
-        }
+//      for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
+//        Widget *w = widgetGet(funcGroup, j);
+//        if (!w || w->enable == 0 || w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
+//          continue;
+//        if (HDA_PARAM_PIN_CAP_DP(w->pin.cap) || HDA_PARAM_PIN_CAP_HDMI(w->pin.cap)) {
+//          flags = resp & 0x03;
+//          break;
+//        }
+//      }
+      if (mVerbose >= 2) {
+        IOLog("VoodooHDA DBG: unsol tag=0x%x resp=0x%08x flags=0x%x\n",
+              (unsigned)tag, (unsigned)resp, flags);
       }
-      
-      IOLog("VoodooHDA DBG: unsol tag=0x%x resp=0x%08x flags=0x%x\n",
-            (unsigned)tag, (unsigned)resp, flags);
       switchHandler(funcGroup, false);
       /* Presence change — standard jack switching */
-      if (flags & 0x01) {
-        updateHDMIEnginePresence();
-      }
-      
-      /* ELD change — re-read ELD for HDMI/DP pins */
-      if (flags & 0x02) {
-        for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
-          Widget *w = widgetGet(funcGroup, j);
-          if (!w || w->enable == 0 || w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
-            continue;
-          if (!HDA_PARAM_PIN_CAP_DP(w->pin.cap) && !HDA_PARAM_PIN_CAP_HDMI(w->pin.cap))
-            continue;
-          IOLog("VoodooHDA DBG: ELD change event, re-reading ELD for nid=%d\n", w->nid);
-          hdaa_eld_handler(w);
-        }
-      }
+//      if (flags & 0x01) {
+//        updateHDMIEnginePresence();
+//      }
+//      
+//      /* ELD change — re-read ELD for HDMI/DP pins */
+//      if (flags & 0x02) {
+//        for (int j = funcGroup->startNode; j < funcGroup->endNode; j++) {
+//          Widget *w = widgetGet(funcGroup, j);
+//          if (!w || w->enable == 0 || w->type != HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX)
+//            continue;
+//          if (!HDA_PARAM_PIN_CAP_DP(w->pin.cap) && !HDA_PARAM_PIN_CAP_HDMI(w->pin.cap))
+//            continue;
+//          IOLog("VoodooHDA DBG: ELD change event, re-reading ELD for nid=%d\n", w->nid);
+//          hdaa_eld_handler(w);
+//        }
+//      }
       break;
     }
     case HDAC_UNSOLTAG_EVENT_HDMI:
@@ -2708,14 +2622,11 @@ void VoodooHDADevice::handleUnsolicited(Codec *codec, UInt32 tag, UInt32 resp)
 
 int VoodooHDADevice::handleStreamInterrupt(Channel *channel)
 {
-	/* XXX to be removed */
-	UInt32 res;
-
 	if (!(channel->flags & HDAC_CHN_RUNNING))
 		return 0;
 
 	/* XXX to be removed */
-	res = readData8(channel->off + HDAC_SDSTS);
+  UInt32 res = readData8(channel->off + HDAC_SDSTS);
 
 	/* XXX to be removed */
 	if (res & (HDAC_SDSTS_DESE | HDAC_SDSTS_FIFOE))
@@ -3064,9 +2975,7 @@ int VoodooHDADevice::audioCtlOssMixerGet(PcmDevice *pcmDevice, UInt32 dev, UInt3
 	//Slice
 	UInt32 mask = (1 << dev);
  
-	
 	LOCK();
-	
 	
 	/* Recalculate all controls related to this OSS device. */
 	for (int i = 0; (control = audioCtlEach(funcGroup, i)); i++) {
@@ -3082,8 +2991,6 @@ int VoodooHDADevice::audioCtlOssMixerGet(PcmDevice *pcmDevice, UInt32 dev, UInt3
 		audioCtlAmpGetGain(control);
 	
 		if(control->step != 0) {
-//			bFound = true;
-//			controlIndex = i;
 			lvol = 100 * control->left / control->step;
 			rvol = 100 * control->right / control->step;
 			
@@ -3160,11 +3067,6 @@ Channel *VoodooHDADevice::channelInit(PcmDevice *pcmDevice, int direction)
 		return NULL;
 	}
 
-//	logMsg("block size: %ld, block count: %ld, buffer size: %ld\n", channel->blockSize, channel->numBlocks,
-//			pcmDevice->chanSize);
-
-//	channel->buffer = allocateDmaMemory(pcmDevice->chanSize, "buffer");
-//  bool isDigital = (pcmDevice->digital >= 2);
   channel->buffer = allocateDmaMemory(pcmDevice->chanSize, "buffer",
                                       mInhibitCache ? kIOMapInhibitCache : kIOMapDefaultCache);
 	if (!channel->buffer) {
@@ -3251,7 +3153,7 @@ void VoodooHDADevice::channelStop(Channel *channel, const bool shouldLock)
 	if (shouldLock)
 		UNLOCK();
 }
-
+#if 0
 void VoodooHDADevice::channelStart(Channel *channel, const bool shouldLock)
 {
 	if (shouldLock)
@@ -3295,6 +3197,36 @@ void VoodooHDADevice::channelStart(Channel *channel, const bool shouldLock)
 	if (shouldLock)
 		UNLOCK();
 }
+#else
+void VoodooHDADevice::channelStart(Channel *channel, const bool shouldLock)
+{
+  if (shouldLock)
+    LOCK();
+  
+  if (channel->pcmDevice && channel->pcmDevice->digital >= 2) {
+    nid_t pin = getHDMIPinForChannel(channel);
+    IOLog("VoodooHDA DBG: channelStart HDMI pin=%d streamId=%d speed=%d\n",
+          pin, channel->streamId, (int)channel->speed);
+  }
+  
+  streamStop(channel);
+  streamReset(channel);
+  bdlSetup(channel);
+  streamSetId(channel);
+  streamSetup(channel);
+  streamStart(channel);
+  
+  if (channel->pcmDevice && channel->pcmDevice->digital >= 2 && mFBNotifier) {
+    nid_t pin = getHDMIPinForChannel(channel);
+    if (pin != (nid_t)-1)
+      mFBNotifier->notifyStreamingState(channel->funcGroup->codec->cad, pin, true);
+  }
+  
+  if (shouldLock)
+    UNLOCK();
+}
+
+#endif
 
 int VoodooHDADevice::channelGetPosition(Channel *channel)
 {
@@ -3537,10 +3469,10 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 		  dac, atiCodec, totalchn, totalext, funcGroup->codec->vendorId, funcGroup->codec->deviceId);
 
   /* Mapping formats to HDMI channel allocations. */
-  const static UInt8 hdmica[2][8] =
-  /*  1     2     3     4     5     6     7     8  */
-  {{ 0x02, 0x00, 0x04, 0x08, 0x0a, 0x0e, 0x12, 0x12 }, /* x.0 */
-   { 0x01, 0x03, 0x01, 0x03, 0x09, 0x0b, 0x0f, 0x13 }}; /* x.1 */
+//  const static UInt8 hdmica[2][8] =
+//  /*  1     2     3     4     5     6     7     8  */
+//  {{ 0x02, 0x00, 0x04, 0x08, 0x0a, 0x0e, 0x12, 0x12 }, /* x.0 */
+//   { 0x01, 0x03, 0x01, 0x03, 0x09, 0x0b, 0x0f, 0x13 }}; /* x.1 */
   /* Mapping formats to HDMI channels order. */
   const static UInt32 hdmich[2][8] =
   /*  1  /  5     2  /  6     3  /  7     4  /  8  */
