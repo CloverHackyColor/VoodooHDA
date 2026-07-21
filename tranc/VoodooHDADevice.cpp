@@ -1,6 +1,6 @@
 #include "License.h"
 
-#include "GitCommit.h"
+//#include "GitCommit.h"
 #include "VoodooHDADevice.h"
 #include "VoodooHDAFramebufferNotifier.h"
 #include "VoodooHDAEngine.h"
@@ -209,7 +209,7 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 		IOLog("VoodooHDA DBG: super::init() FAILED\n");
 		return false;
 	}
-	IOLog("VoodooHDA DBG: super::init() OK, version=%s commit=" VOODOO_HDA_GIT_COMMIT "\n", kmod_info.version);
+	IOLog("VoodooHDA DBG: super::init() OK, version=%s \n", kmod_info.version);
 
 	dumpMsg("Loading VoodooHDA %s (based on hdac version " HDAC_REVISION ")\n", kmod_info.version);
 	
@@ -3887,6 +3887,7 @@ void VoodooHDADevice::streamStop(Channel *channel)
 
 void VoodooHDADevice::streamStart(Channel *channel)
 {
+#if 0
 	UInt32 ctl;
   
   // 1. Сбрасываем позицию DMA в 0 перед запуском (особенно важно для HDMI)
@@ -3917,6 +3918,31 @@ void VoodooHDADevice::streamStart(Channel *channel)
   ctl &= ~(HDAC_SDCTL_IOCE | HDAC_SDCTL_FEIE | HDAC_SDCTL_DEIE | HDAC_SDCTL_RUN);
   ctl |= (HDAC_SDCTL_IOCE | HDAC_SDCTL_RUN); 
 	writeData8(channel->off + HDAC_SDCTL0, ctl);
+#else //as in 3.3.4
+  UInt32 ctl;
+  
+  channel->flags |= HDAC_CHN_RUNNING;
+  
+  ctl = readData32(HDAC_INTCTL);
+  ctl |= 1 << (channel->off >> 5);
+  writeData32(HDAC_INTCTL, ctl);
+  
+  //FreeBSD update
+  //  HDAC_WRITE_1(&sc->mem, off + HDAC_SDSTS, HDAC_SDSTS_DESE | HDAC_SDSTS_FIFOE | HDAC_SDSTS_BCIS);
+  writeData8(channel->off + HDAC_SDSTS, HDAC_SDSTS_DESE | HDAC_SDSTS_FIFOE | HDAC_SDSTS_BCIS);
+  //
+  
+  if (channel->stripectl) {
+    ctl = readData8(channel->off + HDAC_SDCTL2);
+    ctl &= ~HDAC_SDCTL2_STRIPE_MASK;
+    ctl |= channel->stripectl << HDAC_SDCTL2_STRIPE_SHIFT;
+    writeData8(channel->off + HDAC_SDCTL2, ctl);
+  }
+  
+  ctl = readData8(channel->off + HDAC_SDCTL0);
+  ctl |= HDAC_SDCTL_IOCE | HDAC_SDCTL_FEIE | HDAC_SDCTL_DEIE | HDAC_SDCTL_RUN;
+  writeData8(channel->off + HDAC_SDCTL0, ctl);
+#endif
 }
 
 void VoodooHDADevice::streamReset(Channel *channel)
@@ -4031,7 +4057,7 @@ int VoodooHDADevice::pcmAttach(PcmDevice *pcmDevice)
 	pcmDevice->chanNumBlocks = HDA_BDL_DEFAULT;
   if (pcmDevice->digital >= 2) {
     // Для HDMI/DP на AMD увеличиваем число блоков для более частых прерываний
-    pcmDevice->chanNumBlocks = 16;  // вместо стандартных 8
+    pcmDevice->chanNumBlocks = pcmDevice->chanSize / HDA_BUFSZ_MIN; /* 4KB per entry */
   }
 
 	dumpMsg("+--------------------------------------+\n");
