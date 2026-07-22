@@ -80,18 +80,6 @@ class IOInterruptEventSource;
 class IOTimerEventSource;
 
 
-struct HDMIPinState {
-  UInt8 codec;
-  UInt16 pinNID;
-  UInt8 unsolTag;           // Тег для Unsolicited Response
-  AudioAssoc *assoc;        // Связанная ассоциация
-  VoodooHDAEngine *engine;  // NULL, если движок ещё не создан
-  bool monitorConnected;    // Текущий статус подключения
-  bool edidValid;           // Прочитан ли валидный EDID
-};
-
-static const int MAX_HDMI_PINS = 8;
-
 class VoodooHDADevice : public IOAudioDevice
 {
 //	friend class AppleHDAEngine;
@@ -193,14 +181,6 @@ public:
 	bool mAllowMSI;
 	bool mDmaPosMemAllocated;
   
-  //Qwen
-  HDMIPinState hdmiPins[MAX_HDMI_PINS];
-  int numHDMIPins;
-
-	/**************/
-  
-  //Qwen
-  IOReturn createHDMIEngineForPin(int hdmiIndex);
   void handleHDMIHotPlug(int hdmiIndex, bool connected);
   int findHDMIPinByTag(UInt8 tag);
   int findHDMIPinByNID(UInt16 nid);

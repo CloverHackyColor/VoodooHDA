@@ -3348,47 +3348,12 @@ void VoodooHDADevice::streamSetup(Channel *channel)
 		map = 0;
 	 else if (assoc->pinset == 0x0017) // Standard 7.1 
 		map = 1;
-  
-  //Qwen >>
-  // 🔧 Формируем SDFMT на основе channel->format и channel->bit32
-  UInt16 sdfmt = 0;
-  
-  // Sample Rate (упрощённо: берём из channel->speed)
-  switch (channel->speed) {
-    case 48000: sdfmt |= 0x0000; break;  // Base=48k, Multiplier=1
-    case 44100: sdfmt |= 0x0002; break;  // Base=44.1k
-    case 96000: sdfmt |= 0x0001; break;  // Base=48k, Multiplier=2
-    case 88200: sdfmt |= 0x0003; break;  // Base=44.1k, Multiplier=2
-    default:    sdfmt |= 0x0000; break;  // Fallback to 48k
-  }
-  
-  // Channels - 1 (max 7)
-  sdfmt |= ((totalchn - 1) & 0x7) << 0;
-  
-  // Sample Size field (биты 4:5 в SDFMT)
-  UInt8 sampleSizeField = 1 << 4; // Default: 16-bit (01)
-  if (channel->format & AFMT_S32_LE) {
-    // VoodooHDA использует AFMT_S32_LE для 20/24/32 бит
-    // channel->bit32: 2=20-bit, 3=24-bit, 4=32-bit
-    if (channel->bit32 == 2) {
-      sampleSizeField = 2 << 4; // 20-bit → SDFMT bits 4:5 = 10
-    } else {
-      sampleSizeField = 3 << 4; // 24/32-bit → SDFMT bits 4:5 = 11
-    }
-  } else if (channel->format & AFMT_S16_LE) {
-    sampleSizeField = 1 << 4; // 16-bit → SDFMT bits 4:5 = 01
-  }
-  sdfmt |= sampleSizeField;
-  
-  // Записываем SDFMT
-  writeData16(channel->off + HDAC_SDFMT, sdfmt);
-//Qwen <<
 	
   digFormat = HDA_CMD_SET_DIGITAL_CONV_FMT1_DIGEN; // | HDA_CMD_SET_DIGITAL_CONV_FMT1_COPY;
 	if (channel->format & AFMT_AC3)
 		digFormat |= HDA_CMD_SET_DIGITAL_CONV_FMT1_NAUDIO;
 	
-//	writeData16(channel->off + HDAC_SDFMT, format);
+	writeData16(channel->off + HDAC_SDFMT, format);
     
 	/* AppleGFXHDA never uses stripe mode for HDMI audio.  Stripe causes
 	 * FIFO errors (SDSTS_FIFOE) on AMD/ATI GPU HDA controllers, producing
@@ -3407,8 +3372,6 @@ void VoodooHDADevice::streamSetup(Channel *channel)
 		if (!widget)
 			continue;
 
-//		if ((assoc->hpredir >= 0) && (i == assoc->pincnt))
-//			chn = 0;
 		/* If HP redirection is enabled, but failed to use same DAC make last DAC one to duplicate first one. */
 		if (assoc->fakeredir && i == (assoc->pincnt - 1)) {
 			c = (channel->streamId << 4);
@@ -3819,38 +3782,6 @@ void VoodooHDADevice::streamStop(Channel *channel)
 
 void VoodooHDADevice::streamStart(Channel *channel)
 {
-#if 0
-	UInt32 ctl;
-  
-  // 1. Сбрасываем позицию DMA в 0 перед запуском (особенно важно для HDMI)
-  writeData32(channel->off + HDAC_SDLPIB, 0);
-  IODelay(1000); // 1 мс задержка для стабилизации контроллера
-
-	channel->flags |= HDAC_CHN_RUNNING;
-
-	ctl = readData32(HDAC_INTCTL);
-	ctl |= 1 << (channel->off >> 5);
-	writeData32(HDAC_INTCTL, ctl);
-  
-  //FreeBSD update
-//  HDAC_WRITE_1(&sc->mem, off + HDAC_SDSTS, HDAC_SDSTS_DESE | HDAC_SDSTS_FIFOE | HDAC_SDSTS_BCIS);
-  writeData8(channel->off + HDAC_SDSTS, HDAC_SDSTS_DESE | HDAC_SDSTS_FIFOE | HDAC_SDSTS_BCIS);
-  //
-
-	if (channel->stripectl) {
-		ctl = readData8(channel->off + HDAC_SDCTL2);
-		ctl &= ~HDAC_SDCTL2_STRIPE_MASK;
-		ctl |= channel->stripectl << HDAC_SDCTL2_STRIPE_SHIFT;
-		writeData8(channel->off + HDAC_SDCTL2, ctl);
-	}
-
-	ctl = readData8(channel->off + HDAC_SDCTL0);
-  // Qwen
-	//ctl |= HDAC_SDCTL_IOCE | HDAC_SDCTL_FEIE | HDAC_SDCTL_DEIE | HDAC_SDCTL_RUN;
-  ctl &= ~(HDAC_SDCTL_IOCE | HDAC_SDCTL_FEIE | HDAC_SDCTL_DEIE | HDAC_SDCTL_RUN);
-  ctl |= (HDAC_SDCTL_IOCE | HDAC_SDCTL_RUN); 
-	writeData8(channel->off + HDAC_SDCTL0, ctl);
-#else //as in 3.3.4
   UInt32 ctl;
   
   channel->flags |= HDAC_CHN_RUNNING;
@@ -3858,12 +3789,8 @@ void VoodooHDADevice::streamStart(Channel *channel)
   ctl = readData32(HDAC_INTCTL);
   ctl |= 1 << (channel->off >> 5);
   writeData32(HDAC_INTCTL, ctl);
-  
-  //FreeBSD update
-  //  HDAC_WRITE_1(&sc->mem, off + HDAC_SDSTS, HDAC_SDSTS_DESE | HDAC_SDSTS_FIFOE | HDAC_SDSTS_BCIS);
   writeData8(channel->off + HDAC_SDSTS, HDAC_SDSTS_DESE | HDAC_SDSTS_FIFOE | HDAC_SDSTS_BCIS);
-  //
-  
+
   if (channel->stripectl) {
     ctl = readData8(channel->off + HDAC_SDCTL2);
     ctl &= ~HDAC_SDCTL2_STRIPE_MASK;
@@ -3873,8 +3800,9 @@ void VoodooHDADevice::streamStart(Channel *channel)
   
   ctl = readData8(channel->off + HDAC_SDCTL0);
   ctl |= HDAC_SDCTL_IOCE | HDAC_SDCTL_FEIE | HDAC_SDCTL_DEIE | HDAC_SDCTL_RUN;
+//  ctl &= ~(HDAC_SDCTL_IOCE | HDAC_SDCTL_FEIE | HDAC_SDCTL_DEIE | HDAC_SDCTL_RUN);
+//  ctl |= (HDAC_SDCTL_IOCE | HDAC_SDCTL_RUN);
   writeData8(channel->off + HDAC_SDCTL0, ctl);
-#endif
 }
 
 void VoodooHDADevice::streamReset(Channel *channel)
