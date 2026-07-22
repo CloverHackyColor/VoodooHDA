@@ -735,7 +735,7 @@ IOReturn VoodooHDAEngine::performAudioEngineStop()
 
 	mDevice->channelStop(mChannel);
   // Дренаж аппаратного FIFO перед выключением
-  IODelay(500);
+  //IODelay(500);
 
 	return kIOReturnSuccess;
 }
