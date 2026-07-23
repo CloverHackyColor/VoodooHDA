@@ -185,6 +185,7 @@ struct FBConnectionState {
 	bool           displayOnline;
 	bool           edidValid;
 	bool           audioPipeEnabled;
+  bool           isDP;
 	nid_t          mappedPinNid;
 	int            mappedCodecCad;
 	uint8_t       *edidData;

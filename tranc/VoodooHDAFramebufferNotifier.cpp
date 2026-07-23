@@ -449,7 +449,20 @@ bool VoodooHDAFramebufferNotifier::displayMatchedHandler(
 				      conn->mappedPinNid, conn->speakerAllocation, conn->numSADs);
 
 				/* Try to enable GPU audio engine via direct MMIO */
-				self->initGPUAudioIfNeeded();
+				//self->initGPUAudioIfNeeded();
+        // Вызываем enableGPUAudioEngine с правильными параметрами
+        int digIndex = 0;
+        // Определяем DIG индекс на основе conn->mappedPinNid
+        if (conn->mappedPinNid >= 3 && conn->mappedPinNid <= 13) {
+          digIndex = (conn->mappedPinNid - 3) / 2; // 3->0, 5->1, 7->2, ...
+        }
+        self->enableGPUAudioEngine(
+                                   0, // endpoint
+                                   digIndex,
+                                   conn->isDP, // <-- КРИТИЧЕСКИ ВАЖНО!
+                                   conn->speakerAllocation,
+                                   conn->numSADs > 0 ? ((conn->sads[0] & 0x07) + 1) : 2
+                                   );
 			}
 		}
 	}
@@ -650,6 +663,17 @@ void VoodooHDAFramebufferNotifier::mapConnectionToPin(FBConnectionState *conn, i
     FBLOG("mapConnectionToPin: connIndex=%d fallback -> pin nid=%d cad=%d",
           connIndex, conn->mappedPinNid, conn->mappedCodecCad);
   }
+  
+  if (conn->framebuffer) {
+    // Проверяем connector-type
+    OSNumber *connType = OSDynamicCast(OSNumber,
+                                       conn->framebuffer->getProperty("connector-type"));
+    if (connType) {
+      uint32_t type = connType->unsigned32BitValue();
+      conn->isDP = (type == 0x00000400); // DP connector type
+      FBLOG("mapConnectionToPin: connector-type=0x%x isDP=%d", type, conn->isDP);
+    }
+  }
 }
 
 /* ---------- EDID reading ---------- */
@@ -706,6 +730,17 @@ void VoodooHDAFramebufferNotifier::initGPUAudioIfNeeded()
     FBLOG("initGPUAudio: cannot map GPU MMIO");
     return;
   }
+  
+  // Проверяем статус AZ перед изменениями
+  for (int ep = 0; ep < 7; ep++) {
+    uint32_t hpc = azEndpointRead(ep, AZ_REG_PIN_CONTROL_HOT_PLUG_CONTROL);
+    if (hpc & AZ_HPC_AUDIO_ENABLED) {
+      FBLOG("initGPUAudio: endpoint %d already has audio enabled, skipping", ep);
+      // Не трогаем уже работающие порты
+      continue;
+    }
+  }
+  
   mGPUAudioInitDone = true;
 
   FBLOG("initGPUAudio: === GPU AZ STATE (Final) ===");
@@ -724,6 +759,19 @@ bool VoodooHDAFramebufferNotifier::parseEDIDAudio(FBConnectionState *conn)
   conn->speakerAllocation = 0;
   conn->numSADs = 0;
   bzero(conn->sads, sizeof(conn->sads));
+  
+  // Определяем тип интерфейса по данным из framebuffer
+  conn->isDP = false;
+  // Или проверяем connector-type из IORegistry
+  OSNumber *connType = OSDynamicCast(OSNumber,
+                                     conn->framebuffer->getProperty("connector-type"));
+  if (connType) {
+    uint32_t type = connType->unsigned32BitValue();
+    if (type == 0x00000400) { // DP
+      conn->isDP = true;
+      FBLOG("parseEDIDAudio: pin=%d interface is DisplayPort", conn->mappedPinNid);
+    }
+  }
   
   int numExtensions = conn->edidData[126];
   
@@ -1387,7 +1435,7 @@ void VoodooHDAFramebufferNotifier::dumpAZState()
 }
 
 /* ---------- Enable GPU audio engine for a DP output ---------- */
-
+#if 0
 bool VoodooHDAFramebufferNotifier::enableGPUAudioEngine(
 	int endpoint, int digIndex, bool isDP,
 	uint8_t speakerAlloc, int numChannels)
@@ -1430,7 +1478,9 @@ bool VoodooHDAFramebufferNotifier::enableGPUAudioEngine(
 	/* 1e. Re-enable clock gating */
 	hpc = azEndpointRead(endpoint, AZ_REG_PIN_CONTROL_HOT_PLUG_CONTROL);
 	hpc &= ~AZ_HPC_CLOCK_GATING_DISABLE;
+  //hpc |= AZ_HPC_AUDIO_ENABLED;
 	azEndpointWrite(endpoint, AZ_REG_PIN_CONTROL_HOT_PLUG_CONTROL, hpc);
+  FBLOG("enableGPUAudio: AZ endpoint %d configured (isDP=%d)", endpoint, isDP);
 
 	const AZRegOffsets *r = (const AZRegOffsets *)mRegs;
 
@@ -1510,7 +1560,77 @@ bool VoodooHDAFramebufferNotifier::enableGPUAudioEngine(
 
 	return true;
 }
-
+#else
+bool VoodooHDAFramebufferNotifier::enableGPUAudioEngine(
+  int endpoint, int digIndex, bool isDP,
+  uint8_t speakerAlloc, int numChannels)
+{
+  if (!mGPUMMIO) return false;
+  
+  const AZRegOffsets *r = (const AZRegOffsets *)mRegs;
+  
+  // Для Polaris/RX560 НЕ ТРОГАЕМ DIG на DP!
+  // Только настраиваем AZ эндпоинт
+  
+  // 1. Настройка AZ эндпоинта (общая часть)
+  uint32_t hpc = azEndpointRead(endpoint, AZ_REG_PIN_CONTROL_HOT_PLUG_CONTROL);
+  azEndpointWrite(endpoint, AZ_REG_PIN_CONTROL_HOT_PLUG_CONTROL,
+                  hpc | AZ_HPC_CLOCK_GATING_DISABLE);
+  
+  uint32_t cs = azEndpointRead(endpoint, AZ_REG_PIN_CONTROL_CHANNEL_SPEAKER);
+  cs &= ~(AZ_CS_SPEAKER_ALLOC_MASK | AZ_CS_HDMI_CONNECTION | AZ_CS_DP_CONNECTION);
+  cs |= (speakerAlloc & AZ_CS_SPEAKER_ALLOC_MASK);
+  if (isDP)
+    cs |= AZ_CS_DP_CONNECTION;
+  else
+    cs |= AZ_CS_HDMI_CONNECTION;
+  azEndpointWrite(endpoint, AZ_REG_PIN_CONTROL_CHANNEL_SPEAKER, cs);
+  
+  // Аудиодескрипторы
+  uint32_t desc0 = ((numChannels - 1) & 0x07) |
+                    (0x07 << 8) |    // 32, 44.1, 48 kHz
+                    (0x07 << 16) |   // 16, 20, 24-bit
+                    (0x07 << 24);
+  azEndpointWrite(endpoint, AZ_REG_PIN_CONTROL_AUDIO_DESCRIPTOR(0), desc0);
+  
+  // Включаем аудио
+  hpc = azEndpointRead(endpoint, AZ_REG_PIN_CONTROL_HOT_PLUG_CONTROL);
+  hpc &= ~AZ_HPC_CLOCK_GATING_DISABLE;
+  hpc |= AZ_HPC_AUDIO_ENABLED;
+  azEndpointWrite(endpoint, AZ_REG_PIN_CONTROL_HOT_PLUG_CONTROL, hpc);
+  
+  FBLOG("enableGPUAudio: AZ endpoint %d configured (isDP=%d)", endpoint, isDP);
+  
+  // 2. Для DP на Polaris - МИНИМАЛЬНЫЕ настройки, БЕЗ AFMT!
+  // На RX560 DP аудио работает через отдельный механизм
+  if (isDP) {
+    // Только базовые настройки DP_SEC
+    uint32_t dpSec = gpuRead32(r->dpSecCntl0 + digIndex * r->digStride);
+    dpSec |= DP_SEC_ASP_ENABLE | DP_SEC_ATP_ENABLE | DP_SEC_AIP_ENABLE;
+    gpuWrite32(r->dpSecCntl0 + digIndex * r->digStride, dpSec);
+    
+    // НЕ включаем AFMT для DP на Polaris
+    // gpuWrite32(r->afmtCntl0 + digIndex * r->digStride, ...) - НЕ ДЕЛАЕМ!
+    
+    FBLOG("enableGPUAudio: DP minimal config for DIG%d", digIndex);
+    return true;
+  }
+  
+  // 3. Для HDMI - полная настройка (как у вас уже есть)
+  gpuWrite32(r->afmtSrcCtl0 + digIndex * r->digStride, endpoint & 0x07);
+  
+  uint32_t afmtCntl = gpuRead32(r->afmtCntl0 + digIndex * r->digStride);
+  afmtCntl |= AFMT_AUDIO_CLOCK_EN;
+  gpuWrite32(r->afmtCntl0 + digIndex * r->digStride, afmtCntl);
+  
+  uint32_t pktCtl = gpuRead32(r->afmtPktCtl0 + digIndex * r->digStride);
+  pktCtl |= AFMT_AUDIO_SAMPLE_SEND;
+  gpuWrite32(r->afmtPktCtl0 + digIndex * r->digStride, pktCtl);
+  
+  FBLOG("enableGPUAudio: HDMI full config for DIG%d", digIndex);
+  return true;
+}
+#endif
 /* Called from updateHDMIEnginePresence() when a pin loses presence (cable removed).
  * Tells the GPU it can stop the audio pipe for that output → allows GPU power gating. */
 void VoodooHDAFramebufferNotifier::disableAudioPipeForPin(int cad, nid_t pinNid)
