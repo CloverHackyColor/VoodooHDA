@@ -3916,7 +3916,7 @@ int VoodooHDADevice::pcmAttach(PcmDevice *pcmDevice)
 	dumpMsg("pcmAttach: %s\n", buf);
 
   pcmDevice->chanSize = 262144; //HDA_BUFSZ_DEFAULT;
-  pcmDevice->chanNumBlocks = 64; //HDA_BDL_DEFAULT;
+  pcmDevice->chanNumBlocks = 8; //HDA_BDL_DEFAULT;
   if (pcmDevice->digital >= 2) {
     // Для HDMI/DP на AMD увеличиваем число блоков для более частых прерываний
     pcmDevice->chanNumBlocks = pcmDevice->chanSize / HDA_BUFSZ_MIN; /* 4KB per entry */
