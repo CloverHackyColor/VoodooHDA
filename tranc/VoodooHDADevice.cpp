@@ -133,6 +133,8 @@ static const char *setHDMIEngineDisplayName(VoodooHDAFramebufferNotifier *notifi
   UInt16 gpuDeviceId = 0;
   if (notifier) {
     findFamily = notifier->detectedAMDGPUFamily(&family, &gpuDeviceId);
+  } else {
+    IOLog("VoodooHDA setHDMIEngineDisplayName: no notifier\n");
   }
   if (findFamily) {
     name = amdGpuFamilyNameForHDAPolicy(family);
@@ -146,7 +148,7 @@ static const char *setHDMIEngineDisplayName(VoodooHDAFramebufferNotifier *notifi
              "%s Audio", name);
   }
   slot->engine->mPortName = slot->engine->mPortNameBuf;
-  slot->engine->mPortType = kIOAudioSelectorControlSelectionValueExternalSpeaker;
+  slot->engine->mPortType = kIOAudioDeviceTransportTypeHdmi;
   return slot->engine->mPortName;
 }
 
@@ -2474,6 +2476,26 @@ void VoodooHDADevice::updateHDMIEnginePresence()
     if (hasPresence && !slot->activated) {
       if (mVerbose >= 1)
         IOLog("VoodooHDA DBG: HDMI hot-plug: activating engine for pin=%d\n", slot->pinNid);
+      if (slot->channel) {
+        FunctionGroup *funcGroup = slot->channel->funcGroup;
+        if (funcGroup) {
+          Widget *widget = widgetGet(funcGroup, slot->pinNid);
+          if (widget) {
+            bool isDP = HDA_PARAM_PIN_CAP_DP(widget->pin.cap);
+            if (isDP) {
+              slot->engine->mPortType = kIOAudioDeviceTransportTypeDisplayPort;
+            } else {
+              slot->engine->mPortType = kIOAudioDeviceTransportTypeHdmi;
+            }
+          } else {
+            IOLog("VoodooHDA ATI DBG: no such widget\n");
+          }
+        } else {
+          IOLog("VoodooHDA ATI DBG: no such funcGroup\n");
+        }
+      } else {
+        IOLog("VoodooHDA ATI DBG: no such channel\n");
+      }
       IOReturn ret = activateAudioEngine(slot->engine);
       if (mVerbose >= 1)
         IOLog("VoodooHDA DBG: HDMI hot-plug: activateAudioEngine ret=0x%x\n", ret);

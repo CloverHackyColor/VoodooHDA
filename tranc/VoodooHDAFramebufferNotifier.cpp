@@ -449,20 +449,20 @@ bool VoodooHDAFramebufferNotifier::displayMatchedHandler(
 				      conn->mappedPinNid, conn->speakerAllocation, conn->numSADs);
 
 				/* Try to enable GPU audio engine via direct MMIO */
-				//self->initGPUAudioIfNeeded();
+				self->initGPUAudioIfNeeded();
         // Вызываем enableGPUAudioEngine с правильными параметрами
-        int digIndex = 0;
-        // Определяем DIG индекс на основе conn->mappedPinNid
-        if (conn->mappedPinNid >= 3 && conn->mappedPinNid <= 13) {
-          digIndex = (conn->mappedPinNid - 3) / 2; // 3->0, 5->1, 7->2, ...
-        }
-        self->enableGPUAudioEngine(
-                                   0, // endpoint
-                                   digIndex,
-                                   conn->isDP, // <-- КРИТИЧЕСКИ ВАЖНО!
-                                   conn->speakerAllocation,
-                                   conn->numSADs > 0 ? ((conn->sads[0] & 0x07) + 1) : 2
-                                   );
+//        int digIndex = 0;
+//        // Определяем DIG индекс на основе conn->mappedPinNid
+//        if (conn->mappedPinNid >= 3 && conn->mappedPinNid <= 13) {
+//          digIndex = (conn->mappedPinNid - 3) / 2; // 3->0, 5->1, 7->2, ...
+//        }
+//        self->enableGPUAudioEngine(
+//                                   0, // endpoint
+//                                   digIndex,
+//                                   conn->isDP, // <-- КРИТИЧЕСКИ ВАЖНО!
+//                                   conn->speakerAllocation,
+//                                   conn->numSADs > 0 ? ((conn->sads[0] & 0x07) + 1) : 2
+//                                   );
 			}
 		}
 	}
