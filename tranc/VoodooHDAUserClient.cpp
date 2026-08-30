@@ -114,8 +114,9 @@ IOReturn VoodooHDAUserClient::actionMethod(UInt32 *dataIn, UInt32 *dataOut, IOBy
     *outputSize = dataSize;
 	if (dataSize) {
 		ASSERT(data);
-	    if (outputMax < dataSize)
-	        return kIOReturnNoSpace;
+    if (outputMax < dataSize) {
+      return kIOReturnNoSpace;
+    }
 		bcopy(data, dataOut, dataSize);
 	}
 

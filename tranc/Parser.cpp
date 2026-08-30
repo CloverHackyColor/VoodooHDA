@@ -9,6 +9,7 @@
 #include "Common.h"
 #include "Verbs.h"
 #include "AppleALCPinConfigs.h"
+#include <pexpert/pexpert.h>
 
 #ifdef TIGER
 #include "TigerAdditionals.h"
@@ -125,6 +126,8 @@ void VoodooHDADevice::probeCodec(Codec *codec)
 	dumpMsg("PCI Subvendor: 0x%08lx\n", (long unsigned int)mSubDeviceId);
   dumpMsg("Loading VoodooHDA %s \n", kmod_info.version);
 
+	if (codec->vendorId == INTEL_VENDORID)
+		setupIntelHdmi(codec);
 	subNode = sendCommand(HDA_CMD_GET_PARAMETER(cad, 0, HDA_PARAM_SUB_NODE_COUNT), cad);
 	startNode = HDA_PARAM_SUB_NODE_COUNT_START(subNode);
 	endNode = startNode + HDA_PARAM_SUB_NODE_COUNT_TOTAL(subNode);
@@ -3648,6 +3651,12 @@ UInt32 VoodooHDADevice::widgetPinGetConfig(Widget *widget)
 	}
 #endif
 
+	if (HDA_PARAM_AUDIO_WIDGET_CAP_DIGITAL(widget->params.widgetCap) &&
+	    widget->funcGroup->codec->vendorId == INTEL_VENDORID) {
+		config &= (~HDA_CONFIG_DEFAULTCONF_ASSOCIATION_MASK);
+		config |= ((static_cast<unsigned>(widget->nid) << HDA_CONFIG_DEFAULTCONF_ASSOCIATION_SHIFT) & HDA_CONFIG_DEFAULTCONF_ASSOCIATION_MASK);
+	}
+
 	if (config != orig)
 		dumpMsg("Patching pin config nid=%u 0x%08lx -> 0x%08lx\n", nid, (long unsigned int)orig, (long unsigned int)config);
 
@@ -5332,4 +5341,73 @@ void VoodooHDADevice::extDumpPin(Widget *widget)
 	if (ctrl & HDA_CMD_SET_PIN_WIDGET_CTRL_VREF_ENABLE_MASK)
 		dumpExtMsg(" VREFs");
 	dumpExtMsg("\n");
+}
+
+__attribute__((visibility("hidden")))
+void VoodooHDADevice::setupIntelHdmi(Codec* codec)
+{
+	nid_t cad = codec->cad;
+	nid_t vendor_nid;
+	uint32_t widgetCaps, response, new_vendor_verb;
+
+	switch (codec->deviceId) {
+		case 0x2800: // GLK
+		case 0x280C: // GLK
+		case 0x280D: // GLK
+#if 0
+/*
+	Linux uses 11 for these, but I couldn't find
+	  it in the Intel documentation.
+*/
+			vendor_nid = 11;
+			break;
+#endif
+		case 0x2807: // HSW
+		case 0x2808: // HSW
+		case 0x2809: // HSW
+		case 0x280A: // HSW
+		case 0x280B: // HSW
+			vendor_nid = 8;
+			break;
+		case 0x280F: // ICL
+		case 0x281A: // ICL
+		case 0x281B: // ICL
+		case 0x2812: // TGL
+		case 0x2814: // TGL
+		case 0x2815: // TGL
+		case 0x2816: // TGL
+		case 0x2818: // TGL
+		case 0x2819: // TGL
+		case 0x281C: // ADLP
+		case 0x281D: // ADLP
+		case 0x281E: // ADLP
+		case 0x281F: // ADLP
+		case 0x2820: // ADLP
+		case 0x2822: // ADLP
+		case 0x2823: // ADLP
+		case 0x2824: // ADLP
+			vendor_nid = 2;
+			break;
+		case 0x0054: // CPT
+		case 0x2804: // CPT
+		case 0x2805: // CPT
+		case 0x2806: // CPT
+		case 0x2882: // BYT
+		case 0x2883: // BYT
+		default:
+			return;
+	}
+	new_vendor_verb = 0U;
+	if (PE_parse_boot_argn("voodoohda-intel-vendor-verb", &new_vendor_verb, sizeof new_vendor_verb))
+		new_vendor_verb &= 255U;
+	else
+		new_vendor_verb = 1U;
+	widgetCaps = sendCommand(HDA_CMD_GET_PARAMETER(cad, vendor_nid, HDA_PARAM_AUDIO_WIDGET_CAP), cad);
+	response = sendCommand(HDA_CMD_12BIT(cad, vendor_nid, 0xF81, 0), cad);
+	logMsg("setupIntelHdmi: cad %d, vendor_nid %d, widgetCaps 0x%x, vendor_verb 0x%x\n",
+		cad, vendor_nid, widgetCaps, response);
+	response = sendCommand(HDA_CMD_12BIT(cad, vendor_nid, 0x781, new_vendor_verb & 255U), cad);
+	logMsg("setupIntelHdmi: set vendor_verb to 0x%x returned 0x%x\n", new_vendor_verb, response);
+	response = sendCommand(HDA_CMD_12BIT(cad, vendor_nid, 0xF81, 0), cad);
+	logMsg("setupIntelHdmi: reread of vendor_verb gives 0x%x\n", response);
 }

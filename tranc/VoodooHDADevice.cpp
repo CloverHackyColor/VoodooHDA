@@ -1,3 +1,4 @@
+// MCP TEST
 #include "License.h"
 
 //#include "GitCommit.h"
@@ -883,7 +884,7 @@ void VoodooHDADevice::stop(IOService *provider)
 		(mPciNub->isOpen(this) || mPciNub->open(this))) {
 		if (oldConfig != UINT16_MAX)
 			mPciNub->configWrite16(kIOPCIConfigCommand, oldConfig); //Slice
-			mPciNub->enablePCIPowerManagement(kPCIPMCSPowerStateD0);
+		mPciNub->enablePCIPowerManagement(kPCIPMCSPowerStateD0);
 		mPciNub->close(this);
 	}
 	

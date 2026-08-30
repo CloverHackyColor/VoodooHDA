@@ -451,6 +451,7 @@ public:
 	nid_t getHDMIPinForChannel(Channel *channel);
 //  UInt16 diagnosticFlagsForPin(int cad, nid_t pinNid) const;
 	void updateHDMIEnginePresence();
+	void setupIntelHdmi(Codec* codec);
 };
 
 #endif
