@@ -997,6 +997,7 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
 		errorMsg("error: VoodooHDAEngine::init failed\n");
   } else {
 
+    LOCK();
     // cue8chalk: set volume change fix on the engine
     audioEngine->mEnableVolumeChangeFix = mEnableVolumeChangeFix;
     // VertexBZ: set Mute fix on the engine
@@ -1017,7 +1018,7 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
 
     if (isHDMI) {
       if (hdmiPin != (nid_t)-1 && mNumHDMIEngines < 16) {
-        HDMIEngineSlot *slot = &mHDMIEngines[mNumHDMIEngines++];
+        HDMIEngineSlot *slot = &mHDMIEngines[mNumHDMIEngines];
         slot->engine = audioEngine;
         slot->channel = channel;
         slot->pinNid = hdmiPin;
@@ -1056,9 +1057,8 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
          * identical HDMI outputs.  Store the slots now and let
          * updateHDMIEnginePresence() publish the safe effective set after all
          * channels exist. */
-        if (atiHDMI) {
-          result = true;
-        } else if (hasPresence) {
+        if (!atiHDMI && hasPresence) {
+          (void) setHDMIEngineDisplayName(NULL, slot, false);
           if (activateAudioEngine(audioEngine) == kIOReturnSuccess) {
             slot->activated = true;
             result = true;
@@ -1066,12 +1066,17 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
         } else {
           result = true;
         }
+        ++mNumHDMIEngines;
+        UNLOCK();
 
         logMsg("VoodooHDA DBG: HDMI engine pin=%d presence=%d activated=%d%s\n",
                 hdmiPin, hasPresence, slot->activated,
                 slot->activated ? "" : " deferred-connected-only");
+      } else {
+        UNLOCK();
       }
     } else {
+      UNLOCK();
       /* Non-HDMI: always activate */
       if (activateAudioEngine(audioEngine) != kIOReturnSuccess) {
         errorMsg("error: activateAudioEngine failed\n");
@@ -1877,6 +1882,14 @@ void VoodooHDADevice::unlock(const char *callerName)
 	IOLockUnlock(mLock);
 }
 
+__attribute__((visibility("hidden")))
+bool VoodooHDADevice::trylock(const char* callerName)
+{
+	if (mVerbose >= 4)
+		logMsg("VoodooHDADevice[%p]::trylock(%s)\n", this, callerName);
+	return IOLockTryLock(mLock) != 0;
+}
+
 void VoodooHDADevice::assertLock(IOLock *lock, UInt32 type)
 {
 	lck_mtx_t *mutex;
@@ -2285,6 +2298,8 @@ static inline bool shouldUseAmdLegacyPolarisHDMIFallback(VoodooHDAFramebufferNot
                                                          IOPCIDevice *hdaDevice,
                                                          UInt32 packedControllerId)
 {
+  if ((packedControllerId & 0xFFFFU) != ATI_VENDORID)
+    return false;
   /* Prefer runtime GPU-family detection from the framebuffer GPU PCI function.
    * This is the only reliable way to distinguish Polaris from Vega/RDNA when
    * AMD reuses or board vendors vary the separate HDA audio function ID. */
@@ -2297,6 +2312,10 @@ static inline bool shouldUseAmdLegacyPolarisHDMIFallback(VoodooHDAFramebufferNot
   
   VoodooHDAAMDGPUFamily family = kVoodooHDAAMDGPUUnknown;
   UInt16 gpuDeviceId = 0;
+  /*
+   *  FIXME: This complex search should be done once and result cached,
+   *    not every time presence detection triggers an interrupt.
+   */
   if (detectSiblingAmdGpuForHDAPolicy(hdaDevice, &family, &gpuDeviceId))
     return family == kVoodooHDAAMDGPUClassicPolaris;
   
@@ -2484,9 +2503,9 @@ void VoodooHDADevice::updateHDMIEnginePresence()
     }
     
     bool hasPresence = effectivePresence;
-    const char *engineName = setHDMIEngineDisplayName(mFBNotifier, slot, false);
     
     if (hasPresence && !slot->activated) {
+      (void) setHDMIEngineDisplayName(mFBNotifier, slot, false);
       if (mVerbose >= 1)
         IOLog("VoodooHDA DBG: HDMI hot-plug: activating engine for pin=%d\n", slot->pinNid);
       if (slot->channel) {
@@ -2509,6 +2528,10 @@ void VoodooHDADevice::updateHDMIEnginePresence()
       } else {
         IOLog("VoodooHDA ATI DBG: no such channel\n");
       }
+      /*
+       * Note: the name returned by setHDMIEngineDisplayName() is never NULL and
+       *   the following invokes VoodooHDAEngine::initHardware() which calls setDescription()
+       */
       IOReturn ret = activateAudioEngine(slot->engine);
       if (mVerbose >= 1)
         IOLog("VoodooHDA DBG: HDMI hot-plug: activateAudioEngine ret=0x%x\n", ret);
@@ -2546,15 +2569,6 @@ void VoodooHDADevice::updateHDMIEnginePresence()
       }
       if (disablePipe)
         mFBNotifier->disableAudioPipeForPin(slot->cad, slot->pinNid);
-    }
-    
-    /* Keep HDMI/DP output names generic; Polaris recovery uses hidden mirrors
-     * rather than exposing separate pin-labeled Sound outputs.
-     */
-    if (engineName) {
-      slot->engine->setProperty("IOAudioEngineDescription", engineName);
-    } else {
-      slot->engine->setProperty("IOAudioEngineDescription", "VoodooHDA HDMI");
     }
   }
 }

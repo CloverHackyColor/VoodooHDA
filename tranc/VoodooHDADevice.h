@@ -238,6 +238,7 @@ public:
 
 	void lock(const char *callerName);
 	void unlock(const char *callerName);
+	bool trylock(const char* callerName);
 
 	void assertLock(IOLock *lock, UInt32 type);
 

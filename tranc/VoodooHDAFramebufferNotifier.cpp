@@ -282,13 +282,11 @@ void VoodooHDAFramebufferNotifier::startMatching()
 		&VoodooHDAFramebufferNotifier::gfxMatchedHandler,
 		this, NULL, 0);
 
-	matchDict = IOService::serviceMatching("IOFramebuffer");
-	if (matchDict) {
-		mGFXTermNotifier = IOService::addMatchingNotification(
-			gIOTerminatedNotification, matchDict,
-			&VoodooHDAFramebufferNotifier::gfxTerminatedHandler,
-			this, NULL, 0);
-	}
+	mGFXTermNotifier = IOService::addMatchingNotification(
+		gIOTerminatedNotification, matchDict,
+		&VoodooHDAFramebufferNotifier::gfxTerminatedHandler,
+		this, NULL, 0);
+	matchDict->release();
 
 	/*
 	 * IODisplay is created AFTER IOFramebuffer and carries the IODisplayEDID
@@ -300,6 +298,7 @@ void VoodooHDAFramebufferNotifier::startMatching()
 			gIOMatchedNotification, matchDict,
 			&VoodooHDAFramebufferNotifier::displayMatchedHandler,
 			this, NULL, 0);
+		matchDict->release();
 	}
 }
 
@@ -953,17 +952,20 @@ bool VoodooHDAFramebufferNotifier::enableAudioPipe(FBConnectionState *conn)
 
 	/* Update engine name to show which port has audio enabled */
 	if (conn->audioPipeEnabled && mDevice && conn->mappedPinNid >= 0) {
+		bool did_lock = mDevice->trylock(__FUNCTION__);
 		for (int i = 0; i < mDevice->mNumHDMIEngines; i++) {
 			VoodooHDADevice::HDMIEngineSlot *slot = &mDevice->mHDMIEngines[i];
-			if (slot->engine && slot->pinNid == conn->mappedPinNid) {
+			if (slot->activated && slot->engine && slot->pinNid == conn->mappedPinNid) {
 				char desc[80];
 				snprintf(desc, sizeof(desc), "%s: HDMI %d (audio enabled)",
 				         mDevice->mControllerName ? mDevice->mControllerName : "GPU",
 				         slot->pinNid);
-				slot->engine->setProperty("IOAudioEngineDescription", desc);
+				slot->engine->setDescription(desc);
 				FBLOG("enableAudioPipe: updated engine name for pin=%d", conn->mappedPinNid);
 			}
 		}
+		if (did_lock)
+			mDevice->unlock(__FUNCTION__);
 	}
 
 	return conn->audioPipeEnabled;

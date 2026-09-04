@@ -139,6 +139,7 @@ __attribute__((visibility("hidden")))
 const char *VoodooHDAEngine::getPortName()
 {
 	UInt32 numDacs;
+	bool did_lock;
 	nid_t dacNid, outputNid;
 	Widget *widget;
 	AudioAssoc *assoc;
@@ -146,7 +147,10 @@ const char *VoodooHDAEngine::getPortName()
 	if (mPortName)
 		return mPortName;
 
-	mDevice->lock(__FUNCTION__);
+	/*
+	 * Allow to be called while mDevice is already locked
+	 */
+	did_lock = mDevice->trylock(__FUNCTION__);
 
 	for (numDacs = 0; (numDacs < 16) && (mChannel->io[numDacs] != -1); numDacs++){
 		//Slice - to trace
@@ -212,7 +216,8 @@ const char *VoodooHDAEngine::getPortName()
 	}
 	mPortType = pinConfigToSelection(widget->pin.config);
 done:
-	mDevice->unlock(__FUNCTION__);
+	if (did_lock)
+		mDevice->unlock(__FUNCTION__);
 
 	if (!mPortName)
 		mPortName = "Not connected";
