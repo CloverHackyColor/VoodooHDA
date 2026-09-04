@@ -18,6 +18,7 @@
 #include <IOKit/IOTimerEventSource.h>
 #include <IOKit/IODMACommand.h>
 #include <IOKit/pci/IOPCIDevice.h>
+#include <pexpert/pexpert.h>
 
 #include <kern/locks.h>
 
@@ -202,6 +203,7 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 {
 	OSNumber *verboseLevelNum;
 	OSBoolean *osBool;
+	uint32_t boot_arg;
 	extern kmod_info_t kmod_info;
 	mVerbose = 0;
 	mFBNotifier = NULL;
@@ -222,6 +224,11 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 		mVerbose = verboseLevelNum->unsigned32BitValue();
 	else
 		mVerbose = 0;
+
+	if (!mVerbose && PE_parse_boot_argn("-voodoohda-verbose", &boot_arg, sizeof(uint8_t)))
+		mVerbose = 1;
+	else if (PE_parse_boot_argn("voodoohda-verbosity", &boot_arg, sizeof boot_arg))
+		mVerbose = boot_arg;
 
 	mMessageLock = IOLockAlloc();
 
@@ -372,6 +379,7 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 //	UInt8 devClass, subClass;
 //	bool contIsGeneric = false;
 	int n;
+	uint32_t boot_arg;
 
 	IOLog("VoodooHDA DBG: probe() called, provider=%p score=%d\n", provider, score ? *score : -1);
 
@@ -552,6 +560,8 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 	 * GPU AZ registers directly via MMIO to enable audio pipeline. */
 	if (vendorId == 0x1002 && score)
 		*score = 5000000;
+	else if (score && PE_parse_boot_argn("voodoohda-probe-score", &boot_arg, sizeof boot_arg))
+		*score = static_cast<int>(boot_arg);
 
 	subVendorId = mPciNub->configRead16(kIOPCIConfigSubSystemVendorID);
 	subDeviceId = mPciNub->configRead16(kIOPCIConfigSubSystemID);
@@ -565,6 +575,8 @@ IOService *VoodooHDADevice::probe(IOService *provider, SInt32 *score)
 	OSData *layoutData = OSDynamicCast(OSData, mPciNub->getProperty("voodoo-layout-id"));
 	if (layoutData && layoutData->getLength() >= sizeof(UInt32))
 		mLayoutId = *(const UInt32 *)layoutData->getBytesNoCopy();
+	if (PE_parse_boot_argn("voodoo-layout-id", &boot_arg, sizeof boot_arg))
+		mLayoutId = boot_arg;
 	IOLog("VoodooHDA DBG: voodoo-layout-id -> mLayoutId=%u\n", (unsigned)mLayoutId);
 	if (mLayoutId == 0) {
 		layoutData = OSDynamicCast(OSData, mPciNub->getProperty("layout-id"));
