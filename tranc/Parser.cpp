@@ -5354,14 +5354,8 @@ void VoodooHDADevice::setupIntelHdmi(Codec* codec)
 		case 0x2800: // GLK
 		case 0x280C: // GLK
 		case 0x280D: // GLK
-#if 0
-/*
-	Linux uses 11 for these, but I couldn't find
-	  it in the Intel documentation.
-*/
 			vendor_nid = 11;
 			break;
-#endif
 		case 0x2807: // HSW
 		case 0x2808: // HSW
 		case 0x2809: // HSW
