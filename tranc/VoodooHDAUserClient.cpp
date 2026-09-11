@@ -92,32 +92,36 @@ IOExternalMethod *VoodooHDAUserClient::getTargetAndMethodForIndex(IOService **ta
 }
 
 __attribute__((visibility("hidden")))
-IOReturn VoodooHDAUserClient::actionMethod(UInt32 *dataIn, UInt32 *dataOut, IOByteCount inputSize,
-		IOByteCount *outputSize)
+IOReturn VoodooHDAUserClient::actionMethod(void *dataIn, void *dataOut, void *inputSize,
+		void *outputSize, __unused void *arg0, __unused void *arg1)
 {
 	IOReturn result;
 	UInt32 action, dataSize;
 	void *data;
 	UInt64 outputMax;
+	UInt32 *inputAction = static_cast<UInt32 *>(dataIn);
+	UInt32 *outputData = static_cast<UInt32 *>(dataOut);
+	IOByteCount inputDataSize = reinterpret_cast<IOByteCount>(inputSize);
+	IOByteCount *outputDataSize = static_cast<IOByteCount *>(outputSize);
 
 	//logMsg("VoodooHDAUserClient[%p]::actionMethod(%ld, %ld)\n", this, inputSize, *outputSize);
 
-	if (inputSize != sizeof (UInt32))
+	if (inputDataSize != sizeof (UInt32))
 		return kIOReturnBadArgument;
-	action = *dataIn;
+	action = *inputAction;
 
 	result = mDevice->runAction(&action, &dataSize, &data);
 
 	// note: we can only transfer sizeof (io_struct_inband_t) bytes out at a time
 
-	outputMax = *outputSize;
-    *outputSize = dataSize;
+	outputMax = *outputDataSize;
+	*outputDataSize = dataSize;
 	if (dataSize) {
 		ASSERT(data);
     if (outputMax < dataSize) {
       return kIOReturnNoSpace;
     }
-		bcopy(data, dataOut, dataSize);
+		bcopy(data, outputData, dataSize);
 	}
 
     return result;

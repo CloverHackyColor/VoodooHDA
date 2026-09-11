@@ -32,7 +32,8 @@ public:
 	virtual IOReturn clientMemoryForType(UInt32 type, IOOptionBits *options, IOMemoryDescriptor **memory)  override;
 
 	/* External methods */
-	IOReturn actionMethod(UInt32 *dataIn, UInt32 *dataOut, IOByteCount inputSize, IOByteCount *outputSize);
+	IOReturn actionMethod(void *dataIn, void *dataOut, void *inputSize,
+		void *outputSize, void *arg0, void *arg1);
 };
 
 #endif
