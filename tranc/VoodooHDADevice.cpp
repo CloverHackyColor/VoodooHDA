@@ -2090,8 +2090,8 @@ void VoodooHDADevice::sendCommands(CommandList *commands, nid_t cad)
 			(codec->numRespReceived != commands->numCommands)) && --retry);
 
 	if (retry == 0)
-		errorMsg("TIMEOUT numcmd=%d, sent=%d, received=%d\n", commands->numCommands,
-				codec->numVerbsSent, codec->numRespReceived);
+		errorMsg("TIMEOUT cad=%d, numcmd=%d, sent=%d, received=%d, first verb=0x%x\n", cad, commands->numCommands,
+				codec->numVerbsSent, codec->numRespReceived, commands->verbs[0]);
 
 	codec->commands = NULL;
 	codec->numRespReceived = 0;
@@ -2663,7 +2663,7 @@ void VoodooHDADevice::handleUnsolicited(Codec *codec, UInt32 tag, UInt32 resp)
     }
       
     default:
-      errorMsg("Unknown unsol tag: 0x%08lx!\n", (long unsigned int)tag);
+      errorMsg("Unknown unsol tag: 0x%08lx!, cad %d, full response 0x%x\n", (long unsigned int)tag, codec->cad, resp);
       break;
   }
 }

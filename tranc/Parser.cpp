@@ -3259,7 +3259,7 @@ void VoodooHDADevice::pinDump()
 
 void VoodooHDADevice::widgetConnectionParse(Widget *widget)
 {
-	UInt32 res;
+	UInt32 res, intel_hdmi_patch = 0U;
 	int max, ents, entnum;
 	nid_t cad = widget->funcGroup->codec->cad;
 	nid_t nid = widget->nid;
@@ -3273,6 +3273,23 @@ void VoodooHDADevice::widgetConnectionParse(Widget *widget)
 	if (ents < 1)
 		return;
 
+	if (ents > 1 &&
+	    widget->type == HDA_PARAM_AUDIO_WIDGET_CAP_TYPE_PIN_COMPLEX &&
+	    HDA_PARAM_AUDIO_WIDGET_CAP_DIGITAL(widget->params.widgetCap) &&
+	    widget->funcGroup->codec->vendorId == INTEL_VENDORID) {
+		switch (ents) {
+			case 2:
+				intel_hdmi_patch = 0x0302U;
+				break;
+			case 3:
+				intel_hdmi_patch = 0x040302U;
+				break;
+			case 4:
+				intel_hdmi_patch = 0x09070503U;
+				break;
+		}
+	}
+
 	entnum = HDA_PARAM_CONN_LIST_LENGTH_LONG_FORM(res) ? 2 : 4;
 	max = (sizeof (widget->conns) / sizeof (widget->conns[0])) - 1;
 	prevcnid = 0;
@@ -3285,6 +3302,10 @@ void VoodooHDADevice::widgetConnectionParse(Widget *widget)
 
 	for (int i = 0; i < ents; i += entnum) {
 		res = sendCommand(HDA_CMD_GET_CONN_LIST_ENTRY(cad, nid, i), cad);
+		if (!res && intel_hdmi_patch) {
+			res = intel_hdmi_patch;
+			dumpMsg("Patching connection list entry for pin %d to 0x%08x\n", nid, res);
+		}
 		for (int j = 0; j < entnum; j++) {
 			cnid = CONN_CNID(res, entnum, j);
 			if (cnid == 0) {
@@ -3651,10 +3672,11 @@ UInt32 VoodooHDADevice::widgetPinGetConfig(Widget *widget)
 	}
 #endif
 
-	if (HDA_PARAM_AUDIO_WIDGET_CAP_DIGITAL(widget->params.widgetCap) &&
+	if (HDA_CONFIG_DEFAULTCONF_ASSOCIATION(config) == 1U &&
+	    HDA_PARAM_AUDIO_WIDGET_CAP_DIGITAL(widget->params.widgetCap) &&
 	    widget->funcGroup->codec->vendorId == INTEL_VENDORID) {
 		config &= (~HDA_CONFIG_DEFAULTCONF_ASSOCIATION_MASK);
-		config |= ((static_cast<unsigned>(widget->nid) << HDA_CONFIG_DEFAULTCONF_ASSOCIATION_SHIFT) & HDA_CONFIG_DEFAULTCONF_ASSOCIATION_MASK);
+		config |= ((15U << HDA_CONFIG_DEFAULTCONF_ASSOCIATION_SHIFT) & HDA_CONFIG_DEFAULTCONF_ASSOCIATION_MASK);
 	}
 
 	if (config != orig)
@@ -5398,10 +5420,10 @@ void VoodooHDADevice::setupIntelHdmi(Codec* codec)
 		new_vendor_verb = 1U;
 	widgetCaps = sendCommand(HDA_CMD_GET_PARAMETER(cad, vendor_nid, HDA_PARAM_AUDIO_WIDGET_CAP), cad);
 	response = sendCommand(HDA_CMD_12BIT(cad, vendor_nid, 0xF81, 0), cad);
-	logMsg("setupIntelHdmi: cad %d, vendor_nid %d, widgetCaps 0x%x, vendor_verb 0x%x\n",
+	logMsg("VoodooHDA HDMI: setupIntelHdmi: cad %d, vendor_nid %d, widgetCaps 0x%x, vendor_verb 0x%x\n",
 		cad, vendor_nid, widgetCaps, response);
 	response = sendCommand(HDA_CMD_12BIT(cad, vendor_nid, 0x781, new_vendor_verb & 255U), cad);
-	logMsg("setupIntelHdmi: set vendor_verb to 0x%x returned 0x%x\n", new_vendor_verb, response);
+	logMsg("VoodooHDA HDMI: setupIntelHdmi: set vendor_verb to 0x%x returned 0x%x\n", new_vendor_verb, response);
 	response = sendCommand(HDA_CMD_12BIT(cad, vendor_nid, 0xF81, 0), cad);
-	logMsg("setupIntelHdmi: reread of vendor_verb gives 0x%x\n", response);
+	logMsg("VoodooHDA HDMI: setupIntelHdmi: reread of vendor_verb gives 0x%x\n", response);
 }
