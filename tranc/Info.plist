@@ -36,14 +36,16 @@
 			<string>VoodooHDADevice</string>
 			<key>IONameMatch</key>
 			<string>HDAS</string>
+			<key>IOProbeScore</key>
+			<integer>99000</integer>
 			<key>IOProviderClass</key>
 			<string>IOPCIDevice</string>
 			<key>IOUserClientClass</key>
 			<string>VoodooHDAUserClient</string>
-			<key>LayoutId</key>
-			<integer>0</integer>
 			<key>InhibitCache</key>
 			<false/>
+			<key>LayoutId</key>
+			<integer>0</integer>
 			<key>MixerValues</key>
 			<dict>
 				<key>PCM</key>
@@ -127,10 +129,6 @@
 	</dict>
 	<key>OSBundleLibraries</key>
 	<dict>
-		<key>com.apple.iokit.IOAudioFamily</key>
-		<string>1.1fc9</string>
-		<key>com.apple.iokit.IOGraphicsFamily</key>
-		<string>2.0</string>
 		<key>com.apple.iokit.IOPCIFamily</key>
 		<string>2.1</string>
 		<key>com.apple.kpi.iokit</key>
