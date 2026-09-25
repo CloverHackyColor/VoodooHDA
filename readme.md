@@ -122,5 +122,5 @@ Mic should work.
 
 ## Credits
 
-- Slice, Zenith432 — developer
+- Slice, Zenith432, AutumnRain — developer
 - chris1111 — Bootloader injection
