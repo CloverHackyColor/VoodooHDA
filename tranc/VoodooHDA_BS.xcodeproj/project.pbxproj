@@ -10,6 +10,34 @@
 		120156031244377E00611BC7 /* AppleAudioClip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 12BDC91012440B5D00B327AE /* AppleAudioClip.cpp */; settings = {COMPILER_FLAGS = "-Wno-unused-function -fvisibility=hidden"; }; };
 		12BDC90E12440B4E00B327AE /* TigerAdditionals.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 12BDC90C12440B4E00B327AE /* TigerAdditionals.cpp */; };
 		12F24FCC12860D9600B294D6 /* PCMBlitterLib.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CEF7C0A40EF74C2700A14C68 /* PCMBlitterLib.cpp */; settings = {COMPILER_FLAGS = "-fvisibility=hidden"; }; };
+		83D37F623065F7FB00C334EA /* IOAudioPort.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F563065F7FB00C334EA /* IOAudioPort.h */; };
+		83D37F633065F7FB00C334EA /* IOAudioControlUserClient.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F493065F7FB00C334EA /* IOAudioControlUserClient.h */; };
+		83D37F643065F7FB00C334EA /* IOAudioStream.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F5A3065F7FB00C334EA /* IOAudioStream.h */; };
+		83D37F653065F7FB00C334EA /* IOAudioToggleControl.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F5E3065F7FB00C334EA /* IOAudioToggleControl.h */; };
+		83D37F663065F7FB00C334EA /* IOAudioEngineUserClient.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F523065F7FB00C334EA /* IOAudioEngineUserClient.h */; };
+		83D37F673065F7FB00C334EA /* IOAudioTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F603065F7FB00C334EA /* IOAudioTypes.h */; };
+		83D37F683065F7FB00C334EA /* IOAudioDefines.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F4C3065F7FB00C334EA /* IOAudioDefines.h */; };
+		83D37F693065F7FB00C334EA /* IOAudioLevelControl.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F543065F7FB00C334EA /* IOAudioLevelControl.h */; };
+		83D37F6A3065F7FB00C334EA /* IOAudioDevice.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F4D3065F7FB00C334EA /* IOAudioDevice.h */; };
+		83D37F6B3065F7FB00C334EA /* IOAudioSelectorControl.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F583065F7FB00C334EA /* IOAudioSelectorControl.h */; };
+		83D37F6C3065F7FB00C334EA /* IOAudioTimeIntervalFilter.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F5C3065F7FB00C334EA /* IOAudioTimeIntervalFilter.h */; };
+		83D37F6D3065F7FB00C334EA /* BigNum128.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F453065F7FB00C334EA /* BigNum128.h */; };
+		83D37F6E3065F7FB00C334EA /* IOAudioDebug.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F4B3065F7FB00C334EA /* IOAudioDebug.h */; };
+		83D37F6F3065F7FB00C334EA /* IOAudioControl.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F473065F7FB00C334EA /* IOAudioControl.h */; };
+		83D37F703065F7FB00C334EA /* IOAudioEngine.h in Headers */ = {isa = PBXBuildFile; fileRef = 83D37F4F3065F7FB00C334EA /* IOAudioEngine.h */; };
+		83D37F713065F7FB00C334EA /* IOAudioStream.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F5B3065F7FB00C334EA /* IOAudioStream.cpp */; };
+		83D37F723065F7FB00C334EA /* IOAudioLevelControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F553065F7FB00C334EA /* IOAudioLevelControl.cpp */; };
+		83D37F733065F7FB00C334EA /* IOAudioSelectorControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F593065F7FB00C334EA /* IOAudioSelectorControl.cpp */; };
+		83D37F743065F7FB00C334EA /* IOAudioControlUserClient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F4A3065F7FB00C334EA /* IOAudioControlUserClient.cpp */; };
+		83D37F753065F7FB00C334EA /* IOAudioToggleControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F5F3065F7FB00C334EA /* IOAudioToggleControl.cpp */; };
+		83D37F763065F7FB00C334EA /* BigNum128.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F463065F7FB00C334EA /* BigNum128.cpp */; };
+		83D37F773065F7FB00C334EA /* IOAudioTimeIntervalFilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F5D3065F7FB00C334EA /* IOAudioTimeIntervalFilter.cpp */; };
+		83D37F783065F7FB00C334EA /* IOAudioEngineMixer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F513065F7FB00C334EA /* IOAudioEngineMixer.cpp */; };
+		83D37F793065F7FB00C334EA /* IOAudioEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F503065F7FB00C334EA /* IOAudioEngine.cpp */; };
+		83D37F7A3065F7FB00C334EA /* IOAudioDevice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F4E3065F7FB00C334EA /* IOAudioDevice.cpp */; };
+		83D37F7B3065F7FB00C334EA /* IOAudioEngineUserClient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F533065F7FB00C334EA /* IOAudioEngineUserClient.cpp */; };
+		83D37F7C3065F7FB00C334EA /* IOAudioControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F483065F7FB00C334EA /* IOAudioControl.cpp */; };
+		83D37F7D3065F7FB00C334EA /* IOAudioPort.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 83D37F573065F7FB00C334EA /* IOAudioPort.cpp */; };
 		A5612AB42FD430C100D0C99C /* VoodooHDAFramebufferNotifier.h in Headers */ = {isa = PBXBuildFile; fileRef = A5612AB22FD430C100D0C99C /* VoodooHDAFramebufferNotifier.h */; };
 		A5612AB52FD430C100D0C99C /* VoodooHDAFramebufferNotifier.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5612AB32FD430C100D0C99C /* VoodooHDAFramebufferNotifier.cpp */; };
 		A5C595DF2F577496007DC9D3 /* AppleALCPinConfigs.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5C595DE2F577496007DC9D3 /* AppleALCPinConfigs.cpp */; };
@@ -30,6 +58,34 @@
 		12BDC91212440B5D00B327AE /* AppleAudioCommon.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppleAudioCommon.h; sourceTree = "<group>"; };
 		32D94FCF0562CBF700B6AF17 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		32D94FD00562CBF700B6AF17 /* VoodooHDA.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoodooHDA.kext; sourceTree = BUILT_PRODUCTS_DIR; };
+		83D37F453065F7FB00C334EA /* BigNum128.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BigNum128.h; sourceTree = "<group>"; };
+		83D37F463065F7FB00C334EA /* BigNum128.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = BigNum128.cpp; sourceTree = "<group>"; };
+		83D37F473065F7FB00C334EA /* IOAudioControl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioControl.h; sourceTree = "<group>"; };
+		83D37F483065F7FB00C334EA /* IOAudioControl.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IOAudioControl.cpp; sourceTree = "<group>"; };
+		83D37F493065F7FB00C334EA /* IOAudioControlUserClient.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioControlUserClient.h; sourceTree = "<group>"; };
+		83D37F4A3065F7FB00C334EA /* IOAudioControlUserClient.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IOAudioControlUserClient.cpp; sourceTree = "<group>"; };
+		83D37F4B3065F7FB00C334EA /* IOAudioDebug.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioDebug.h; sourceTree = "<group>"; };
+		83D37F4C3065F7FB00C334EA /* IOAudioDefines.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioDefines.h; sourceTree = "<group>"; };
+		83D37F4D3065F7FB00C334EA /* IOAudioDevice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioDevice.h; sourceTree = "<group>"; };
+		83D37F4E3065F7FB00C334EA /* IOAudioDevice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IOAudioDevice.cpp; sourceTree = "<group>"; };
+		83D37F4F3065F7FB00C334EA /* IOAudioEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioEngine.h; sourceTree = "<group>"; };
+		83D37F503065F7FB00C334EA /* IOAudioEngine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IOAudioEngine.cpp; sourceTree = "<group>"; };
+		83D37F513065F7FB00C334EA /* IOAudioEngineMixer.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IOAudioEngineMixer.cpp; sourceTree = "<group>"; };
+		83D37F523065F7FB00C334EA /* IOAudioEngineUserClient.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioEngineUserClient.h; sourceTree = "<group>"; };
+		83D37F533065F7FB00C334EA /* IOAudioEngineUserClient.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IOAudioEngineUserClient.cpp; sourceTree = "<group>"; };
+		83D37F543065F7FB00C334EA /* IOAudioLevelControl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioLevelControl.h; sourceTree = "<group>"; };
+		83D37F553065F7FB00C334EA /* IOAudioLevelControl.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IOAudioLevelControl.cpp; sourceTree = "<group>"; };
+		83D37F563065F7FB00C334EA /* IOAudioPort.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioPort.h; sourceTree = "<group>"; };
+		83D37F573065F7FB00C334EA /* IOAudioPort.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IOAudioPort.cpp; sourceTree = "<group>"; };
+		83D37F583065F7FB00C334EA /* IOAudioSelectorControl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioSelectorControl.h; sourceTree = "<group>"; };
+		83D37F593065F7FB00C334EA /* IOAudioSelectorControl.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IOAudioSelectorControl.cpp; sourceTree = "<group>"; };
+		83D37F5A3065F7FB00C334EA /* IOAudioStream.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioStream.h; sourceTree = "<group>"; };
+		83D37F5B3065F7FB00C334EA /* IOAudioStream.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IOAudioStream.cpp; sourceTree = "<group>"; };
+		83D37F5C3065F7FB00C334EA /* IOAudioTimeIntervalFilter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioTimeIntervalFilter.h; sourceTree = "<group>"; };
+		83D37F5D3065F7FB00C334EA /* IOAudioTimeIntervalFilter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IOAudioTimeIntervalFilter.cpp; sourceTree = "<group>"; };
+		83D37F5E3065F7FB00C334EA /* IOAudioToggleControl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioToggleControl.h; sourceTree = "<group>"; };
+		83D37F5F3065F7FB00C334EA /* IOAudioToggleControl.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IOAudioToggleControl.cpp; sourceTree = "<group>"; };
+		83D37F603065F7FB00C334EA /* IOAudioTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOAudioTypes.h; sourceTree = "<group>"; };
 		A5612AB22FD430C100D0C99C /* VoodooHDAFramebufferNotifier.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VoodooHDAFramebufferNotifier.h; sourceTree = "<group>"; };
 		A5612AB32FD430C100D0C99C /* VoodooHDAFramebufferNotifier.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VoodooHDAFramebufferNotifier.cpp; sourceTree = "<group>"; };
 		A5C595DD2F577496007DC9D3 /* AppleALCPinConfigs.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppleALCPinConfigs.h; sourceTree = "<group>"; };
@@ -73,6 +129,7 @@
 		089C166AFE841209C02AAC07 /* VoodooHDA */ = {
 			isa = PBXGroup;
 			children = (
+				83D37F613065F7FB00C334EA /* IOAudioFamily */,
 				247142CAFF3F8F9811CA285C /* Source */,
 				089C167CFE841241C02AAC07 /* Resources */,
 				19C28FB6FE9D52B211CA2CBB /* Products */,
@@ -135,6 +192,41 @@
 			name = Source;
 			sourceTree = "<group>";
 		};
+		83D37F613065F7FB00C334EA /* IOAudioFamily */ = {
+			isa = PBXGroup;
+			children = (
+				83D37F453065F7FB00C334EA /* BigNum128.h */,
+				83D37F463065F7FB00C334EA /* BigNum128.cpp */,
+				83D37F473065F7FB00C334EA /* IOAudioControl.h */,
+				83D37F483065F7FB00C334EA /* IOAudioControl.cpp */,
+				83D37F493065F7FB00C334EA /* IOAudioControlUserClient.h */,
+				83D37F4A3065F7FB00C334EA /* IOAudioControlUserClient.cpp */,
+				83D37F4B3065F7FB00C334EA /* IOAudioDebug.h */,
+				83D37F4C3065F7FB00C334EA /* IOAudioDefines.h */,
+				83D37F4D3065F7FB00C334EA /* IOAudioDevice.h */,
+				83D37F4E3065F7FB00C334EA /* IOAudioDevice.cpp */,
+				83D37F4F3065F7FB00C334EA /* IOAudioEngine.h */,
+				83D37F503065F7FB00C334EA /* IOAudioEngine.cpp */,
+				83D37F513065F7FB00C334EA /* IOAudioEngineMixer.cpp */,
+				83D37F523065F7FB00C334EA /* IOAudioEngineUserClient.h */,
+				83D37F533065F7FB00C334EA /* IOAudioEngineUserClient.cpp */,
+				83D37F543065F7FB00C334EA /* IOAudioLevelControl.h */,
+				83D37F553065F7FB00C334EA /* IOAudioLevelControl.cpp */,
+				83D37F563065F7FB00C334EA /* IOAudioPort.h */,
+				83D37F573065F7FB00C334EA /* IOAudioPort.cpp */,
+				83D37F583065F7FB00C334EA /* IOAudioSelectorControl.h */,
+				83D37F593065F7FB00C334EA /* IOAudioSelectorControl.cpp */,
+				83D37F5A3065F7FB00C334EA /* IOAudioStream.h */,
+				83D37F5B3065F7FB00C334EA /* IOAudioStream.cpp */,
+				83D37F5C3065F7FB00C334EA /* IOAudioTimeIntervalFilter.h */,
+				83D37F5D3065F7FB00C334EA /* IOAudioTimeIntervalFilter.cpp */,
+				83D37F5E3065F7FB00C334EA /* IOAudioToggleControl.h */,
+				83D37F5F3065F7FB00C334EA /* IOAudioToggleControl.cpp */,
+				83D37F603065F7FB00C334EA /* IOAudioTypes.h */,
+			);
+			path = IOAudioFamily;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -144,6 +236,21 @@
 			files = (
 				A5612AB42FD430C100D0C99C /* VoodooHDAFramebufferNotifier.h in Headers */,
 				A5C595E02F577496007DC9D3 /* AppleALCPinConfigs.h in Headers */,
+				83D37F623065F7FB00C334EA /* IOAudioPort.h in Headers */,
+				83D37F633065F7FB00C334EA /* IOAudioControlUserClient.h in Headers */,
+				83D37F643065F7FB00C334EA /* IOAudioStream.h in Headers */,
+				83D37F653065F7FB00C334EA /* IOAudioToggleControl.h in Headers */,
+				83D37F663065F7FB00C334EA /* IOAudioEngineUserClient.h in Headers */,
+				83D37F673065F7FB00C334EA /* IOAudioTypes.h in Headers */,
+				83D37F683065F7FB00C334EA /* IOAudioDefines.h in Headers */,
+				83D37F693065F7FB00C334EA /* IOAudioLevelControl.h in Headers */,
+				83D37F6A3065F7FB00C334EA /* IOAudioDevice.h in Headers */,
+				83D37F6B3065F7FB00C334EA /* IOAudioSelectorControl.h in Headers */,
+				83D37F6C3065F7FB00C334EA /* IOAudioTimeIntervalFilter.h in Headers */,
+				83D37F6D3065F7FB00C334EA /* BigNum128.h in Headers */,
+				83D37F6E3065F7FB00C334EA /* IOAudioDebug.h in Headers */,
+				83D37F6F3065F7FB00C334EA /* IOAudioControl.h in Headers */,
+				83D37F703065F7FB00C334EA /* IOAudioEngine.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -218,6 +325,19 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				83D37F713065F7FB00C334EA /* IOAudioStream.cpp in Sources */,
+				83D37F723065F7FB00C334EA /* IOAudioLevelControl.cpp in Sources */,
+				83D37F733065F7FB00C334EA /* IOAudioSelectorControl.cpp in Sources */,
+				83D37F743065F7FB00C334EA /* IOAudioControlUserClient.cpp in Sources */,
+				83D37F753065F7FB00C334EA /* IOAudioToggleControl.cpp in Sources */,
+				83D37F763065F7FB00C334EA /* BigNum128.cpp in Sources */,
+				83D37F773065F7FB00C334EA /* IOAudioTimeIntervalFilter.cpp in Sources */,
+				83D37F783065F7FB00C334EA /* IOAudioEngineMixer.cpp in Sources */,
+				83D37F793065F7FB00C334EA /* IOAudioEngine.cpp in Sources */,
+				83D37F7A3065F7FB00C334EA /* IOAudioDevice.cpp in Sources */,
+				83D37F7B3065F7FB00C334EA /* IOAudioEngineUserClient.cpp in Sources */,
+				83D37F7C3065F7FB00C334EA /* IOAudioControl.cpp in Sources */,
+				83D37F7D3065F7FB00C334EA /* IOAudioPort.cpp in Sources */,
 				A5612AB52FD430C100D0C99C /* VoodooHDAFramebufferNotifier.cpp in Sources */,
 				CE6725A40EF078B100FAFBED /* VoodooHDADevice.cpp in Sources */,
 				CE6725A60EF078B100FAFBED /* VoodooHDAEngine.cpp in Sources */,
@@ -245,14 +365,14 @@
 				CLANG_WARN_ASSIGN_ENUM = YES;
 				CODE_SIGN_ENTITLEMENTS = "";
 				CODE_SIGN_IDENTITY = "-";
-				CURRENT_PROJECT_VERSION = 3.6.8;
+				CURRENT_PROJECT_VERSION = 3.6.9;
 				DEVELOPMENT_TEAM = "";
 				GCC_WARN_ABOUT_POINTER_SIGNEDNESS = NO;
 				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../MacKernelSDK/Headers";
 				INFOPLIST_FILE = Info.plist;
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../../MacKernelSDK/Library/universal";
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
-				MARKETING_VERSION = 3.6.8;
+				MARKETING_VERSION = 3.6.9;
 				MODULE_NAME = org.voodoo.driver.VoodooHDA;
 				MODULE_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				OTHER_CFLAGS = (

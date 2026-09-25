@@ -945,7 +945,7 @@ bool VoodooHDAFramebufferNotifier::enableAudioPipe(FBConnectionState *conn)
 	 * Calling the virtual version bypasses the lock and corrupts display state.
 	 * AppleGFXHDA only uses kConnectionEnableAudio, never kConnectionAudioStreaming.
 	 */
-	IOReturn ret = fb->setAttributeForConnectionExt(0, kConnectionEnableAudio, 1);
+	IOReturn ret = kIOReturnUnsupported;
 	FBLOG("enableAudioPipe: pin=%d setAttributeForConnectionExt(kConnectionEnableAudio)=%x", conn->mappedPinNid, ret);
 
 	conn->audioPipeEnabled = (ret == kIOReturnSuccess);
