@@ -35,7 +35,7 @@ download VoodooHDA.prefPane
 ## NEW in VoodooHDA  — Bootloader injection without any workaround
 
 Apple's complete IOAudioFamily source code (v740.1) is now compiled directly INTO
-VoodooHDA.kext (see the IOAudioFamily/ folder — APSL 2.0 license notice included).
+VoodooHDA.kext (see the IOAudioFamily/ folder — APSL 1.1 license notice included).
 
 The original VoodooHDA depended on the external IOAudioFamily.kext — which is NOT in
 the boot kernel collection since macOS Big Sur (11). That is why bootloader injection
@@ -57,7 +57,7 @@ Result: ONE kext, injected directly from the bootloader, on macOS 11 to 26.
 - Fixed: 10+ family source files — compat macros restored
   (IOMallocType / IOFreeType / require — removed from modern SDK headers)
 - Removed: IOGraphicsFamily dependency (framebuffer notifier call neutralized —
-  HDMI pipe auto-activation feature is NOT in 4.0)
+  HDMI pipe auto-activation feature is not in V-3.6.9 )
 
 ### V-3.6.9x — Installation (OpenCore / Clover)
 
