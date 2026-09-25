@@ -32,8 +32,8 @@ public:
 	U128(uint64_t _lo = 0) : lo(_lo), hi(0)				{ };
 	U128(uint64_t _hi, uint64_t _lo)	: lo(_lo), hi(_hi)	{ };
 	inline bool operator==( const U128 &A ) const	 	{ return ( A.hi == hi ) && ( A.lo == lo ); }
-	inline bool operator>( const U128 &A ) const		{ return ( ( A.hi > hi ) || ( ( A.hi == hi ) && ( A.lo > lo ) ) ); }
-	inline bool operator<( const U128 &A ) const 		{ return !( ( A.hi > hi ) || ( ( A.hi == hi ) && ( A.lo > lo ) ) ); }
+	inline bool operator>( const U128 &A ) const		{ return ( ( hi > A.hi ) || ( ( hi == A.hi ) && ( lo > A.lo ) ) ); }
+	inline bool operator<( const U128 &A ) const 		{ return ( ( hi < A.hi ) || ( ( hi == A.hi ) && ( lo < A.lo ) ) ); }
 
 	U128 operator++( int )
 	{
@@ -147,7 +147,6 @@ private:
 extern U128 UInt64mult(const uint64_t A, const uint64_t B);
 
 #endif			//__BIGNUM128_H__
-
 
 
 
