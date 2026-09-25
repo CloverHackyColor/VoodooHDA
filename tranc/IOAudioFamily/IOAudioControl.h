@@ -282,7 +282,7 @@ public:
      * @discussion Do not call this directly.  This is called automatically by the system when the instance's
      *  refcount goes to 0.  To decrement the refcount, call release() on the object.
      */
-    virtual void free( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual void free( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     /*!
      * @function start
@@ -293,7 +293,7 @@ public:
      * @param provider The IOAudioPort or IOAudioEngine that owns this control.
      * @result Returns true on success.
      */
-    virtual bool start(IOService *provider) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual bool start(IOService *provider) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
     
 	virtual bool attachAndStart(IOService *provider) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
 
@@ -309,7 +309,7 @@ public:
      * @abstract Stops the control when the provider is going away.
      * @param provider The IOAudioPort or IOAudioEngine that owns this control.
      */
-    virtual void stop(IOService *provider) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual void stop(IOService *provider) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
     
     /*!
      * @function getWorkLoop
@@ -340,8 +340,8 @@ public:
      * @param properties A dictionary of additional properties for the connection.
      * @result Returns kIOReturnSuccess on success.  May also result kIOReturnError or kIOReturnNoMemory.
      */
-    virtual IOReturn newUserClient(task_t task, void *securityID, UInt32 type, IOUserClient **handler) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
-    virtual IOReturn newUserClient(task_t task, void *securityID, UInt32 type, OSDictionary *properties, IOUserClient **handler) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual IOReturn newUserClient(task_t task, void *securityID, UInt32 type, IOUserClient **handler) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
+    virtual IOReturn newUserClient(task_t task, void *securityID, UInt32 type, OSDictionary *properties, IOUserClient **handler) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     /*!
      * @function createUserClient
@@ -379,7 +379,7 @@ public:
      * @param properties An OSDictionary containing the properties to change.
      * @result Returns kIOReturnSuccess on success.
      */
-    virtual IOReturn setProperties(OSObject *properties) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual IOReturn setProperties(OSObject *properties) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
     
     virtual void setValueChangeHandler(IntValueChangeHandler intValueChangeHandler, OSObject *target) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
     virtual void setValueChangeHandler(DataValueChangeHandler dataValueChangeHandler, OSObject *target) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;

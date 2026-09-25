@@ -7,6 +7,20 @@
 #ifndef IOFreeType
 #define IOFreeType(P, T) IOFree((P), sizeof(T))
 #endif
+
+#ifndef IOMallocData
+#define IOMallocData(N) IOMalloc(N)
+#endif
+#ifndef IOMallocZeroData
+#define IOMallocZeroData(N) IOMallocZero(N)
+#endif
+#ifndef IOFreeData
+#define IOFreeData(P, N) IOFree((P), (N))
+#endif
+#ifndef finish
+#define finish(...) do { } while (0)
+#endif
+
 /*
  * Copyright (c) 1998-2013 Apple Computer, Inc. All rights reserved.
  *

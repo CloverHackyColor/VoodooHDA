@@ -36,6 +36,21 @@
 #ifndef IOFreeType
 #define IOFreeType(P, T) IOFree((P), sizeof(T))
 #endif
+#ifndef IOMallocData
+#define IOMallocData(N) IOMalloc(N)
+#endif
+#ifndef IOMallocZeroData
+#define IOMallocZeroData(N) IOMallocZero(N)
+#endif
+#ifndef IOFreeData
+#define IOFreeData(P, N) IOFree((P), (N))
+#endif
+#ifndef IONewData
+#define IONewData(T, N) ((T *)IOMalloc(sizeof(T) * (N)))
+#endif
+#ifndef IODeleteData
+#define IODeleteData(P, T, N) IOFree((P), sizeof(T) * (N))
+#endif
 #ifndef finish
 #define finish(...) do { } while (0)
 #endif

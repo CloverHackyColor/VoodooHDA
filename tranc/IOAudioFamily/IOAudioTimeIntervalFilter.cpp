@@ -1,4 +1,5 @@
 // --- compat: legacy macros removed from modern SDK headers ---
+#include <stdint.h>
 #include <AssertMacros.h>
 #include <IOKit/IOLib.h>
 #ifndef IOMallocType
@@ -7,6 +8,14 @@
 #ifndef IOFreeType
 #define IOFreeType(P, T) IOFree((P), sizeof(T))
 #endif
+
+#ifndef IONewData
+#define IONewData(T, N) ((T *)IOMalloc(sizeof(T) * (N)))
+#endif
+#ifndef IODeleteData
+#define IODeleteData(P, T, N) IOFree((P), sizeof(T) * (N))
+#endif
+
 /*
  * Copyright (c) 1998-2014 Apple Computer, Inc. All rights reserved.
  *
@@ -29,7 +38,6 @@
  * @APPLE_LICENSE_HEADER_END@
  */
 
-#include <IOKit/IOLib.h>
 #include <libkern/c++/OSObject.h>
 #include "IOAudioTimeIntervalFilter.h"
 

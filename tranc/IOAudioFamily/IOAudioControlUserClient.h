@@ -43,8 +43,8 @@ protected:
     IOAudioControl *			audioControl;
     IOAudioNotificationMessage *	notificationMessage;
 
-    virtual IOReturn clientClose( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
-    virtual IOReturn clientDied( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual IOReturn clientClose( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
+    virtual IOReturn clientDied( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
 protected:
     struct ExpansionData { };
@@ -81,9 +81,9 @@ public:
 
     virtual bool initWithAudioControl(IOAudioControl *control, task_t owningTask, void *securityID, UInt32 type ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
 	
-    virtual void free( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual void free( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
-    virtual IOReturn registerNotificationPort(mach_port_t port, UInt32 type, UInt32 refCon ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual IOReturn registerNotificationPort(mach_port_t port, UInt32 type, UInt32 refCon ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     virtual void sendValueChangeNotification( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
 };

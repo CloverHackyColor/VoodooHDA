@@ -212,37 +212,37 @@ IOReturn IOAudioControlUserClient::clientDied()
 }
 
 IOReturn IOAudioControlUserClient::registerNotificationPort(mach_port_t port,
-                                                            UInt32 type,			// No longer used now that we have the generic sendChangeNotification routine
+                                                            __unused UInt32 type,			// No longer used now that we have the generic sendChangeNotification routine
                                                             UInt32 refCon)
 {
-    IOReturn result = kIOReturnSuccess;
-
-    if (!isInactive()) {
-        if (notificationMessage == 0) {
-            IOAudioNotificationMessage *m = IOMallocType(IOAudioNotificationMessage);
-            if (m == 0) {
-                return kIOReturnNoMemory;
-            }
-            m->messageHeader.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
-            m->messageHeader.msgh_size = sizeof(IOAudioNotificationMessage);
-            m->messageHeader.msgh_local_port = MACH_PORT_NULL;
-            m->messageHeader.msgh_reserved = 0;
-            m->messageHeader.msgh_id = 0;
-	    m->ref = refCon;
-	    m->messageHeader.msgh_remote_port = port;
-            notificationMessage = m;
-        } else {
-	    // synchronize with IOUserClient::releaseNotificationPort() by storing to 'msgh_remote_port' last, by use of built-in memory barrier
-	    notificationMessage->ref = refCon;
-            __sync_synchronize();
-	    notificationMessage->messageHeader.msgh_remote_port = port;
-	}
-
+  IOReturn result = kIOReturnSuccess;
+  
+  if (!isInactive()) {
+    if (notificationMessage == 0) {
+      IOAudioNotificationMessage *m = IOMallocType(IOAudioNotificationMessage);
+      if (m == 0) {
+        return kIOReturnNoMemory;
+      }
+      m->messageHeader.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
+      m->messageHeader.msgh_size = sizeof(IOAudioNotificationMessage);
+      m->messageHeader.msgh_local_port = MACH_PORT_NULL;
+      m->messageHeader.msgh_reserved = 0;
+      m->messageHeader.msgh_id = 0;
+      m->ref = refCon;
+      m->messageHeader.msgh_remote_port = port;
+      notificationMessage = m;
     } else {
-        result = kIOReturnNoDevice;
+      // synchronize with IOUserClient::releaseNotificationPort() by storing to 'msgh_remote_port' last, by use of built-in memory barrier
+      notificationMessage->ref = refCon;
+      __sync_synchronize();
+      notificationMessage->messageHeader.msgh_remote_port = port;
     }
     
-    return result;
+  } else {
+    result = kIOReturnNoDevice;
+  }
+  
+  return result;
 }
 
 void IOAudioControlUserClient::sendValueChangeNotification()

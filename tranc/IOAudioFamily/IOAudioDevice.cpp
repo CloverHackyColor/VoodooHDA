@@ -52,6 +52,20 @@
 
 #include <sys/sysctl.h>
 
+#ifndef IOMallocData
+#define IOMallocData(N) IOMalloc(N)
+#endif
+#ifndef IOMallocZeroData
+#define IOMallocZeroData(N) IOMallocZero(N)
+#endif
+#ifndef IOFreeData
+#define IOFreeData(P, N) IOFree((P), (N))
+#endif
+#ifndef finish
+#define finish(...) do { } while (0)
+#endif
+
+
 #define AbsoluteTime_to_scalar(x)       (*(uint64_t *)(x))
 
 /* t1 < = > t2 */
