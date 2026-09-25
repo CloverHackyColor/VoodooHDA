@@ -348,6 +348,7 @@ bool IOAudioTimeIntervalFilterFIR::initFilter(uint32_t expectedInterval, uint32_
 
 	mDataHistory = NULL;
 	mDataOffsetHistory = NULL;
+	mCoeffs = NULL;
 	mNumCoeffs = 0;
 
 	result = IOAudioTimeIntervalFilter::initFilter(expectedInterval, multiIntervalCount);
@@ -399,7 +400,7 @@ IOReturn IOAudioTimeIntervalFilterFIR::setNewFilter(uint32_t numCoeffs, const ui
 	if ( NULL == mDataHistory) goto Exit;
 	
 	mDataOffsetHistory = (uint64_t*) IONewData ( uint64_t, mNumCoeffs );
-	if ( NULL == mDataHistory) goto Exit;
+	if ( NULL == mDataOffsetHistory) goto Exit;
 	
 	reInitialiseFilter ( mExpectedInterval, mMultiIntervalCount );
 
@@ -499,6 +500,5 @@ U128 IOAudioTimeIntervalFilterFIR::FIR(uint64_t *history, uint64_t input)
 
 	return result128 >> mFilterScale;
 }
-
 
 

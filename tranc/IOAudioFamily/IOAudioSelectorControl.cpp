@@ -169,6 +169,7 @@ IOReturn IOAudioSelectorControl::replaceAvailableSelection(SInt32 selectionValue
         selDesc = OSString::withCString(selectionDescription);
         if (selDesc) {
             result = replaceAvailableSelection(selectionValue, selDesc);
+            selDesc->release();
         } else {
             result = kIOReturnNoMemory;
         }
@@ -194,9 +195,11 @@ IOReturn IOAudioSelectorControl::replaceAvailableSelection(SInt32 selectionValue
     iterator = OSCollectionIterator::withCollection(newSelections);
     if (iterator) {
         OSDictionary *	selection;
+        OSDictionary *    replacementSelection;
 		UInt32			index;
 
 		index = 0;
+        replacementSelection = NULL;
         while ( (selection = (OSDictionary *)iterator->getNextObject() )) {
             OSNumber *	sValue;
 
@@ -204,8 +207,15 @@ IOReturn IOAudioSelectorControl::replaceAvailableSelection(SInt32 selectionValue
 
             if (sValue && ((SInt32)sValue->unsigned32BitValue() == selectionValue)) {
 				// Replace the selected dictionary in the array
-				newSelections->replaceObject(index, selectionDescription);
-				result = kIOReturnSuccess;
+                replacementSelection = OSDictionary::withDictionary(selection);
+                if (replacementSelection) {
+                    replacementSelection->setObject(kIOAudioSelectorControlSelectionDescriptionKey, selectionDescription);
+					newSelections->replaceObject(index, replacementSelection);
+                    replacementSelection->release();
+                    result = kIOReturnSuccess;
+                } else {
+                    result = kIOReturnNoMemory;
+                }
                 break;
             }
 			index++;
@@ -318,6 +328,7 @@ IOReturn IOAudioSelectorControl::addAvailableSelection(SInt32 selectionValue, co
         selDesc = OSString::withCString(selectionDescription);
         if (selDesc) {
             result = addAvailableSelection(selectionValue, selDesc);
+            selDesc->release();
         } else {
             result = kIOReturnNoMemory;
         }
@@ -487,4 +498,3 @@ IOReturn IOAudioSelectorControl::validateValue(OSObject *newValue)
     
     return result;
 }
-
