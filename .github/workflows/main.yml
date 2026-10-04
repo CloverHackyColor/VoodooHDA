@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p logs
-          xcodebuild -project tranc/VoodooHDA_BS.xcodeproj -scheme VoodooHDA \
+          xcodebuild -project tranc/VoodooHDA_BS.xcodeproj -target VoodooHDA \
             -configuration "$CONFIGURATION" -jobs 3 ARCHS=x86_64 \
             SYMROOT="$PWD/build/products" OBJROOT="$PWD/build/obj" \
             CODE_SIGNING_ALLOWED=NO GIT_COMMIT="_$(git rev-parse --short HEAD)" \
