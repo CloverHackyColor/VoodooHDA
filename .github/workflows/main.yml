@@ -1,10 +1,23 @@
 name: Build
 
+# Pushes build only on main; other branches are built through their pull request.
+# This avoids duplicate runs: concurrency groups are per ref, and a push
+# (refs/heads/x) and a pull_request (refs/pull/N/merge) never share a ref.
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
 
+# Least privilege by default; only the prerelease job elevates to contents: write.
 permissions:
   contents: read
 
@@ -16,10 +29,11 @@ jobs:
   build:
     name: VoodooHDA
     runs-on: macos-15-intel
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install MacKernelSDK
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           repository: acidanthera/MacKernelSDK
           ref: 3f750085caa17ec3a7880f11c11bf4f48cd6a164
@@ -43,16 +57,20 @@ jobs:
           mkdir -p artifacts
           products="$PWD/build/products/$CONFIGURATION"
           version=$(awk '/CURRENT_PROJECT_VERSION =/ {gsub(/;/, "", $3); print $3; exit}' tranc/VoodooHDA_BS.xcodeproj/project.pbxproj)
+          if [[ -z "$version" ]]; then
+            echo "::error::Could not determine CURRENT_PROJECT_VERSION from project.pbxproj"
+            exit 1
+          fi
           short_sha=$(git rev-parse --short HEAD)
           configuration=$(printf '%s' "$CONFIGURATION" | tr '[:lower:]' '[:upper:]')
           suffix="v$version-$configuration-alpha-$short_sha"
           ditto -c -k --keepParent "$products/VoodooHDA.kext" "artifacts/VoodooHDA-$suffix.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: VoodooHDA
           path: artifacts/VoodooHDA-*.zip
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: build-logs
@@ -61,15 +79,19 @@ jobs:
   prerelease:
     name: Publish development build
     needs: build
+    # Only publish from trusted triggers on main. Pull requests (including from
+    # forks) never reach this job, so untrusted code cannot get a write token.
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          # Keep in sync with `git log -5` in the release notes step below.
           fetch-depth: 5
-      - uses: actions/download-artifact@v4.3.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: VoodooHDA
           path: artifacts
@@ -79,8 +101,13 @@ jobs:
         run: |
           set -euo pipefail
           version=$(awk '/CURRENT_PROJECT_VERSION =/ {gsub(/;/, "", $3); print $3; exit}' tranc/VoodooHDA_BS.xcodeproj/project.pbxproj)
-          tag="v$version-alpha"
+          if [[ -z "$version" ]]; then
+            echo "::error::Could not determine CURRENT_PROJECT_VERSION from project.pbxproj"
+            exit 1
+          fi
+          tag="v${version}-alpha"
           printf '%s\n\n' 'Development build. Hardware validation is required before daily use.' > ReleaseNotes.md
+          # -5 intentionally matches fetch-depth: 5 in the checkout step.
           git log -5 --format='- %h %s' >> ReleaseNotes.md
           if gh release view "$tag" --json isPrerelease > current-release.json 2>/dev/null; then
             # Never replace a stable release with development artifacts.
