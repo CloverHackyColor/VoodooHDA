@@ -1,4 +1,4 @@
-
+[![Version](https://img.shields.io/github/v/tag/CloverHackyColor/VoodooHDA?style=flat&label=Downloads)](https://github.com/CloverHackyColor/VoodooHDA/releases)
 
 VoodooHDA
 ========
