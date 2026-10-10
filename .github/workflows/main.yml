@@ -44,7 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p logs
-          xcodebuild -project tranc/VoodooHDA_BS.xcodeproj -target VoodooHDA \
+          xcodebuild -project tranc/VoodooHDA_BL.xcodeproj -target VoodooHDA \
             -configuration "$CONFIGURATION" -jobs 3 ARCHS=x86_64 \
             SYMROOT="$PWD/build/products" OBJROOT="$PWD/build/obj" \
             CODE_SIGNING_ALLOWED=NO GIT_COMMIT="_$(git rev-parse --short HEAD)" \
@@ -56,7 +56,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           products="$PWD/build/products/$CONFIGURATION"
-          version=$(awk '/CURRENT_PROJECT_VERSION =/ {gsub(/;/, "", $3); print $3; exit}' tranc/VoodooHDA_BS.xcodeproj/project.pbxproj)
+          version=$(awk '/CURRENT_PROJECT_VERSION =/ {gsub(/;/, "", $3); print $3; exit}' tranc/VoodooHDA_BL.xcodeproj/project.pbxproj)
           if [[ -z "$version" ]]; then
             echo "::error::Could not determine CURRENT_PROJECT_VERSION from project.pbxproj"
             exit 1
@@ -100,7 +100,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          version=$(awk '/CURRENT_PROJECT_VERSION =/ {gsub(/;/, "", $3); print $3; exit}' tranc/VoodooHDA_BS.xcodeproj/project.pbxproj)
+          version=$(awk '/CURRENT_PROJECT_VERSION =/ {gsub(/;/, "", $3); print $3; exit}' tranc/VoodooHDA_BL.xcodeproj/project.pbxproj)
           if [[ -z "$version" ]]; then
             echo "::error::Could not determine CURRENT_PROJECT_VERSION from project.pbxproj"
             exit 1
