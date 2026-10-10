@@ -55,7 +55,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          products="$PWD/build/products/$CONFIGURATION"
+          products="$PWD/build/products"
+          # The target's PRODUCT_NAME is VoodooHDA_BL, so locate the kext instead of hardcoding it.
+          kext_path=$(find "$products" -maxdepth 3 -name '*.kext' -type d -print -quit)
+          if [[ -z "$kext_path" ]]; then
+            echo "::error::No .kext bundle found under $products"
+            find "$products" -maxdepth 4 || true
+            exit 1
+          fi
           version=$(awk '/CURRENT_PROJECT_VERSION =/ {gsub(/;/, "", $3); print $3; exit}' tranc/VoodooHDA_BL.xcodeproj/project.pbxproj)
           if [[ -z "$version" ]]; then
             echo "::error::Could not determine CURRENT_PROJECT_VERSION from project.pbxproj"
@@ -64,7 +71,7 @@ jobs:
           short_sha=$(git rev-parse --short HEAD)
           configuration=$(printf '%s' "$CONFIGURATION" | tr '[:lower:]' '[:upper:]')
           suffix="v$version-$configuration-alpha-$short_sha"
-          ditto -c -k --keepParent "$products/VoodooHDA.kext" "artifacts/VoodooHDA-$suffix.zip"
+          ditto -c -k --keepParent "$kext_path" "artifacts/VoodooHDA-$suffix.zip"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: VoodooHDA
