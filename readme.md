@@ -59,7 +59,7 @@ Result: ONE kext, injected directly from the bootloader, on macOS 11 to 26.
 - Removed: IOGraphicsFamily dependency (framebuffer notifier call neutralized —
   HDMI pipe auto-activation feature is not in V-3.6.9 )
 
-### V-3.6.9x — Installation (OpenCore / Clover)
+### V-3.7.0x — Installation (OpenCore / Clover)
 
 1. Exclude other Audio kexts (AppleALC, etc.)
 2. Copy VoodooHDA.kext to EFI/OC/Kexts/ (or EFI/CLOVER/kexts/Other/)
@@ -75,11 +75,11 @@ Result: ONE kext, injected directly from the bootloader, on macOS 11 to 26.
 5. Reboot.
 
 
-### V-3.6.9x — Known limits
+### V-3.7.0x — Known limits
 
 - Audio output still depends on codec support — the same per-machine lottery
   as every VoodooHDA version (some codecs work, some don't)
-- HDMI pipe auto-activation (IOGraphicsFamily feature) is not present in 4.0
+- HDMI pipe auto-activation (IOGraphicsFamily feature) is not present in 3.7.0x
 - The prefPane settings apply as usual (e.g. VoodooHDAEnableVolumeChangeFix)
 
 ---
