@@ -57,7 +57,7 @@ Result: ONE kext, injected directly from the bootloader, on macOS 11 to 26.
 - Fixed: 10+ family source files — compat macros restored
   (IOMallocType / IOFreeType / require — removed from modern SDK headers)
 - Removed: IOGraphicsFamily dependency (framebuffer notifier call neutralized —
-  HDMI pipe auto-activation feature is not in V-3.6.9 )
+  HDMI pipe auto-activation feature is not in V-3.7.0x )
 
 ### V-3.7.0x — Installation (OpenCore / Clover)
 
@@ -108,7 +108,7 @@ Result: ONE kext, injected directly from the bootloader, on macOS 11 to 26.
 
 | Method | macOS | Steps | SIP |
 |---|---|---|---|
-| V-3.6.9x — Bootloader injection | 11 - 26 | Copy kext + one OC entry | Full SIP works |
+| V-3.7.0x — Bootloader injection | 11 - 26 | Copy kext + one OC entry | Full SIP works |
 | Classic — /Library/Extensions | all | Copy + approve | Lowered (0xA85) |
 
 ---
