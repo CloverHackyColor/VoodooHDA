@@ -48,7 +48,7 @@ public:
      * @discussion Do not call this directly.  This is called automatically by the system when the instance's
      *  refcount goes to 0.  To decrement the refcount, call release() on the object.
      */
-    virtual void free();
+    virtual void free() override;
 
 
 
@@ -173,7 +173,7 @@ public:
 
 protected:
 	virtual void IIR(U128* filterVal, U128 input, int shiftAmount);
-	virtual uint64_t calculateNewTimePosition(uint64_t rawSnapshot);
+	virtual uint64_t calculateNewTimePosition(uint64_t rawSnapshot) override;
 	
 	U128		mFilteredSnapshot;
 	U128		mFilteredOffset;
@@ -206,7 +206,7 @@ public:
      * @discussion Do not call this directly.  This is called automatically by the system when the instance's
      *  refcount goes to 0.  To decrement the refcount, call release() on the object.
      */
-    virtual void free();
+    virtual void free() override;
 	
 	IOReturn reInitialiseFilter(uint32_t expectedInterval = 0, uint32_t multiIntervalCount = 1 );
 	

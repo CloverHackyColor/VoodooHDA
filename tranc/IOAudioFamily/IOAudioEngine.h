@@ -493,7 +493,7 @@ public:
      * @param properties The default properties for the IOAudioEngine.
      * @result Returns true if initialization was successful.
      */
-    virtual bool init(OSDictionary *properties ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual bool init(OSDictionary *properties ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     /*!
      * @function free
@@ -501,13 +501,13 @@ public:
      * @discussion Do not call this directly.  This is called automatically by the system when the instance's
      *  refcount goes to 0.  To decrement the refcount, call release() on the object.
      */
-    virtual void free( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual void free( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     /*!
      * @function getWorkLoop
      * @abstract Returns the IOWorkLoop for the driver.
      */
-    virtual IOWorkLoop *getWorkLoop() const;
+    virtual IOWorkLoop *getWorkLoop() const override;
     
     /*!
      * @function getCommandGate
@@ -524,7 +524,7 @@ public:
      * @param provider The service provider for the IOAudioEngine (the IOAudioDevice in this case).
      * @result Returns true if the IOAudioEngine was successfully started.
      */
-    virtual bool start(IOService *provider ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual bool start(IOService *provider ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     /*!
      * @function start
@@ -559,7 +559,7 @@ public:
      *  has been removed from the system.
      * @param provider The service provider for the IOAudioEngine.
      */
-    virtual void stop(IOService *provider ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual void stop(IOService *provider ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     /*!
      * @function registerService
@@ -568,7 +568,7 @@ public:
      *  has been fully initialized and is ready to begin audio playback.
      * @param options
      */
-    virtual void registerService(IOOptionBits options = 0 ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual void registerService(IOOptionBits options = 0 ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
     
     virtual void setAudioDevice(IOAudioDevice *device ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
     virtual void setIndex(UInt32 index ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
@@ -592,8 +592,8 @@ public:
      * @param properties A dictionary of additional properties for the connection.
      * @result Returns kIOReturnSuccess on success.  May also result kIOReturnError or kIOReturnNoMemory.
      */
-    virtual IOReturn newUserClient(task_t task, void *securityID, UInt32 type, IOUserClient **handler ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
-    virtual IOReturn newUserClient(task_t task, void *securityID, UInt32 type, OSDictionary *properties, IOUserClient **handler ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual IOReturn newUserClient(task_t task, void *securityID, UInt32 type, IOUserClient **handler ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
+    virtual IOReturn newUserClient(task_t task, void *securityID, UInt32 type, OSDictionary *properties, IOUserClient **handler ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     /*!
      * @function addAudioStream

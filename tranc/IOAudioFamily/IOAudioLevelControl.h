@@ -156,7 +156,7 @@ public:
                       UInt32 usage = 0,
                       OSDictionary *properties = 0) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
                       
-    virtual void free() AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual void free() AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     /*!
      * @function setMinValue
@@ -201,7 +201,7 @@ public:
     virtual IOReturn addRange(SInt32 minValue, SInt32 maxValue, IOFixed minDB, IOFixed maxDB) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
     virtual IOReturn addNegativeInfinity(SInt32 negativeInfinityValue) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
     
-    virtual IOReturn validateValue(OSObject *newValue) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual IOReturn validateValue(OSObject *newValue) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 };
 
 #endif /* _IOKIT_IOAUDIOLEVELCONTROL_H */

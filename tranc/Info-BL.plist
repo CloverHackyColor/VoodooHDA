@@ -15,9 +15,13 @@
 	<key>CFBundlePackageType</key>
 	<string>KEXT</string>
 	<key>CFBundleShortVersionString</key>
-	<string>$(MARKETING_VERSION)</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>MacOSX</string>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>IOKitPersonalities</key>
@@ -36,8 +40,6 @@
 			<string>VoodooHDADevice</string>
 			<key>IONameMatch</key>
 			<string>HDAS</string>
-			<key>IOProbeScore</key>
-			<integer>99000</integer>
 			<key>IOProviderClass</key>
 			<string>IOPCIDevice</string>
 			<key>IOUserClientClass</key>
@@ -58,7 +60,44 @@
 				<integer>95</integer>
 			</dict>
 			<key>NodesToPatch</key>
-			<array/>
+			<array>
+				<dict>
+					<key>Caps</key>
+					<string>0x373e</string>
+					<key>Codec</key>
+					<integer>4</integer>
+					<key>Comment</key>
+					<string>Example of possible values</string>
+					<key>Config</key>
+					<string>0x90a70120</string>
+					<key>Conns</key>
+					<string>12,13,24</string>
+					<key>Control</key>
+					<string>20</string>
+					<key>DAC</key>
+					<string>2</string>
+					<key>Enable</key>
+					<string>1</string>
+					<key>Node</key>
+					<integer>12</integer>
+					<key>Select</key>
+					<string>13</string>
+					<key>SwitchCh</key>
+					<string>0</string>
+					<key>Type</key>
+					<string>4</string>
+				</dict>
+				<dict>
+					<key>Codec</key>
+					<integer>2</integer>
+					<key>Comment</key>
+					<string>To disable back sound on ALC codec set enable=0</string>
+					<key>Enable</key>
+					<string>1</string>
+					<key>Node</key>
+					<integer>11</integer>
+				</dict>
+			</array>
 			<key>Noise</key>
 			<integer>0</integer>
 			<key>Vectorize</key>
@@ -127,6 +166,8 @@
 			<integer>0</integer>
 		</dict>
 	</dict>
+	<key>LSMinimumSystemVersion</key>
+	<string>10.13</string>
 	<key>OSBundleLibraries</key>
 	<dict>
 		<key>com.apple.iokit.IOPCIFamily</key>

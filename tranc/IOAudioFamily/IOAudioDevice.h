@@ -197,7 +197,7 @@ protected:
     
 public:
 	static void idleAudioSleepHandlerTimer(OSObject *owner, IOTimerEventSource *sender ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
-	virtual IOReturn setAggressiveness(unsigned long type, unsigned long newLevel ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+	virtual IOReturn setAggressiveness(unsigned long type, unsigned long newLevel ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
 	// OSMetaClassDeclareReservedUsed(IOAudioDevice, 0);
 	virtual void setDeviceTransportType(const UInt32 transportType ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
@@ -297,7 +297,7 @@ public:
      *  in the IORegistry.
      * @result true if initialization was successful
      */
-    virtual bool init(OSDictionary *properties ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual bool init(OSDictionary *properties ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     /*!
      * @function free
@@ -311,7 +311,7 @@ public:
      *  refcount goes to 0.  To decrement the refcount, call release() on the object.
      */
      
-    virtual void free( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual void free( ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     /*!
      * @function start
@@ -326,7 +326,7 @@ public:
      *  This is the service provider nub that provides access to the hardware resources.
      * @result Returns true on success
      */
-    virtual bool start(IOService *provider ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual bool start(IOService *provider ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     /*!
      * @function stop
@@ -341,8 +341,8 @@ public:
      * @param provider
      *  The service provider nub for the device.
      */
-    virtual void stop(IOService *provider ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
-    virtual bool willTerminate(IOService *provider, IOOptionBits options ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual void stop(IOService *provider ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10  override;
+    virtual bool willTerminate(IOService *provider, IOOptionBits options ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
 
     /*!
      * @function initHardware
@@ -395,7 +395,7 @@ public:
      * @discussion The IOWorkLoop is used to synchronized all critical aspects of the driver.  This
      *  includes all entry points to the driver as well as power management.
      */
-    virtual IOWorkLoop *getWorkLoop() const AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual IOWorkLoop *getWorkLoop() const AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
     
     /*!
      * @function getCommandGate
@@ -484,7 +484,7 @@ public:
      * @result Returns kIOPMAckImplied (0) when the power state change is complete.  Otherwise the an
      *  upper bound on the number of microseconds until the state change is complete is returned.
      */
-    virtual IOReturn setPowerState(unsigned long powerStateOrdinal, IOService *device ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10;
+    virtual IOReturn setPowerState(unsigned long powerStateOrdinal, IOService *device ) AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_10 override;
     
     /*!
      * @function setPowerStateAction

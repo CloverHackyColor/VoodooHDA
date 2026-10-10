@@ -926,7 +926,7 @@ void IOAudioDevice::setDeviceName(const char *deviceName)
     if (deviceName) {
         setProperty(kIOAudioDeviceNameKey, deviceName);
 		if (NULL == getProperty (kIOAudioDeviceModelIDKey)) {
-			int			stringLen, tempLength;
+			size_t			stringLen, tempLength;
 			char *		string;
 
 			stringLen = 1;
