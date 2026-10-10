@@ -1010,6 +1010,39 @@ void VoodooHDAEngine::setPinName(UInt32 pinConfig, const char* name)
 	completeConfigurationChange();
 }
 
+void VoodooHDAEngine::setPinNameForDigital(const char* name, UInt32 portType, UInt32 mask)
+{
+	if (!(mask & 3U))
+		return;
+	if (!isRegistered) {
+		if ((mask & 1U) && name) {
+			if (name != &mPortNameBuf[0])
+				strncpy(&mPortNameBuf[0], name, sizeof mPortNameBuf);
+			mPortName = &mPortNameBuf[0];
+		}
+		if (mask & 2U)
+			mPortType = portType;
+		return;
+	}
+	beginConfigurationChange();
+	if ((mask & 1U) && name) {
+		if (name != &mPortNameBuf[0])
+			strncpy(&mPortNameBuf[0], name, sizeof mPortNameBuf);
+		mPortName = &mPortNameBuf[0];
+		setDescription(mPortName);
+	}
+	if (mask & 2U) {
+		UInt32 previousPortType = mPortType;
+		mPortType = portType;
+		if (mSelControl) {
+			mSelControl->removeAvailableSelection(previousPortType);
+			mSelControl->addAvailableSelection(mPortType, mPortName);
+			mSelControl->setValue(mPortType);
+		}
+	}
+	completeConfigurationChange();
+}
+
 __attribute__((visibility("hidden")))
 IOReturn VoodooHDAEngine::volumeChangeHandler(IOService *target, IOAudioControl *volumeControl, SInt32 oldValue, SInt32 newValue)
 {

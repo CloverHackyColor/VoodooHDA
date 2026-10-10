@@ -15,6 +15,7 @@
 #include "TigerAdditionals.h"
 #endif
 
+extern __attribute__((visibility("hidden")))
 const char * const gColorTypes[16] = { "Unknown", "Black", "Grey", "Blue", "Green", "Red",
 	"Orange", "Yellow", "Purple", "Pink", "Res.A", "Res.B", "Res.C", "Res.D",
 	"White", "Other" };
@@ -27,10 +28,12 @@ const char * const gDeviceTypes[16] = { "Line-out", "Speaker", "Headphones", "CD
 extern __attribute__((visibility("hidden")))
 const char * const gConnTypes[4] = { "Jack", "None", "Fixed", "Both" };
 
+extern __attribute__((visibility("hidden")))
 const char * const gJacks[16] = {"Unknown", "1/8", "1/4", "ATAPI", "RCA", "Optic", "Digital", "Analog",
 	"Multi", "XLR", "RJ-11", "Combo", "Res.F", "Res.G", "Res.H", "Other"};
 
-const char *HDA_LOCS[64] = {
+extern __attribute__((visibility("hidden")))
+const char * const HDA_LOCS[64] = {
   "0x00", "Rear", "Front", "Left", "Right", "Top", "Bottom", "Rear-panel",
   "Drive-bay", "0x09", "0x0a", "0x0b", "0x0c", "0x0d", "0x0e", "0x0f",
   "Internal", "0x11", "0x12", "0x13", "0x14", "0x15", "0x16", "Riser",
@@ -40,10 +43,12 @@ const char *HDA_LOCS[64] = {
   "Other", "0x31", "0x32", "0x33", "0x34", "0x35", "Other-Bott", "Lid-In",
   "Lid-Out", "0x39", "0x3a", "0x3b", "0x3c", "0x3d", "0x3e", "0x3f" };
 
-const char *HDA_GPIO_ACTIONS[8] = {
+extern __attribute__((visibility("hidden")))
+const char * const HDA_GPIO_ACTIONS[8] = {
   "keep", "set", "clear", "disable", "input", "0x05", "0x06", "0x07"};
 
-const char *HDA_HDMI_CODING_TYPES[18] = {
+extern __attribute__((visibility("hidden")))
+const char * const HDA_HDMI_CODING_TYPES[18] = {
   "undefined", "LPCM", "AC-3", "MPEG1", "MP3", "MPEG2", "AAC-LC", "DTS",
   "ATRAC", "DSD", "E-AC-3", "DTS-HD", "MLP", "DST", "WMAPro", "HE-AAC",
   "HE-AACv2", "MPEG-Surround"
@@ -4640,6 +4645,7 @@ void VoodooHDADevice::switchHandler(FunctionGroup *funcGroup, bool first)
 			continue;
 		}
 		res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, nid), cad);	
+		if (res == -1) res = 0;
 		res = HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT(res);
 		if (funcGroup->audio.quirks & HDA_QUIRK_SENSEINV)
 			res ^= 1;
@@ -4724,6 +4730,7 @@ void VoodooHDADevice::switchInit(FunctionGroup *funcGroup)
 
 		/* Read initial presence state */
 		int res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, j), cad);
+		if (res == -1) res = 0;
 		res = HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT(res);
 		if (funcGroup->audio.quirks & HDA_QUIRK_SENSEINV)
 			res ^= 1;
@@ -4786,6 +4793,7 @@ void VoodooHDADevice::hdaa_eld_handler(Widget *widget)
   }
 
   res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, nid), cad);
+  if (res == HDAC_INVALID) res = 0U;
   bool atiCodec = isAtiHdmiCodec(widget->funcGroup->codec);
   bool presence = (res & HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT_MASK) != 0;
   bool eldValid = (res & HDA_CMD_GET_PIN_SENSE_ELD_VALID) != 0;
@@ -5364,6 +5372,9 @@ void VoodooHDADevice::extDumpPin(Widget *widget)
 		dumpExtMsg(" VREFs");
 	dumpExtMsg("\n");
 }
+
+/********************************************************************************************/
+/********************************************************************************************/
 
 __attribute__((visibility("hidden")))
 void VoodooHDADevice::setupIntelHdmi(Codec* codec)

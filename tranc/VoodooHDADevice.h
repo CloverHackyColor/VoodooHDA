@@ -453,6 +453,10 @@ public:
 //  UInt16 diagnosticFlagsForPin(int cad, nid_t pinNid) const;
 	void updateHDMIEnginePresence();
 	void setupIntelHdmi(Codec* codec);
+	void* mNotificationObj;
+	void* installVoodooHDAMatchedNotificationHandlers(void);
+	void uninstallVoodooHDAMatchedNotificationHandlers(void* obj);
+	UInt32 getMonitorNameAndConnectorType(void* obj, int cad, int pinNid, const char** pMonitorName, UInt32* pConnectorType);
 };
 
 #endif

@@ -51,6 +51,7 @@ public:
 	void messageHandler(UInt32 type, const char *format, ...) __attribute__ ((format (printf, 3, 4)));
 
 	void setPinName(UInt32 pinConfig, const char* name);
+	void setPinNameForDigital(const char* name, UInt32 portType, UInt32 mask);
 	const char *getPortName();
 	UInt64 getMinMaxDb(UInt32 mask);
 	bool haveDigitalMuteControl(UInt32 mask);

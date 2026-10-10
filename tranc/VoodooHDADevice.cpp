@@ -207,6 +207,7 @@ bool VoodooHDADevice::init(OSDictionary *dict)
 	extern kmod_info_t kmod_info;
 	mVerbose = 0;
 	mFBNotifier = NULL;
+	mNotificationObj = NULL;
 	mNumHDMIEngines = 0;
 	bzero(mHDMIEngines, sizeof(mHDMIEngines));
 //	IOLog("VoodooHDA DBG: init() called, dict=%p\n", dict);
@@ -706,6 +707,8 @@ bool VoodooHDADevice::initHardware(IOService *provider)
 //	logMsg("deviceId: %08lx, subDeviceId: %08lx\n", mDeviceId, mSubDeviceId);
 
 	vendorId = mDeviceId & 0xffff;
+	if (vendorId == INTEL_VENDORID)
+		mNotificationObj = installVoodooHDAMatchedNotificationHandlers();
 	if (vendorId == INTEL_VENDORID) {
 		/* TCSEL -> TC0 */
 		UInt8 value = mPciNub->configRead8(0x44);
@@ -865,6 +868,10 @@ void VoodooHDADevice::stop(IOService *provider)
 		mFBNotifier->stopMatching();
 		mFBNotifier->release();
 		mFBNotifier = NULL;
+	}
+	if (mNotificationObj) {
+		uninstallVoodooHDAMatchedNotificationHandlers(mNotificationObj);
+		mNotificationObj = NULL;
 	}
 
 	disableEventSources();
@@ -1032,6 +1039,7 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
         
         // 🔧 СТРОГАЯ ПРОВЕРКА: и presence, и валидный ELD
         UInt32 pinSense = sendCommand(HDA_CMD_GET_PIN_SENSE(codec->cad, hdmiPin), codec->cad);
+        if (pinSense == HDAC_INVALID) pinSense = 0U;
         bool hasPresence = (pinSense & (1U << 31)) != 0;
         bool eldValid = (pinSense & HDA_CMD_GET_PIN_SENSE_ELD_VALID) != 0;
                 
@@ -2361,6 +2369,7 @@ void VoodooHDADevice::updateHDMIEnginePresence()
     }
     pinSenses[i] = sendCommand(HDA_CMD_GET_PIN_SENSE(slot->cad, slot->pinNid), slot->cad);
  //   Codec *codec = mCodecs[slot->cad];
+    if (pinSenses[i] == HDAC_INVALID) pinSenses[i] = 0U;
     bool hasPresence = (pinSenses[i] & (1U << 31)) != 0;
  //   bool eldValid = (pinSenses[i] & HDA_CMD_GET_PIN_SENSE_ELD_VALID) != 0;
 
@@ -2504,6 +2513,28 @@ void VoodooHDADevice::updateHDMIEnginePresence()
     
     bool hasPresence = effectivePresence;
     
+    if (hasPresence && mNotificationObj) {
+	    const char* monitorName = static_cast<const char*>(NULL);
+	    uint32_t connectorType = 0U;
+	    uint32_t mask = getMonitorNameAndConnectorType(mNotificationObj, slot->cad, slot->pinNid, &monitorName, &connectorType);
+	    if (mask & 3U) {
+		    IOReturn ret;
+		    uint32_t portType = (connectorType == 0x400U ? kIOAudioDeviceTransportTypeDisplayPort : kIOAudioDeviceTransportTypeHdmi);
+		    logMsg("VoodooHDA HDMI: mask 0x%x, Monitor Name %s, Connector Type 0x%x\n", mask, monitorName, connectorType);
+		    slot->engine->setPinNameForDigital(monitorName, portType, mask);
+
+		    if (!slot->activated) {
+			    if (!(mask & 1U))
+				    (void) setHDMIEngineDisplayName(mFBNotifier, slot, false);
+			    logMsg("VoodooHDA DBG: HDMI hot-plug: activating engine for pin=%d\n", slot->pinNid);
+			    ret = activateAudioEngine(slot->engine);
+			    logMsg("VoodooHDA DBG: HDMI hot-plug: activateAudioEngine ret=0x%x\n", ret);
+			    if (ret == kIOReturnSuccess)
+				    slot->activated = true;
+			    continue;
+		    }
+	    }
+    }
     if (hasPresence && !slot->activated) {
       (void) setHDMIEngineDisplayName(mFBNotifier, slot, false);
       if (mVerbose >= 1)
@@ -3479,6 +3510,7 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 	nid_t nid_pin;
 	Widget *widget_pin;
 	bool atiCodec = isAtiHdmiCodec(funcGroup->codec);
+	bool isDP_conn, useStandardPath = true;
 	IOLog("VoodooHDA HDMI: streamSetup dac=%d ati=%d totalchn=%d totalext=%d codec=0x%04x:0x%04x\n",
 		  dac, atiCodec, totalchn, totalext, funcGroup->codec->vendorId, funcGroup->codec->deviceId);
 
@@ -3507,7 +3539,7 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 			!HDA_PARAM_PIN_CAP_HDMI(widget_pin->pin.cap))
 			continue;
     
-    bool isDP_conn = widget_pin->eld != NULL && widget_pin->eld_len >= 6 && ((widget_pin->eld[5] >> 2) & 0x3) == 1;
+    isDP_conn = widget_pin->eld != NULL && widget_pin->eld_len >= 6 && ((widget_pin->eld[5] >> 2) & 0x3) == 1;
 
 		/*
 		 * The default mapping is 0x00, 0x11, 0x32, 0x23, 0x44, 0x55, 0x66, 0x77
@@ -3524,6 +3556,7 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 		if (atiCodec && mFBNotifier)
 			mFBNotifier->ensureAudioPipeEnabled(cad, nid_pin);
 
+    if (atiCodec) {
     logMsg("VoodooHDA HDMI: streamSetup nid_pin=%d dac=%d eld_len=%d (before re-read) pinCap=0x%08x\n",
 			  nid_pin, dac, widget_pin->eld_len, (unsigned)widget_pin->pin.cap);
     hdaa_eld_handler(widget_pin);
@@ -3539,10 +3572,11 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 		 * so we try standard first. This is critical for DP→HDMI adapters.
 		 */
 		UInt32 dipSizeTest = sendCommand(HDA_CMD_GET_HDMI_DIP_SIZE(cad, nid_pin, 0x00), cad);
-		bool useStandardPath = (dipSizeTest != HDA_INVALID) && ((dipSizeTest & 0xff) > 0);
+		useStandardPath = (dipSizeTest != HDA_INVALID) && ((dipSizeTest & 0xff) > 0);
 
     logMsg("VoodooHDA HDMI: streamSetup nid_pin=%d DIP_SIZE(0x00)=0x%08x -> useStandard=%d ati=%d\n",
 			  nid_pin, (unsigned)dipSizeTest, useStandardPath, atiCodec);
+    }
 
     int ca = 0;
     uint8_t spkalloc = 0;
@@ -3713,7 +3747,8 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
         sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, byte1), cad);  /* type: Audio */
         sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, byte2), cad);  /* version */
         sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, byte3), cad);  /* length */
-        sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, csum), cad);  /* checksum */
+        if (!isDP_conn)
+            sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, csum), cad);  /* checksum */
         sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, pb0), cad);   /* CC */
         sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);  /* CT/SF/SS */
         sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);  /* format */
@@ -3786,10 +3821,12 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
 		
 		/* Write HDMI/DisplayPort audio infoframe. */
 		sendCommand(HDA_CMD_SET_HDMI_DIP_INDEX(cad, nid_pin, 0x00), cad);
-		/*
-		 * Need Valid ELD to tell between DP or HDMI
-		 */
-//		bool isDP_conn = widget_pin->eld != NULL && widget_pin->eld_len >= 6 && ((widget_pin->eld[5] >> 2) & 0x3) == 1;
+    if (mNotificationObj) {
+	    uint32_t connectorType = 0U;
+	    uint32_t mask = getMonitorNameAndConnectorType(mNotificationObj, cad, nid_pin, static_cast<const char**>(NULL), &connectorType);
+	    if (mask & 2U)
+			isDP_conn = (connectorType == 0x400U);
+    }
     logMsg("VoodooHDA HDMI: nid_pin=%d infoframe: eld_len=%d conn_type=%s ca=0x%02x totalchn=%d\n",
 			  nid_pin, widget_pin->eld_len, isDP_conn ? "DP" : "HDMI",
 			  ca, totalchn);
@@ -3802,9 +3839,11 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
     sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, byte2), cad);
     sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, byte3), cad);
 
-    csum = 0;
-    csum -= byte1 + byte2 + byte3 + (totalchn - 1) + ca;
-    sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, csum), cad);
+    if (!isDP_conn) {
+        csum = 0;
+        csum -= byte1 + byte2 + byte3 + (totalchn - 1) + ca;
+        sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, csum), cad);
+    }
     sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, totalchn - 1), cad);
     sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);
     sendCommand(HDA_CMD_SET_HDMI_DIP_DATA(cad, nid_pin, 0x00), cad);

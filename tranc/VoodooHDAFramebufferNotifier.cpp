@@ -823,7 +823,7 @@ bool VoodooHDAFramebufferNotifier::parseEDIDAudio(FBConnectionState *conn)
               conn->mappedPinNid, conn->numSADs, fmt, nch, rates, bits);
         conn->numSADs++;
       }
-    } else if (tag == 3) {  // Speaker Allocation Data Block
+    } else if (tag == 4) {  // Speaker Allocation Data Block
       conn->speakerAllocation = cea[pos];
       FBLOG("parseEDIDAudio: pin=%d Speaker Allocation: 0x%02x", conn->mappedPinNid, conn->speakerAllocation);
     }
@@ -908,6 +908,7 @@ void VoodooHDAFramebufferNotifier::buildELDFromEDID(FBConnectionState *conn)
   // === BASELINE ELD (bytes 4+) ===
   conn->eld[4] = conn->speakerAllocation;  // Speaker Allocation (ПРАВИЛЬНОЕ МЕСТО!)
                                            // Bytes 5-12: Port ID — остаются нулями (bzero)
+  conn->eld[5] = conn->isDP ? 0x04 : 0x00; /* conn_type: DP=1, HDMI=0 */
   conn->eld[13] = 0x00;  // Audio Sync Delay
   conn->eld[14] = 0x00;  // Reserved + HDCP + AI_CP
   conn->eld[15] = (conn->numSADs << 4) | 0x00;  // SAD count (bits 7:4) + CEA_EDID_Version
@@ -937,7 +938,9 @@ bool VoodooHDAFramebufferNotifier::enableAudioPipe(FBConnectionState *conn)
 	 * Safety: we verified the object is an AMDFramebuffer (IOFramebuffer subclass)
 	 * in isSameGPU() before creating the connection.
 	 */
+#ifdef LINK_IOGRAPHICSFAMILY
 	IOFramebuffer *fb = reinterpret_cast<IOFramebuffer *>(conn->framebuffer);
+#endif
 
 	/*
 	 * AppleGFXHDA uses setAttributeForConnectionExt (non-virtual, acquires
@@ -945,7 +948,11 @@ bool VoodooHDAFramebufferNotifier::enableAudioPipe(FBConnectionState *conn)
 	 * Calling the virtual version bypasses the lock and corrupts display state.
 	 * AppleGFXHDA only uses kConnectionEnableAudio, never kConnectionAudioStreaming.
 	 */
+#ifdef LINK_IOGRAPHICSFAMILY
+	IOReturn ret = fb->setAttributeForConnectionExt(0, kConnectionEnableAudio, 1);
+#else
 	IOReturn ret = kIOReturnUnsupported;
+#endif
 	FBLOG("enableAudioPipe: pin=%d setAttributeForConnectionExt(kConnectionEnableAudio)=%x", conn->mappedPinNid, ret);
 
 	conn->audioPipeEnabled = (ret == kIOReturnSuccess);
@@ -955,12 +962,12 @@ bool VoodooHDAFramebufferNotifier::enableAudioPipe(FBConnectionState *conn)
 		bool did_lock = mDevice->trylock(__FUNCTION__);
 		for (int i = 0; i < mDevice->mNumHDMIEngines; i++) {
 			VoodooHDADevice::HDMIEngineSlot *slot = &mDevice->mHDMIEngines[i];
-			if (slot->activated && slot->engine && slot->pinNid == conn->mappedPinNid) {
+			if (slot->engine && slot->pinNid == conn->mappedPinNid) {
 				char desc[80];
 				snprintf(desc, sizeof(desc), "%s: HDMI %d (audio enabled)",
 				         mDevice->mControllerName ? mDevice->mControllerName : "GPU",
 				         slot->pinNid);
-				slot->engine->setDescription(desc);
+				slot->engine->setPinNameForDigital(&desc[0], 0U, 1U);
 				FBLOG("enableAudioPipe: updated engine name for pin=%d", conn->mappedPinNid);
 			}
 		}
@@ -1058,6 +1065,7 @@ void VoodooHDAFramebufferNotifier::injectELDIntoAllPinsWithPresence(FBConnection
       
       UInt32 pinSense = mDevice->sendCommand(
                                              HDA_CMD_GET_PIN_SENSE(mATIPinCad, nid), mATIPinCad);
+      if (pinSense == 0xFFFFFFFFU) pinSense = 0U;
       if (!(pinSense & (1U << 31))) continue;
       
       Widget *w = mDevice->widgetGet(funcGroup, nid);

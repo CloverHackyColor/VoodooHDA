@@ -67,6 +67,7 @@
 #define HDA_INTEL_LNLP        HDA_MODEL_CONSTRUCT(INTEL, 0xa828)
 #define HDA_INTEL_ALL         HDA_MODEL_CONSTRUCT(INTEL, 0xffff)
 
+/* Defines for Intel SCH HDA snoop control */
 #define INTEL_SCH_HDA_DEVC			0x78
 #define INTEL_SCH_HDA_DEVC_NOSNOOP       (0x1<<11)
 
