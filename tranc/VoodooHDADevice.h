@@ -453,6 +453,9 @@ public:
 //  UInt16 diagnosticFlagsForPin(int cad, nid_t pinNid) const;
 	void updateHDMIEnginePresence();
 	void setupIntelHdmi(Codec* codec);
+  void intelHdmiPollPresence();
+  void intelHdmiPrepareStream(Channel *channel);
+  void intelHdmiFinishStream(Channel *channel);
 	void* mNotificationObj;
 	void* installVoodooHDAMatchedNotificationHandlers(void);
 	void uninstallVoodooHDAMatchedNotificationHandlers(void* obj);

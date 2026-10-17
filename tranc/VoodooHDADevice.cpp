@@ -781,6 +781,10 @@ bool VoodooHDADevice::initHardware(IOService *provider)
 	enableMsgBuffer(true);
 //	logMsg("Scanning HDA codecs...\n");
 	scanCodecs();
+	/* Intel display codec: the timer polls for a display coming up (intelHdmiPollPresence) */
+	for (int i = 0; i < HDAC_CODEC_MAX; i++)
+		if (mCodecs[i] && mCodecs[i]->intelVendorNid && mTimerSource)
+			mTimerSource->enable();
 	enableMsgBuffer(false);
 	UNLOCK();
 	for (int n = 0; n < HDAC_CODEC_MAX; n++) {
@@ -2787,6 +2791,10 @@ void VoodooHDADevice::timeoutOccurred(OSObject *owner, IOTimerEventSource *sourc
     device->logMsg("total interrupts: %lld (%lld channel interrupts)\n", device->mTotalInt,
 			device->mTotalChanInt);
 
+	device->lock(__FUNCTION__);
+	device->intelHdmiPollPresence();
+	device->unlock(__FUNCTION__);
+
 	source->setTimeoutMS(10000);
 }
 
@@ -3385,6 +3393,53 @@ UInt8 calculateStripectl(UInt8 globalSDO, UInt8 stripecap, UInt16 format)
 /*******************************************************************************************/
 /*******************************************************************************************/
 
+/*
+ * Intel display codecs do not deliver tagged unsolicited responses when a
+ * display comes up, and the display is usually brought up after the codec
+ * probe, so HDMI engines stay deferred. Called from the timer with mLock
+ * held: activate the Intel HDMI engines whose pin now reports presence.
+ */
+void VoodooHDADevice::intelHdmiPollPresence()
+{
+	for (int i = 0; i < mNumHDMIEngines && i < 16; i++) {
+		HDMIEngineSlot *slot = &mHDMIEngines[i];
+		if (slot->activated || slot->cad < 0 || slot->cad >= HDAC_CODEC_MAX || !mCodecs[slot->cad] ||
+				!mCodecs[slot->cad]->intelVendorNid)
+			continue;
+		UInt32 sense = sendCommand(HDA_CMD_GET_PIN_SENSE(slot->cad, slot->pinNid), slot->cad);
+		if (sense == HDAC_INVALID || !(sense & (1U << 31)))
+			continue;
+		/* Same steps as updateHDMIEnginePresence() uses to activate one engine */
+		(void) setHDMIEngineDisplayName(NULL, slot, false);
+		Widget *widget = slot->channel ? widgetGet(slot->channel->funcGroup, slot->pinNid) : NULL;
+		if (widget)
+			slot->engine->mPortType = HDA_PARAM_PIN_CAP_DP(widget->pin.cap) ?
+					kIOAudioDeviceTransportTypeDisplayPort : kIOAudioDeviceTransportTypeHdmi;
+		if (activateAudioEngine(slot->engine) == kIOReturnSuccess)
+			slot->activated = true;
+	}
+}
+
+/*
+ * The Intel display codec is reset when the display is brought up, after
+ * the probe, and its widgets are left in D3. Before each stream, put the
+ * converter and pin in D0.
+ */
+void VoodooHDADevice::intelHdmiPrepareStream(Channel *channel)
+{
+	Codec *codec = channel->funcGroup->codec;
+	nid_t cad = codec->cad;
+	nid_t pin = getHDMIPinForChannel(channel);
+
+	if (!codec->intelVendorNid)
+		return;
+
+	for (int i = 0; channel->io[i] != -1; i++)
+		sendCommand(HDA_CMD_SET_POWER_STATE(cad, channel->io[i], HDA_CMD_POWER_STATE_D0), cad);
+	if (pin != (nid_t)-1)
+		sendCommand(HDA_CMD_SET_POWER_STATE(cad, pin, HDA_CMD_POWER_STATE_D0), cad);
+}
+
 void VoodooHDADevice::streamSetup(Channel *channel)
 {
 	AudioAssoc *assoc = &channel->funcGroup->audio.assocs[channel->assocNum];
@@ -3435,6 +3490,8 @@ void VoodooHDADevice::streamSetup(Channel *channel)
 	if (channel->format & AFMT_AC3)
 		digFormat |= HDA_CMD_SET_DIGITAL_CONV_FMT1_NAUDIO;
 	
+	intelHdmiPrepareStream(channel);
+
 	writeData16(channel->off + HDAC_SDFMT, format);
     
 	/* AppleGFXHDA never uses stripe mode for HDMI audio.  Stripe causes
@@ -3499,6 +3556,26 @@ void VoodooHDADevice::streamSetup(Channel *channel)
 
 		chn += cchn + 1;
 	}
+
+	intelHdmiFinishStream(channel);
+}
+
+/*
+ * The display codec reset also clears the pin's output enable and leaves its
+ * amp muted. After stream setup, enable the pin output and unmute it, as
+ * AppleHDA does last (recorded on macOS Sequoia, where HDMI audio works).
+ */
+void VoodooHDADevice::intelHdmiFinishStream(Channel *channel)
+{
+	Codec *codec = channel->funcGroup->codec;
+	nid_t cad = codec->cad;
+	nid_t pin = getHDMIPinForChannel(channel);
+
+	if (!codec->intelVendorNid || pin == (nid_t)-1)
+		return;
+
+	sendCommand(HDA_CMD_SET_PIN_WIDGET_CTRL(cad, pin, 0x40), cad);
+	sendCommand(HDA_CMD_SET_AMP_GAIN_MUTE(cad, pin, 0xb000), cad);
 }
 
 void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, AudioAssoc *assoc, int totalchn, int totalext)

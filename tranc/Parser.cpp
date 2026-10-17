@@ -78,6 +78,7 @@ void VoodooHDADevice::scanCodecs()
 			codec->numRespReceived = 0;
 			codec->numVerbsSent = 0;
 			codec->numFuncGroups = 0;
+			codec->intelVendorNid = 0;
 			codec->cad = i;
 			mCodecs[i] = codec;
 			probeCodec(codec);
@@ -5429,6 +5430,7 @@ void VoodooHDADevice::setupIntelHdmi(Codec* codec)
 		new_vendor_verb &= 255U;
 	else
 		new_vendor_verb = 1U;
+	codec->intelVendorNid = vendor_nid;
 	widgetCaps = sendCommand(HDA_CMD_GET_PARAMETER(cad, vendor_nid, HDA_PARAM_AUDIO_WIDGET_CAP), cad);
 	response = sendCommand(HDA_CMD_12BIT(cad, vendor_nid, 0xF81, 0), cad);
 	logMsg("VoodooHDA HDMI: setupIntelHdmi: cad %d, vendor_nid %d, widgetCaps 0x%x, vendor_verb 0x%x\n",

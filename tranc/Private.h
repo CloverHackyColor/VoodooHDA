@@ -325,6 +325,7 @@ typedef struct _Codec {
 	CommandList *commands;
 	FunctionGroup *funcGroups;
 	int	numFuncGroups;
+	nid_t intelVendorNid;	/* Intel display codec vendor widget, 0 if none */
 } Codec;
 
 /* ATI HDMI codec: vendor ID 0x1002 (all known ATI/AMD HDMI codec IDs) */
