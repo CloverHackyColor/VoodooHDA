@@ -4646,7 +4646,7 @@ void VoodooHDADevice::switchHandler(FunctionGroup *funcGroup, bool first)
 			continue;
 		}
 		res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, nid), cad);	
-		if (res == -1) res = 0;
+		//if (res == -1) res = 0;
 		res = HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT(res);
 		if (funcGroup->audio.quirks & HDA_QUIRK_SENSEINV)
 			res ^= 1;
@@ -4731,7 +4731,7 @@ void VoodooHDADevice::switchInit(FunctionGroup *funcGroup)
 
 		/* Read initial presence state */
 		int res = sendCommand(HDA_CMD_GET_PIN_SENSE(cad, j), cad);
-		if (res == -1) res = 0;
+		//if (res == -1) res = 0;
 		res = HDA_CMD_GET_PIN_SENSE_PRESENCE_DETECT(res);
 		if (funcGroup->audio.quirks & HDA_QUIRK_SENSEINV)
 			res ^= 1;

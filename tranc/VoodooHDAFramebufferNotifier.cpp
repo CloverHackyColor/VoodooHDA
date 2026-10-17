@@ -434,6 +434,8 @@ bool VoodooHDAFramebufferNotifier::displayMatchedHandler(
 				conn->edidValid = true;
 				conn->displayOnline = true;
 				self->enableAudioPipe(conn);
+        FBLOG("displayMatched: pin=%d hasAudioExtension=%d", conn->mappedPinNid, conn->hasAudioExtension);
+
 
 				/*
 				 * The linear connIndex→pin mapping may be wrong — framebuffer
@@ -494,6 +496,7 @@ void VoodooHDAFramebufferNotifier::handleFramebufferMatched(IOService *fb)
 	conn->framebuffer = fb;
 	conn->mappedPinNid = -1;
 	conn->mappedCodecCad = -1;
+  conn->hasAudioExtension = false;
 
 	mapConnectionToPin(conn, idx);
 
@@ -752,6 +755,7 @@ bool VoodooHDAFramebufferNotifier::parseEDIDAudio(FBConnectionState *conn)
 {
   if (!conn->edidData || conn->edidLen < 128) {
     FBLOG("parseEDIDAudio: pin=%d invalid EDID data (len=%d)", conn->mappedPinNid, conn->edidLen);
+    conn->hasAudioExtension = false;
     return false;
   }
   
@@ -781,8 +785,12 @@ bool VoodooHDAFramebufferNotifier::parseEDIDAudio(FBConnectionState *conn)
     conn->sads[1] = 0x07; /* 32/44.1/48 kHz */
     conn->sads[2] = 0x05; /* 16/24-bit */
     conn->numSADs = 1;
+    conn->hasAudioExtension = false;
     return true;
   }
+  
+  // Если дошли сюда, значит есть CEA extension (EDID >= 256 байт)
+  conn->hasAudioExtension = true;
   
   uint8_t *cea = &conn->edidData[128];
   if (cea[0] != 0x02) {
@@ -940,6 +948,8 @@ bool VoodooHDAFramebufferNotifier::enableAudioPipe(FBConnectionState *conn)
 	 */
 #ifdef LINK_IOGRAPHICSFAMILY
 	IOFramebuffer *fb = reinterpret_cast<IOFramebuffer *>(conn->framebuffer);
+#else
+//#error no fb
 #endif
 
 	/*
@@ -951,6 +961,7 @@ bool VoodooHDAFramebufferNotifier::enableAudioPipe(FBConnectionState *conn)
 #ifdef LINK_IOGRAPHICSFAMILY
 	IOReturn ret = fb->setAttributeForConnectionExt(0, kConnectionEnableAudio, 1);
 #else
+//#error no fb
 	IOReturn ret = kIOReturnUnsupported;
 #endif
 	FBLOG("enableAudioPipe: pin=%d setAttributeForConnectionExt(kConnectionEnableAudio)=%x", conn->mappedPinNid, ret);
@@ -1063,9 +1074,8 @@ void VoodooHDAFramebufferNotifier::injectELDIntoAllPinsWithPresence(FBConnection
       nid_t nid = mATIPinNids[i];
       if (nid == conn->mappedPinNid) continue;
       
-      UInt32 pinSense = mDevice->sendCommand(
-                                             HDA_CMD_GET_PIN_SENSE(mATIPinCad, nid), mATIPinCad);
-      if (pinSense == 0xFFFFFFFFU) pinSense = 0U;
+      UInt32 pinSense = mDevice->sendCommand(HDA_CMD_GET_PIN_SENSE(mATIPinCad, nid), mATIPinCad);
+ //     if (pinSense == 0xFFFFFFFFU) pinSense = 0U;
       if (!(pinSense & (1U << 31))) continue;
       
       Widget *w = mDevice->widgetGet(funcGroup, nid);
@@ -1662,6 +1672,85 @@ void VoodooHDAFramebufferNotifier::disableAudioPipeForPin(int cad, nid_t pinNid)
 }
 
 
+//bool VoodooHDAFramebufferNotifier::getPreferredConnectedPin(int cad, const nid_t *pinNids, int pinCount, nid_t *outPin)
+//{
+//  if (!mLock || !pinNids || pinCount <= 0 || !outPin)
+//    return false;
+//  
+//  IOLockLock(mLock);
+//  
+//  /*
+//   * Strongest rule: if an online/EDID-backed AMDFramebuffer publishes
+//   * audio-codec-info, trust that NID even if the earlier slot/index mapping
+//   * was fallback-based.  This fixes RX580/Polaris cards where the connected
+//   * display is on framebuffer@1 with audio-codec-info <00 01 09 00>, while
+//   * the HDA stale-presence list would otherwise select pin 3 or pin 5.
+//   */
+//  for (int pass = 0; pass < 2; pass++) {
+//    for (int i = 0; i < mNumConnections; i++) {
+//      FBConnectionState *conn = &mConnections[i];
+//      if (conn->mappedCodecCad != cad || !conn->framebuffer)
+//        continue;
+//      bool eligible = (pass == 0) ? (conn->displayOnline && conn->edidValid)
+//      : (conn->displayOnline || conn->edidValid);
+//      if (!eligible)
+//        continue;
+//      nid_t codecPin = -1;
+//      if (!vhdaReadAMDAudioCodecInfoPin(conn->framebuffer, &codecPin))
+//        continue;
+//      for (int p = 0; p < pinCount; p++) {
+//        if (pinNids[p] == codecPin) {
+//          *outPin = codecPin;
+//          IOLockUnlock(mLock);
+//          return true;
+//        }
+//      }
+//    }
+//  }
+//  
+//  /* Prefer a framebuffer connection with valid EDID and an enabled audio pipe. */
+//  for (int pass = 0; pass < 3; pass++) {
+//    for (int i = 0; i < mNumConnections; i++) {
+//      FBConnectionState *conn = &mConnections[i];
+//      if (conn->mappedCodecCad != cad || conn->mappedPinNid < 0)
+//        continue;
+//      
+//      bool eligible = false;
+//      switch (pass) {
+//        case 0:
+//          eligible = conn->displayOnline && conn->edidValid  && conn->hasAudioExtension && conn->audioPipeEnabled;
+//          break;
+//        case 1:
+//          eligible = conn->displayOnline && conn->edidValid && conn->hasAudioExtension ;
+//          break;
+//        case 2:
+//          // Приоритет 3: EDID valid + audio extension (fallback)
+//          eligible = conn->edidValid && conn->hasAudioExtension;
+//          break;
+//          
+//        default:
+////          eligible = conn->edidValid || conn->displayOnline;
+//          break;
+//      }
+//      if (!eligible)
+//        continue;
+//      
+//      for (int p = 0; p < pinCount; p++) {
+//        if (pinNids[p] == conn->mappedPinNid) {
+//          *outPin = conn->mappedPinNid;
+//          FBLOG("getPreferredConnectedPin: selected pin=%d (pass=%d, hasAudioExtension=%d)",
+//                *outPin, pass, conn->hasAudioExtension);
+//          IOLockUnlock(mLock);
+//          return true;
+//        }
+//      }
+//    }
+//  }
+//  
+//  IOLockUnlock(mLock);
+//  return false;
+//}
+
 bool VoodooHDAFramebufferNotifier::getPreferredConnectedPin(int cad, const nid_t *pinNids, int pinCount, nid_t *outPin)
 {
   if (!mLock || !pinNids || pinCount <= 0 || !outPin)
@@ -1672,9 +1761,7 @@ bool VoodooHDAFramebufferNotifier::getPreferredConnectedPin(int cad, const nid_t
   /*
    * Strongest rule: if an online/EDID-backed AMDFramebuffer publishes
    * audio-codec-info, trust that NID even if the earlier slot/index mapping
-   * was fallback-based.  This fixes RX580/Polaris cards where the connected
-   * display is on framebuffer@1 with audio-codec-info <00 01 09 00>, while
-   * the HDA stale-presence list would otherwise select pin 3 or pin 5.
+   * was fallback-based.
    */
   for (int pass = 0; pass < 2; pass++) {
     for (int i = 0; i < mNumConnections; i++) {
@@ -1685,12 +1772,20 @@ bool VoodooHDAFramebufferNotifier::getPreferredConnectedPin(int cad, const nid_t
       : (conn->displayOnline || conn->edidValid);
       if (!eligible)
         continue;
+      // 🔧 Проверка размера EDID - должен быть >= 256 байт (с CEA extension)
+      if (conn->edidLen < 256) {
+        FBLOG("getPreferredConnectedPin: pin=%d has audio-codec-info but EDID too small (%d bytes), skipping",
+              conn->mappedPinNid, conn->edidLen);
+        continue;
+      }
+      
       nid_t codecPin = -1;
       if (!vhdaReadAMDAudioCodecInfoPin(conn->framebuffer, &codecPin))
         continue;
       for (int p = 0; p < pinCount; p++) {
         if (pinNids[p] == codecPin) {
           *outPin = codecPin;
+          FBLOG("getPreferredConnectedPin1: selected pin=%d from audio-codec-info", *outPin);
           IOLockUnlock(mLock);
           return true;
         }
@@ -1698,8 +1793,10 @@ bool VoodooHDAFramebufferNotifier::getPreferredConnectedPin(int cad, const nid_t
     }
   }
   
-  /* Prefer a framebuffer connection with valid EDID and an enabled audio pipe. */
-  for (int pass = 0; pass < 3; pass++) {
+  /* 🔧 FIX: Prioritize pins with EDID >= 256 bytes (CEA audio extension).
+   * Monitors without audio have EDID = 128 bytes (no CEA extension).
+   * This ensures we select the correct HDMI pin with audio support. */
+  for (int pass = 0; pass < 4; pass++) {
     for (int i = 0; i < mNumConnections; i++) {
       FBConnectionState *conn = &mConnections[i];
       if (conn->mappedCodecCad != cad || conn->mappedPinNid < 0)
@@ -1708,13 +1805,20 @@ bool VoodooHDAFramebufferNotifier::getPreferredConnectedPin(int cad, const nid_t
       bool eligible = false;
       switch (pass) {
         case 0:
-          eligible = conn->displayOnline && conn->edidValid && conn->audioPipeEnabled;
+          // Приоритет 1: audioPipeEnabled=true И EDID >= 256 байт
+          eligible = conn->displayOnline && conn->edidValid && conn->audioPipeEnabled && (conn->edidLen >= 256);
           break;
         case 1:
-          eligible = conn->displayOnline && conn->edidValid;
+          // Приоритет 2: audioPipeEnabled=true
+          eligible = conn->displayOnline && conn->edidValid && conn->audioPipeEnabled;
           break;
-        default:
-          eligible = conn->edidValid || conn->displayOnline;
+        case 2:
+          // Приоритет 3: EDID >= 256 байт
+          eligible = conn->displayOnline && conn->edidValid && (conn->edidLen >= 256);
+          break;
+        case 3:
+          // Приоритет 4: любой валидный EDID
+          eligible = conn->displayOnline && conn->edidValid;
           break;
       }
       if (!eligible)
@@ -1723,6 +1827,8 @@ bool VoodooHDAFramebufferNotifier::getPreferredConnectedPin(int cad, const nid_t
       for (int p = 0; p < pinCount; p++) {
         if (pinNids[p] == conn->mappedPinNid) {
           *outPin = conn->mappedPinNid;
+          FBLOG("getPreferredConnectedPin2: selected pin=%d (pass=%d, edidLen=%d, audioPipeEnabled=%d)",
+                *outPin, pass, conn->edidLen, conn->audioPipeEnabled);
           IOLockUnlock(mLock);
           return true;
         }

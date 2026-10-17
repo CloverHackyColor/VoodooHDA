@@ -197,6 +197,7 @@ struct FBConnectionState {
 	/* Constructed ELD */
 	uint8_t       *eld;
 	int            eldLen;
+  bool hasAudioExtension;
 };
 
 class VoodooHDAFramebufferNotifier : public OSObject {

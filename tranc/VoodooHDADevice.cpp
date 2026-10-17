@@ -1039,11 +1039,20 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
         slot->mirrorCandidate = false;
         slot->mirroredActive = false;
         
+        /* RX5xx/Polaris HDMI safety: do not publish inactive/no-display
+         * HDMI engines at boot.  Keep the slot retained for later hot-plug/ELD
+         * activation, but only publish the IOAudioEngine when the pin reports
+         * real presence (or AMD cached ELD presence).  This keeps CoreAudio
+         * from creating "no display" HDMI outputs and avoids extra GPU/HDMI
+         * churn during display init. */
+        bool atiHDMI = isAtiHdmiCodec(codec);
+        
         audioEngine->retain(); // Удерживаем ссылку для нашего массива
         
         // 🔧 СТРОГАЯ ПРОВЕРКА: и presence, и валидный ELD
         UInt32 pinSense = sendCommand(HDA_CMD_GET_PIN_SENSE(codec->cad, hdmiPin), codec->cad);
-        if (pinSense == HDAC_INVALID) pinSense = 0U;
+        
+        if (!atiHDMI && pinSense == HDAC_INVALID) pinSense = 0U;
         bool hasPresence = (pinSense & (1U << 31)) != 0;
         bool eldValid = (pinSense & HDA_CMD_GET_PIN_SENSE_ELD_VALID) != 0;
                 
@@ -1053,14 +1062,6 @@ bool VoodooHDADevice::createAudioEngine(Channel *channel)
         
         logMsg("VoodooHDA DBG: HDMI pin=0x%x pinSense=0x%08x presence=%d eldValid=%d hasEdidEld=%d\n",
               hdmiPin, (unsigned)pinSense, hasPresence, eldValid, hasEdidEld);
-        
-        /* RX5xx/Polaris HDMI safety: do not publish inactive/no-display
-         * HDMI engines at boot.  Keep the slot retained for later hot-plug/ELD
-         * activation, but only publish the IOAudioEngine when the pin reports
-         * real presence (or AMD cached ELD presence).  This keeps CoreAudio
-         * from creating "no display" HDMI outputs and avoids extra GPU/HDMI
-         * churn during display init. */
-        bool atiHDMI = isAtiHdmiCodec(codec);
         
         /* RX5xx/Polaris connected-only policy:
          * Do not publish ATI/AMD HDMI engines one-by-one while the parser is
@@ -2449,17 +2450,25 @@ void VoodooHDADevice::updateHDMIEnginePresence()
   if (legacyPolarisRecovery) {
     haveVisiblePin = false;
     visiblePin = (nid_t)-1;
-    for (int pass = 0; pass < 2 && !haveVisiblePin; pass++) {
-      for (int i = 0; i < hdmiEngineCount; i++) {
-        HDMIEngineSlot *slot = &mHDMIEngines[i];
-        Codec *codec = (slot->cad >= 0 && slot->cad < HDAC_CODEC_MAX) ? mCodecs[slot->cad] : NULL;
-        if (!slot->engine || !codec || !isAtiHdmiCodec(codec))
-          continue;
-        if (pass == 0 && !presence[i])
-          continue;
-        visiblePin = slot->pinNid;
-        haveVisiblePin = true;
-        break;
+    // 🔧 FIX: Сначала используем preferredPin из framebuffer notifier (обычно pin=9)
+    if (havePreferredPin) {
+      visiblePin = preferredPin;
+      haveVisiblePin = true;
+      if (mVerbose >= 1)
+        IOLog("VoodooHDA ATI DBG: legacy Polaris using preferredPin=%d from framebuffer\n", visiblePin);
+    } else {
+      for (int pass = 0; pass < 2 && !haveVisiblePin; pass++) {
+        for (int i = 0; i < hdmiEngineCount; i++) {
+          HDMIEngineSlot *slot = &mHDMIEngines[i];
+          Codec *codec = (slot->cad >= 0 && slot->cad < HDAC_CODEC_MAX) ? mCodecs[slot->cad] : NULL;
+          if (!slot->engine || !codec || !isAtiHdmiCodec(codec))
+            continue;
+          if (pass == 0 && !presence[i])
+            continue;
+          visiblePin = slot->pinNid;
+          haveVisiblePin = true;
+          break;
+        }
       }
     }
     if (haveVisiblePin && mVerbose >= 1)
@@ -3636,7 +3645,18 @@ void VoodooHDADevice::streamHDMIorDPExtraSetup(Channel *channel, nid_t dac, Audi
     if (atiCodec) {
     logMsg("VoodooHDA HDMI: streamSetup nid_pin=%d dac=%d eld_len=%d (before re-read) pinCap=0x%08x\n",
 			  nid_pin, dac, widget_pin->eld_len, (unsigned)widget_pin->pin.cap);
-    hdaa_eld_handler(widget_pin);
+      
+      // 🔧 FIX: Не вызывать hdaa_eld_handler, если ELD уже успешно получен из Framebuffer.
+      // AMD кодеки часто отдают presence=0 на ранних этапах streamSetup, что приводит
+      // к затиранию корректного ELD, внедренного через VoodooHDAFramebufferNotifier.
+      if (widget_pin->eld_len == 0) {
+        logMsg("VoodooHDA HDMI: nid=%d ELD is empty, attempting hdaa_eld_handler fallback\n", nid_pin);
+        hdaa_eld_handler(widget_pin);
+      } else {
+        logMsg("VoodooHDA HDMI: nid=%d preserving existing FRAMEBUFFER ELD (len=%d), skipping hdaa_eld_handler\n", nid_pin, widget_pin->eld_len);
+      }
+
+//    hdaa_eld_handler(widget_pin);
     logMsg("VoodooHDA HDMI: streamSetup nid_pin=%d eld_len=%d (after re-read)\n",
 			  nid_pin, widget_pin->eld_len);
 
